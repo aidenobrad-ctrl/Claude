@@ -18,6 +18,8 @@ export const atmoUniforms = {
   uFogFalloff: { value: 0.0011 },
   uTime: { value: 0 },
   uWind: { value: new THREE.Vector2(1, 0.4) },
+  /** Direct sun colour times intensity (linear), for translucency effects. */
+  uSunColor: { value: new THREE.Color(3, 2.7, 2.2) },
 };
 
 interface SkyPreset {
@@ -209,6 +211,7 @@ export class Atmosphere {
     this.hemi.color.set(p.ambientSky);
     this.hemi.groundColor.set(p.ambientGround);
     this.hemi.intensity = p.ambient;
+    atmoUniforms.uSunColor.value.set(p.sunColor).multiplyScalar(p.elevation > 0 ? p.sunIntensity : p.sunIntensity * 0.4);
     atmoUniforms.uFogColor.value.set(p.fog);
     atmoUniforms.uSunScatter.value.set(p.scatter);
     atmoUniforms.uFogDensity.value = p.fogDensity;

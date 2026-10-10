@@ -264,8 +264,7 @@ export class Vegetation {
     this.atlas = drawAtlas();
     const geos = buildTreeGeometries();
     const sunDir = atmoUniforms.uSunDir;
-    const sunColor = { value: new THREE.Color(1, 0.9, 0.75).multiplyScalar(3) };
-    this.sunColor = sunColor.value;
+    const sunColor = atmoUniforms.uSunColor;
 
     // Near models: one mesh per kind.
     const foliage = new THREE.MeshStandardMaterial({ map: this.atlas, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.82, metalness: 0, envMapIntensity: 0.55 });
@@ -329,9 +328,6 @@ export class Vegetation {
     far.receiveShadow = true;
     this.group.add(far);
   }
-
-  /** Sun color for leaf translucency (set from the atmosphere each frame). */
-  readonly sunColor: THREE.Color;
 
   /** Render each tree kind from the side into an atlas (albedo times baked occlusion). */
   private bakeImpostors(geos: THREE.BufferGeometry[]): { texture: THREE.Texture; uv: [number, number, number, number][] } {
@@ -399,12 +395,15 @@ export class Vegetation {
       }
     }
     want.sort((a, b) => a.d - b.d);
+    const t0 = performance.now();
     for (const w of want) {
       const key = w.cx * 4096 + w.cz;
       const keep = w.d > thinFrom ? thinKeep : 1;
       const c = this.cells.get(key);
       if (c && (c.keep >= keep || c.loading)) continue;
       if (!sync && this.source.async && this.source.treesInFlight >= 6 * this.source.workerCount) break;
+      // Without workers, a few milliseconds of cells per frame.
+      if (!sync && !this.source.async && performance.now() - t0 > 4) break;
       const cell: Cell = c ?? { key, cx: w.cx, cz: w.cz, keep, inst: [], inst2: [], all: new Float32Array(0), all2: new Float32Array(0), loading: true };
       cell.loading = true;
       this.cells.set(key, cell);

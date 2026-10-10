@@ -132,8 +132,10 @@ export class TerrainView {
   /** Tiles that arrived in the last update (for perf counters). */
   built = 0;
   splitK = 1.5;
-  /** Maximum worker requests outstanding at once. */
+  /** Maximum worker requests outstanding at once (per worker). */
   maxInFlight = 6;
+  /** Main-thread build budget per frame when no worker is available, ms. */
+  syncBudgetMs = 6;
 
   constructor(
     readonly world: World,
@@ -207,11 +209,17 @@ export class TerrainView {
     // Nearest first.
     want.sort((a, b) => a.d - b.d);
     let missing = false;
+    const t0 = performance.now();
     for (const w of want) {
       const key = `${w.level}:${w.ix}:${w.iz}`;
       let t = this.tiles.get(key);
       if (!t) {
         if (!sync && this.source.async && this.source.terrainInFlight >= this.maxInFlight * this.source.workerCount) {
+          missing = true;
+          continue;
+        }
+        // Without workers, spread tile builds over frames (a few ms each).
+        if (!sync && !this.source.async && performance.now() - t0 > this.syncBudgetMs && this.tiles.size > 0) {
           missing = true;
           continue;
         }

@@ -15,6 +15,7 @@ import { buildTrackView } from './world/render/track-view';
 import { TerrainView } from './world/render/terrain-view';
 import { TileSource } from './world/render/tile-source';
 import { Vegetation } from './world/render/vegetation';
+import { Grass } from './world/render/grass';
 import { buildRoadView, type RoadView } from './world/render/road-view';
 import { SURFACES } from './world/surfaces';
 import { newHit } from './world/ground';
@@ -80,6 +81,7 @@ export class Game {
   readonly terrain: TerrainView;
   readonly tiles: TileSource;
   readonly vegetation: Vegetation;
+  readonly grass: Grass | null = null;
   readonly roads: RoadView;
   readonly skid = new Skidmarks(4000);
   readonly puffs = new Puffs(700);
@@ -160,6 +162,10 @@ export class Game {
     const q = this.quality;
     this.vegetation = new Vegetation(this.renderer, this.tiles, { near: q.treeNear, far: q.treeFar, thinFrom: q.treeThin, thinKeep: q.treeKeep, shadows: q.treeShadows });
     this.scene.add(this.vegetation.group);
+    if (q.grass > 0) {
+      this.grass = new Grass(this.sim.ground, q.grass);
+      this.scene.add(this.grass.mesh);
+    }
     this.scene.add(buildTrackView(this.sim.track));
     this.scene.add(this.skid.mesh, this.puffs.points);
     this.rebuildCarViews();
@@ -400,6 +406,7 @@ export class Game {
     this.perf.begin('terrain');
     this.terrain.update(this.rig.camera.position, this.test);
     this.vegetation.update(this.rig.camera.position, this.test);
+    this.grass?.update(this.rig.camera.position);
     this.perf.counters.trees = this.vegetation.nearCount;
     this.perf.counters.impostors = this.vegetation.farCount;
     this.perf.end('terrain');

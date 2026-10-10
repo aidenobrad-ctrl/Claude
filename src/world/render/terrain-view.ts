@@ -285,7 +285,7 @@ export class TerrainView {
   }
 
   private select(level: number, ix: number, iz: number, cam: THREE.Vector3, out: { level: number; ix: number; iz: number; d: number }[]): void {
-    const size = T_LEAF * 2 ** level;
+    const size = T_LEAF * (1 << level);
     const x0 = -WORLD_HALF + ix * size;
     const z0 = -WORLD_HALF + iz * size;
     const cx = Math.max(x0, Math.min(cam.x, x0 + size));

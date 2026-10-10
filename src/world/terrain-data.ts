@@ -8,7 +8,7 @@ import { WORLD_HALF, REGION, RIVER, LAKE, newSample, polylineDist } from './isla
 export const T_QUADS = 64;
 export const T_LEAF = 256;
 export const T_MAX_LEVEL = 3; // 256 * 2^3 = 2048 m roots
-export const T_ROOT = T_LEAF * 2 ** T_MAX_LEVEL;
+export const T_ROOT = T_LEAF * (1 << T_MAX_LEVEL);
 /** Vegetation cell size, m (4 x 4 physics tiles). */
 export const VEG_CELL = 256;
 
@@ -41,7 +41,7 @@ export function skirtRing(): number[] {
 }
 
 export function buildTerrainTile(world: World, level: number, ix: number, iz: number): TerrainTileData {
-  const size = T_LEAF * 2 ** level;
+  const size = T_LEAF * (1 << level);
   const step = size / T_QUADS;
   const x0 = -WORLD_HALF + ix * size;
   const z0 = -WORLD_HALF + iz * size;

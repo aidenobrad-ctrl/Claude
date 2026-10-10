@@ -82,7 +82,7 @@ export class TileSource {
     const id = this.nextId++;
     this.terrainCbs.set(id, { cb, level, ix, iz });
     this.terrainInFlight++;
-    const size = T_LEAF * 2 ** level;
+    const size = T_LEAF * (1 << level);
     this.route(-WORLD_HALF + ix * size + 1, -WORLD_HALF + iz * size + 1).postMessage({ type: 'terrain', id, level, ix, iz });
   }
 

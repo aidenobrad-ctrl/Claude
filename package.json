@@ -1,0 +1,23 @@
+{
+  "name": "halcyon-roads",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Halcyon Roads: an open-world festival racing game for the web",
+  "type": "module",
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "dev": "node tools/build.mjs --watch --serve",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test:sim": "node tools/run-sim-tests.mjs",
+    "test:browser": "node tools/browser-tests.mjs",
+    "verify": "node tools/verify.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.2",
+    "@types/three": "0.170.0",
+    "esbuild": "0.25.12",
+    "playwright-core": "1.56.1",
+    "three": "0.170.0",
+    "typescript": "5.9.3"
+  }
+}

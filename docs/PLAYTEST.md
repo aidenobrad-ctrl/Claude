@@ -31,3 +31,71 @@ Severity: **S1** crash, data loss or blocks play · **S2** wrong behavior a play
 3. The quality presets and dynamic resolution are not built, only the pixel budget (M8).
 4. Gamepad and touch input have unit coverage only, with no browser test (M1 touch, M7 gamepad).
 5. Screenshots are judged by eye, with no automated image checks beyond "not blank".
+
+## M1: driving feel slice
+
+**Tried:**
+- Standing starts with and without TCS; launch traces sampled every 0.1 s; 0–100, 0–200, quarter mile, top speed, 100–0 with and without ABS.
+- Steady-state cornering with per-wheel load and slip dumps; a skidpad ramp.
+- Lane changes at 120 km/h with and without ESC; keyboard taps at 200 km/h; handbrake turns and a held drift.
+- Grass, gravel traps and sand.
+- A 15% slope and a 12% cross slope, parked on the handbrake.
+- Reverse and back to first.
+- A 2 m drop; a rollover with spin.
+- A 30 m/s crash into a tire wall; a car-to-car rear-end hit.
+- A bot lapping the circuit.
+- Wrong-way and short-cut lap timing.
+- A 10-minute random-input soak with resets.
+- Real touch events (two fingers: gas plus slide steering) in phone portrait and landscape.
+- The pause menu, quick key taps, and reset to road from the infield.
+- Reviewing the car from 6 angles and screenshots from all three cameras.
+
+| # | Finding | Sev | Root cause | Fix | Retest |
+|---|---|---|---|---|---|
+| 1 | 0–100 took 6.1 s; the engine sat at 1180 rpm for 1.3 s at launch. | S2 | An rpm-proportional clutch found an equilibrium with the off-boost turbo engine (about 200 N·m) at 23% engagement. | Launch control: a governor holds the launch rpm, and the slipping clutch passes the engine's torque at that rpm. | 0–100 now 4.74 s |
+| 2 | Under acceleration the rear tires got 22% less load transfer than m·a·h/L. | S2 | Tire forces were applied 6–10 cm above the contact patch, shortening the pitch moment arm. | Forces now act at the contact patch. | Pass |
+| 3 | During the launch, throttle and clutch oscillated at about 5 Hz (slip swinging 0.03–0.13). | S2 | TCS cutting throttle lowered rpm, which opened the rpm-driven clutch, which released TCS: a limit cycle. | While launching, the clutch is capped at the driven tires' traction instead of TCS cutting throttle. | Smooth 0.6–0.66 g launch |
+| 4 | The wheels spun up to 2.3 slip and the clutch locked while they were spinning. | S2 | A slipping clutch passed full capacity to the wheels, skipping driveline efficiency, while the traction cap assumed efficiency was applied. | Separate kinematic ratio G and torque ratio Gt = G·η, used consistently, including in the lock equation. | Max slip 0.12 with TCS |
+| 5 | Every upshift (e.g. 1→2 at 75 km/h) caused wheelspin. | S2 | The throttle stayed open with the clutch out, so the engine flared toward the limiter and dumped that energy into the tires. | Ignition cut on upshifts; rev-matching blip on downshifts. | Pass |
+| 6 | The skidpad read 0.88 g although every tire was at 70–85% of peak. | S4 | The pure-pursuit test driver drifted wide with speed and failed the "within 0.6 m" check before the tires saturated. | Driver rewritten with feedforward plus PI on radius error, heading and yaw rate. | 0.948 g, mean error 7 cm |
+| 7 | `Math.tan`, `Math.asin` and `x ** 2` in tire and spring setup would make physics constants differ across engines. | S3 | Init-time math didn't use dmath. | dmath everywhere; the lint now also bans `**` in sim code. | Lint passes |
+| 8 | The car body rendered inside out: a hollow nose and light-grey "skirts". | S2 | The lower-body loft's sections ran counter-clockwise, so every face pointed inward. | Sections run clockwise as seen from behind. | Fixed in 6-angle review |
+| 9 | Pillar boxes poked out of the roof corners like ears. | S3 | Separate boxes placed on an approximate cabin edge. | Pillars and roof are now material groups of the cabin loft itself. | Fixed |
+| 10 | The glass rendered pure black. | S3 | Metallic dark glass tints its reflections by the base color. | Dielectric glass with a clearcoat layer for Fresnel sky reflections. | Fixed |
+| 11 | Tail lights, valances and plates were hidden inside the rounded tail. | S3 | Details were placed from the analytic profile, which ignores the bumper rounding. | Details are raycast onto the generated body and aligned to its normal. | Fixed |
+| 12 | Pressing Esc in a test did nothing. A quick real tap on a slow frame would be lost too. | S2 | Edges came only from held state, so a press and release between two polls disappeared. | Keydowns are latched until the next poll. | Pass |
+| 13 | "Back to the road" did nothing more than 36 m from the track. | S2 | The road's nearest-point grid only covers cells near the road. | `nearestAny` falls back to a full scan. | Pass |
+| 14 | A parked car crept 15 cm in 5 s down a 15% slope and 11 cm in 10 s across a 12% slope. | S3 | The low-speed tire model acts like a damper, which needs velocity to make force. | Braked tires at rest anchor to the ground with a tread spring plus damper, capped at μ·Fz. | 4.5 cm and 1.7 cm (settling) |
+| 15 | Skid marks never appeared. | S2 | The ring-buffer quads were wound clockwise from above, so they were back-face culled. | Winding fixed; smoke made denser. | Visible in the drift shot |
+| 16 | The skidpad asphalt looked blotchy, and changing one texture's repeat changed others. | S3 | RingGeometry UVs span the whole ring, and the code set `repeat` on a shared cached texture. | World-scale repeats on cloned textures. | Fixed |
+
+**Test-only issues:**
+- The test's own `Math.sin` input differed in Node and Chromium at 160 of 4800 steps, so the determinism test now uses a triangle wave. With identical inputs the sim is bit-identical.
+- Holding the brake on a slope selects reverse by design, so the slope test now holds the car with the handbrake.
+- The drift controller's countersteer sign was wrong.
+
+**Verified, no bug found:**
+- Validation: 0–100 4.74 s, 0–200 14.76 s, quarter mile 12.87 s at 186 km/h, top speed 297.6 km/h, 100–0 31.0 m (36.1 m with locked wheels), skidpad 0.948 g.
+- Roll gradient 1.6°/g; braking pitch 1.7°.
+- ESC: at 120 km/h a hard lane change spins the car to 48° of sideslip without ESC and 3° with it.
+- The handbrake kicks the rear out to 42°; a basic controller holds a drift 3.4 s out of 5.
+- A 2 m drop lands and settles at ride height; a rollover keeps the body above ground.
+- Grass gives about 0.5× asphalt grip, and sand holds the car to 86 km/h.
+- The gearbox doesn't hunt at a steady cruise.
+- The bot laps the circuit with laps timed (2:02.7 at its cautious pace).
+- No tunnelling through a tire wall at 30 m/s.
+- Two-finger touch drives the car, and lifting the fingers releases everything.
+- The 10-minute soak: no NaNs, lowest COM 0.43 m.
+
+**Measured:**
+- A physics step costs 2.7 µs per car in Node.
+- The browser sim costs 4.5 ms per simulated second.
+- The proving ground renders in 66 draw calls and 61K triangles, shadow pass included.
+
+**Self-critique: the five weakest things at the end of M1:**
+
+1. Parked cars crept on slopes. **Fixed** (finding 14).
+2. Skid marks were invisible and smoke too faint, so the main slide feedback was missing. **Fixed** (findings 15 and 16).
+3. Car-to-car collisions were untested. **Fixed:** a test now checks no interpenetration, the struck car moving off, and no momentum gain.
+4. There is no sound yet. Engine and tire audio carry a lot of driving feel; scheduled for M3–M4 (engines) and M8 (radio). **Open.**
+5. There is no cockpit camera, which needs the interior (M3). **Open.**

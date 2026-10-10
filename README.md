@@ -3,6 +3,25 @@
 An original open-world festival racing game for the web, built with TypeScript and three.js. It runs in desktop browsers (keyboard or gamepad) and on phones (touch).
 
 > **Work in progress.** This is being built milestone by milestone. See [`docs/STATE.md`](docs/STATE.md) for what works today, and [`docs/PLAYTEST.md`](docs/PLAYTEST.md) for what was tested and fixed.
+>
+> **Today (M1):** one car on the Halcyon Proving Ground, with a full four-wheel driving model:
+> - Pacejka tires, suspension and anti-roll bars, a clutch and gearbox, an LSD, launch control, and ABS, TCS and stability control;
+> - chase, far chase and bonnet cameras;
+> - the HUD, lap timing, and touch controls for phones.
+
+## Controls
+
+| Keyboard | Gamepad | Touch | Action |
+| --- | --- | --- | --- |
+| W / ↑ | RT | GAS | Throttle |
+| S / ↓ | LT | BRAKE | Brake; hold at a stop to reverse |
+| A D / ← → | Left stick | Slide on the steering pad | Steer |
+| Space | A | HAND BRAKE | Handbrake |
+| E / Q | B / X | | Shift up / down (manual gearbox) |
+| C | RB | CAM | Change camera |
+| B | LB | | Look back |
+| R | | ROAD | Back to the road |
+| Esc / P | Menu | II | Pause, assists and settings |
 
 ## Play
 

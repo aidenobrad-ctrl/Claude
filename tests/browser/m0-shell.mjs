@@ -130,7 +130,8 @@ export const scenarios = [
         for (let i = 0; i < 240 * 20; i++) {
           c.throttle = i % 700 < 500 ? 1 : 0;
           c.brake = i % 700 >= 600 ? 1 : 0;
-          c.steer = Math.sin(i * 0.01);
+          // Triangle wave: Math.sin itself differs between engines.
+          c.steer = Math.abs(((i % 800) / 400) - 1) * 2 - 1;
           sim.step(c);
         }
         return sim.hash();

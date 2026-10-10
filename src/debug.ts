@@ -24,6 +24,10 @@ export interface DebugApi {
   perf(): Record<string, unknown>;
   hash(): string;
   reset(): void;
+  /** Fix the camera at (x, y, z) looking at (tx, ty, tz); call with no arguments to release it. */
+  setCamera(x?: number, y?: number, z?: number, tx?: number, ty?: number, tz?: number, fov?: number): void;
+  /** Show or hide the HUD and touch controls (for clean review shots). */
+  setUiVisible(v: boolean): void;
   game: Game;
 }
 
@@ -65,9 +69,20 @@ export function installDebugApi(game: Game): DebugApi {
     hash() {
       return game.sim.hash();
     },
+    setCamera(x, y, z, tx, ty, tz, fov) {
+      game.cameraOverride = x === undefined ? null : [x, y ?? 0, z ?? 0, tx ?? 0, ty ?? 0, tz ?? 0, fov ?? 40];
+    },
+    setUiVisible(v) {
+      game.hud.setVisible(v);
+      game.touch.el.style.display = v && game.touch.visible ? '' : 'none';
+      game.help.setVisible(false);
+    },
     reset() {
       game.input.override = null;
       game.sim.reset();
+      game.rebuildCarViews();
+      game.skid.clear();
+      game.rig.snap();
     },
     game,
   };

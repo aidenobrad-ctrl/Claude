@@ -154,6 +154,8 @@ export class Input {
   onKeyCapture: ((code: string) => boolean) | null = null;
 
   private keys = new Set<string>();
+  /** Keys that went down since the last poll, so taps shorter than a frame still register. */
+  private tapped = new Set<string>();
   private prevHeld = emptyActions();
   private padConnected = false;
   private overridePressed: Partial<Record<Action, boolean>> = {};
@@ -167,11 +169,15 @@ export class Input {
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) return;
       this.keys.add(e.code);
+      if (!e.repeat) this.tapped.add(e.code);
       this.lastSource = 'keyboard';
       if (e.code.startsWith('Arrow') || e.code === 'Space' || e.code === 'Tab') e.preventDefault();
     });
     target.addEventListener('keyup', (e) => this.keys.delete(e.code));
-    target.addEventListener('blur', () => this.keys.clear());
+    target.addEventListener('blur', () => {
+      this.keys.clear();
+      this.tapped.clear();
+    });
     target.addEventListener('gamepadconnected', () => (this.padConnected = true));
   }
 
@@ -182,6 +188,7 @@ export class Input {
 
   clearKeys(): void {
     this.keys.clear();
+    this.tapped.clear();
   }
 
   poll(): Controls {
@@ -196,9 +203,12 @@ export class Input {
       this.readTouch(c);
     }
     for (const a of ACTIONS) {
-      c.pressed[a] = (c.held[a] && !this.prevHeld[a]) || !!this.overridePressed[a];
+      let tap = false;
+      if (!this.override) for (const code of this.bindings[a]) if (this.tapped.has(code)) tap = true;
+      c.pressed[a] = (c.held[a] && !this.prevHeld[a]) || tap || !!this.overridePressed[a];
       this.prevHeld[a] = c.held[a];
     }
+    this.tapped.clear();
     if (this.override?.pressed) for (const a of ACTIONS) if (this.override.pressed[a]) c.pressed[a] = true;
     this.overridePressed = {};
     return c;

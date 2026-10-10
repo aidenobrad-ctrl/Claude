@@ -47,3 +47,345 @@
   text-align: center;
   opacity: 1;
 }
+
+/* ---------- HUD ---------- */
+.hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: #fff;
+}
+.hud-gauge-wrap {
+  position: absolute;
+  right: calc(18px + var(--safe-right));
+  bottom: calc(16px + var(--safe-bottom));
+  width: 200px;
+}
+.hud-gauge {
+  width: 200px;
+  height: 200px;
+  display: block;
+  filter: drop-shadow(0 4px 14px rgba(0, 0, 0, 0.35));
+}
+.hud-aids {
+  position: absolute;
+  left: -64px;
+  bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.hud-aids span {
+  font: 700 11px/1 system-ui, sans-serif;
+  letter-spacing: 0.08em;
+  padding: 5px 7px;
+  border-radius: 5px;
+  background: rgba(8, 11, 17, 0.55);
+  color: rgba(255, 255, 255, 0.35);
+  text-align: center;
+  transition: background 0.08s, color 0.08s;
+}
+.hud-aids span.on {
+  background: #ffb547;
+  color: #1a1206;
+}
+.hud-lap {
+  position: absolute;
+  left: calc(16px + var(--safe-left));
+  top: calc(14px + var(--safe-top));
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(8, 11, 17, 0.55);
+  font: 600 13px/1.3 system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  min-width: 150px;
+}
+.hud-lap b {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: #ffb547;
+}
+.hud-lap .big {
+  font-size: 26px;
+  font-weight: 800;
+}
+.hud-lap span:not(.big) {
+  opacity: 0.75;
+}
+.hud-toast {
+  position: absolute;
+  left: 50%;
+  top: calc(18% + var(--safe-top));
+  transform: translate(-50%, -6px);
+  padding: 9px 18px;
+  border-radius: 999px;
+  background: rgba(8, 11, 17, 0.7);
+  font: 700 15px system-ui, sans-serif;
+  letter-spacing: 0.04em;
+  opacity: 0;
+  transition: opacity 0.2s, transform 0.2s;
+  white-space: nowrap;
+}
+.hud-toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+/* ---------- Touch controls ---------- */
+.touch {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.touch button {
+  font-family: system-ui, sans-serif;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: none;
+}
+.t-pad {
+  position: absolute;
+  left: calc(14px + var(--safe-left));
+  bottom: calc(18px + var(--safe-bottom));
+  width: min(42vw, 380px);
+  height: 132px;
+  pointer-events: auto;
+  touch-action: none;
+}
+.t-track {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: 50%;
+  height: 10px;
+  margin-top: -5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+.t-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 74px;
+  height: 74px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.22);
+  border: 2px solid rgba(255, 255, 255, 0.55);
+  transform: translate(-50%, -50%);
+  backdrop-filter: blur(2px);
+}
+.t-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 4px;
+  transform: translateX(-50%);
+  font: 700 10px system-ui, sans-serif;
+  letter-spacing: 0.2em;
+  opacity: 0.45;
+}
+.t-pedals {
+  position: absolute;
+  right: calc(14px + var(--safe-right));
+  bottom: calc(18px + var(--safe-bottom));
+  display: grid;
+  grid-template-columns: 86px 96px;
+  grid-template-rows: 62px 122px;
+  gap: 10px;
+  pointer-events: auto;
+}
+.t-btn {
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  border-radius: 16px;
+  background: rgba(10, 14, 22, 0.42);
+  color: #fff;
+  font-weight: 800;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  line-height: 1.1;
+  touch-action: none;
+}
+.t-btn.down {
+  background: rgba(255, 181, 71, 0.85);
+  color: #1a1206;
+  border-color: #ffd28a;
+}
+.t-hand {
+  grid-column: 1;
+  grid-row: 1;
+  font-size: 10px;
+}
+.t-brake {
+  grid-column: 1;
+  grid-row: 2;
+}
+.t-gas {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  border-color: rgba(120, 230, 140, 0.7);
+}
+.t-actions {
+  position: absolute;
+  right: calc(12px + var(--safe-right));
+  top: calc(12px + var(--safe-top));
+  display: flex;
+  gap: 8px;
+  pointer-events: auto;
+}
+.t-small {
+  min-width: 52px;
+  min-height: 44px;
+  padding: 0 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  background: rgba(10, 14, 22, 0.5);
+  color: #fff;
+  font: 700 12px system-ui, sans-serif;
+  letter-spacing: 0.08em;
+}
+.touch.lefty .t-pad {
+  left: auto;
+  right: calc(14px + var(--safe-right));
+}
+.touch.lefty .t-pedals {
+  right: auto;
+  left: calc(14px + var(--safe-left));
+  grid-template-columns: 96px 86px;
+}
+.touch.lefty .t-gas {
+  grid-column: 1;
+}
+.touch.lefty .t-hand,
+.touch.lefty .t-brake {
+  grid-column: 2;
+}
+
+/* With touch controls the gauge moves up out of the thumbs' way. */
+body.touch-mode .hud-gauge-wrap {
+  bottom: auto;
+  top: calc(66px + var(--safe-top));
+  right: calc(14px + var(--safe-right));
+  width: 150px;
+}
+body.touch-mode .hud-gauge {
+  width: 150px;
+  height: 150px;
+}
+body.touch-mode .hud-aids {
+  left: -54px;
+}
+body.portrait.touch-mode .hud-gauge-wrap {
+  width: 124px;
+  top: calc(64px + var(--safe-top));
+}
+body.portrait.touch-mode .hud-gauge {
+  width: 124px;
+  height: 124px;
+}
+body.portrait .t-pad {
+  width: 48vw;
+  height: 150px;
+  bottom: calc(28px + var(--safe-bottom));
+}
+body.portrait .t-pedals {
+  grid-template-columns: 72px 82px;
+  grid-template-rows: 58px 132px;
+  bottom: calc(28px + var(--safe-bottom));
+}
+body.portrait .hud-lap {
+  min-width: 120px;
+  padding: 8px 10px;
+}
+body.portrait .hud-lap .big {
+  font-size: 20px;
+}
+
+/* ---------- Pause and help ---------- */
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(16px + var(--safe-top)) calc(16px + var(--safe-right)) calc(16px + var(--safe-bottom)) calc(16px + var(--safe-left));
+  background: rgba(6, 9, 14, 0.62);
+  pointer-events: auto;
+  overflow: auto;
+}
+.panel {
+  width: min(520px, 100%);
+  max-height: 100%;
+  overflow: auto;
+  padding: 20px 22px;
+  border-radius: 16px;
+  background: rgba(17, 22, 31, 0.96);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+}
+.panel h2 {
+  margin: 0 0 4px;
+  font-size: 22px;
+}
+.panel p.sub {
+  margin: 0 0 14px;
+  opacity: 0.65;
+  font-size: 13px;
+}
+.panel .row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  font-size: 14px;
+}
+.panel .seg {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.panel button {
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: #eef2f7;
+  font: 600 13px system-ui, sans-serif;
+}
+.panel button.on {
+  background: #ffb547;
+  border-color: #ffb547;
+  color: #1a1206;
+}
+.panel .actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+.panel .actions button.primary {
+  background: #ffb547;
+  color: #1a1206;
+  border-color: #ffb547;
+  min-width: 120px;
+}
+.keys {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 14px;
+  font-size: 13px;
+}
+.keys kbd {
+  font: 700 12px ui-monospace, Menlo, Consolas, monospace;
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.1);
+  white-space: nowrap;
+}

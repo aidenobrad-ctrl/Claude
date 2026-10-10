@@ -78,7 +78,10 @@ test('simulation sources do not use engine-dependent Math functions', () => {
         if (/from 'three'/.test(src) || /\/\/ @presentation-only/.test(src)) continue;
         if (p.endsWith(path.join('engine', 'dmath.ts'))) continue;
         src.split('\n').forEach((line, i) => {
-          if (banned.test(line) && !line.includes('// det-ok')) offenders.push(`${path.relative(process.cwd(), p)}:${i + 1}: ${line.trim()}`);
+          const code = line.replace(/\/\/.*$/, '');
+          if ((banned.test(code) || /[\w)\]]\s*\*\*\s*[\w(.-]/.test(code)) && !line.includes('// det-ok')) {
+            offenders.push(`${path.relative(process.cwd(), p)}:${i + 1}: ${line.trim()}`);
+          }
         });
       }
     }

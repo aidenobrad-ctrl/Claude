@@ -1,7 +1,7 @@
 // Render review shots of the current build: node tools/look.mjs [quality] [time] [prefix] [which]
 //   which: comma list of island,vista,forest,chase,hero (default all)
 import { launchBrowser, openGame, shot } from './browser.mjs';
-const [q = 'ultra', time = 'golden', prefix = 'look', which = 'island,vista,forest,chase,hero'] = process.argv.slice(2);
+const [q = 'ultra', time = 'golden', prefix = 'look', which = 'island,vista,forest,city,village,chase,hero'] = process.argv.slice(2);
 const want = new Set(which.split(','));
 const b = await launchBrowser();
 const g = await openGame(b, { viewport: 'desktop', query: `test=1&q=${q}&time=${time}` });
@@ -59,6 +59,48 @@ if (want.has('forest')) {
     }
   });
   await shot(g.page, `${prefix}-${q}-${time}-forest`);
+}
+if (want.has('city')) {
+  // Downtown from a street corner, chase cam heading north.
+  await g.page.evaluate(() => {
+    const api = window.__game;
+    api.setUiVisible(true);
+    api.setCamera();
+    api.teleport(3100 + 2.5, -260, 0);
+    api.game.sim.player.vehicle.setSpeed(12);
+    api.setInput({ throttle: 0.2 });
+    for (let i = 0; i < 12; i++) api.step(8);
+  });
+  await shot(g.page, `${prefix}-${q}-${time}-city`);
+}
+if (want.has('village')) {
+  // A village street.
+  await g.page.evaluate(() => {
+    const api = window.__game;
+    api.setUiVisible(true);
+    api.setCamera();
+    const w = api.game.sim.world;
+    const n = w.nodes.find((x) => x.id === 'farmVillage');
+    let best = null;
+    for (const e of w.edges) {
+      const r = e.road;
+      for (let i = 0; i < r.n; i++) {
+        const d = Math.hypot(r.x[i] - n.x, r.z[i] - n.z);
+        if (d > 60 && d < 90) {
+          best = { x: r.x[i], z: r.z[i], tx: r.tx[i], tz: r.tz[i], lane: e.info.halfWidth * 0.45 };
+          break;
+        }
+      }
+      if (best) break;
+    }
+    if (best) {
+      api.teleport(best.x - best.tz * best.lane, best.z + best.tx * best.lane, Math.atan2(-best.tx, -best.tz));
+      api.game.sim.player.vehicle.setSpeed(10);
+      api.setInput({ throttle: 0.15 });
+      for (let i = 0; i < 12; i++) api.step(8);
+    }
+  });
+  await shot(g.page, `${prefix}-${q}-${time}-village`);
 }
 if (want.has('chase')) {
   // 3. Chase cam on the circuit at speed.

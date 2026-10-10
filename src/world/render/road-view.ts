@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import type { World, NetEdge } from '../world';
 import { patchMaterial } from '../../engine/render/materials';
 import { fbmTile } from './terrain-textures';
-import { ROAD_SHOULDER as SHOULDER, PARAPET_W } from '../road-classes';
+import { PARAPET_W, CURB_H } from '../road-classes';
 import { SURFACE } from '../surfaces';
 
 const CHUNK = 512;
@@ -60,9 +60,10 @@ const ROAD_MAP = /* glsl */ `
   float endFade = smoothstep(10.0, 22.0, vRoad.w);
   float centerStyle = vStyle.x;
   float lanes = vStyle.y;
-  // z: 0 paved, 1 paved with edge lines, 2 dirt.
-  float dirt = step(1.5, vStyle.z);
-  float edgeLines = step(0.5, vStyle.z) * (1.0 - dirt);
+  // z: 0 paved, 1 paved with edge lines, 2 dirt, 3 street with sidewalks.
+  float dirt = step(1.5, vStyle.z) * step(vStyle.z, 2.5);
+  float sidewalk = step(2.5, vStyle.z);
+  float edgeLines = step(0.5, vStyle.z) * step(vStyle.z, 1.5);
   vec2 wp = vRoadWorld.xz;
   float dist = length(vRoadWorld - cameraPosition);
   float a = abs(lat);
@@ -123,10 +124,24 @@ const ROAD_MAP = /* glsl */ `
     paint *= 0.75 + 0.25 * smoothstep(0.2, 0.6, texture2D(tNoise, wp * 1.3).g);
     col = mix(base, paintCol, paint);
     rough = mix(rough, 0.5, paint);
-    // Gravel shoulder beyond the pavement.
-    vec3 grav = mix(vec3(0.26, 0.23, 0.19), vec3(0.37, 0.34, 0.29), texture2D(tNoise, wp * 0.9).r);
-    col = mix(grav, col, paved);
-    rough = mix(0.95, rough, paved);
+    if (sidewalk > 0.5) {
+      // Kerb stones, then concrete paving slabs.
+      float kerb = band(a - hw - 0.15, 0.15);
+      float slabS = fract(s / 1.5);
+      float slabL = fract((a - hw - 0.3) / 1.5);
+      float joint = max(1.0 - smoothstep(0.0, 0.03, slabS) , 1.0 - smoothstep(0.0, 0.03, slabL));
+      vec3 slab = vec3(0.52, 0.51, 0.49) * (0.85 + 0.25 * texture2D(tNoise, wp * 0.6).r);
+      vec3 walk = mix(slab, slab * 0.7, joint * step(hw + 0.3, a));
+      walk = mix(walk, vec3(0.6, 0.6, 0.58), kerb);
+      float onWalk = step(hw, a);
+      col = mix(col, walk, onWalk);
+      rough = mix(rough, 0.8, onWalk);
+    } else {
+      // Gravel shoulder beyond the pavement.
+      vec3 grav = mix(vec3(0.26, 0.23, 0.19), vec3(0.37, 0.34, 0.29), texture2D(tNoise, wp * 0.9).r);
+      col = mix(grav, col, paved);
+      rough = mix(0.95, rough, paved);
+    }
   }
   // Rain: darker, glossier, with standing water in the tracks.
   col *= 1.0 - 0.35 * uWet;
@@ -327,9 +342,11 @@ function addRibbon(e: NetEdge, getB: (k: number) => Builder, keyOf: (x: number, 
   const n = r.n;
   const info = e.info;
   const hw = info.halfWidth;
-  const W = hw + SHOULDER;
-  const style = [STYLE[info.center], info.lanes, info.surface === SURFACE.dirt ? 2 : info.edgeLines ? 1 : 0];
-  const lats = [-W, -hw, hw, W];
+  const W = hw + info.shoulder;
+  const style = [STYLE[info.center], info.lanes, info.sidewalk ? 3 : info.surface === SURFACE.dirt ? 2 : info.edgeLines ? 1 : 0];
+  // Sidewalk streets get a kerb: the edge vertex appears twice, at both heights.
+  const lats = info.sidewalk ? [-W, -hw, -hw, hw, hw, W] : [-W, -hw, hw, W];
+  const raised = info.sidewalk ? [1, 1, 0, 0, 1, 1] : [0, 0, 0, 0];
   let cur: Builder | null = null;
   let curKey = -1;
   let prevBase = -1;
@@ -341,10 +358,11 @@ function addRibbon(e: NetEdge, getB: (k: number) => Builder, keyOf: (x: number, 
     const gy = (r.y[Math.min(n - 1, i + 1)] - r.y[Math.max(0, i - 1)]) / ds;
     const l = Math.sqrt(1 + gy * gy);
     const end = Math.min(r.s[i], r.length - r.s[i]);
-    for (const lat of lats) {
+    for (let q = 0; q < lats.length; q++) {
+      const lat = lats[q];
       const outer = Math.abs(lat) > hw + 0.01;
-      // The shoulder dips to meet the cut terrain unless it is on a bridge deck.
-      const y = r.y[i] + 0.02 - (outer && !e.bridge[i] ? 0.07 : 0);
+      // The shoulder dips to meet the cut terrain unless it is a bridge deck or a sidewalk.
+      const y = r.y[i] + 0.02 + raised[q] * CURB_H - (outer && !e.bridge[i] && !info.sidewalk ? 0.07 : 0);
       b.pos.push(r.x[i] - tz * lat, y, r.z[i] + tx * lat);
       b.nrm.push((-tx * gy) / l, 1 / l, (-tz * gy) / l);
       b.road.push(lat, r.s[i], hw, end);
@@ -360,7 +378,7 @@ function addRibbon(e: NetEdge, getB: (k: number) => Builder, keyOf: (x: number, 
       prevBase = emit(cur, i);
     }
     const nb = emit(cur, i + 1);
-    for (let q = 0; q < 3; q++) {
+    for (let q = 0; q < lats.length - 1; q++) {
       const a = prevBase + q;
       const b = a + 1;
       const c = nb + q;
@@ -375,7 +393,7 @@ function addRibbon(e: NetEdge, getB: (k: number) => Builder, keyOf: (x: number, 
 function addBridges(e: NetEdge, getS: (k: number) => Solid, keyOf: (x: number, z: number) => number): void {
   const r = e.road;
   const n = r.n;
-  const W = e.info.halfWidth + SHOULDER;
+  const W = e.info.halfWidth + e.info.shoulder;
   let sinceP = PIER_SPACING / 2;
   for (let i = 0; i + 1 < n; i++) {
     if (!e.bridge[i] && !e.bridge[i + 1]) {

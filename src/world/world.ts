@@ -4,8 +4,9 @@
 import { clamp, lerp, smoothstep } from '../engine/math';
 import { dsin } from '../engine/dmath';
 import { Island, LAKE, PLATEAUS, PROVING_ORIGIN, REGION, WORLD_HALF, newSample, type RegionId, type TerrainSample } from './island';
-import { ROAD_CLASSES, ROAD_SHOULDER, PARAPET_W, type RoadClass, type RoadClassId } from './road-classes';
+import { ROAD_CLASSES, ROAD_SHOULDER, PARAPET_W, CURB_H, type RoadClass, type RoadClassId } from './road-classes';
 import type { Colliders } from './colliders';
+import { buildSettlements, BUILDING, type BuildingIndex } from './settlements';
 import { ROAD_CLASS_ORDER, ROAD_EDGES, ROAD_NODES } from './data/roads';
 import { Road, sampleSpline, type RoadPoint } from './road';
 import { SURFACE, type SurfaceId } from './surfaces';
@@ -72,9 +73,13 @@ export class World {
   private s = newSample();
   readonly provingOrigin = PROVING_ORIGIN;
 
+  /** Every building on the island (villages, farms, harbor, city). */
+  readonly buildings: BuildingIndex;
+
   constructor(seed = 1) {
     this.island = new Island(seed);
     this.buildNetwork();
+    this.buildings = buildSettlements(this);
   }
 
   // --- Road network ------------------------------------------------------
@@ -198,7 +203,7 @@ export class World {
       const e = this.edges[hit.edge];
       if (!hit.bridge) {
         const base = e.base[hit.i];
-        const inner = hit.halfWidth + 3;
+        const inner = hit.halfWidth + Math.max(3, e.info.shoulder + 1);
         const span = clamp(6 + Math.abs(hit.y - base) * 1.6, 6, 48);
         const w = hit.dist <= inner ? 1 : smoothstep(inner + span, inner, hit.dist);
         // Just under the road surface beneath the deck, at shoulder level beside it.
@@ -342,6 +347,8 @@ export class World {
         if (surf === SURFACE.snow || surf === SURFACE.rock) continue;
         const x = x0 + lx;
         const z = z0 + lz;
+        // Gardens, not trees through roofs.
+        if (this.buildings.occupied(x, z, 3.5)) continue;
         const f = t.forest[k];
         const coast = t.coast[k];
         // Groves: clumps of trees across open country.
@@ -615,11 +622,15 @@ export class WorldGround implements Ground {
     const t = this.terr;
     this.world.groundAt(x, z, t);
     const hit = this.hit;
-    // Bridge decks run out to the parapets; elsewhere the shoulder is terrain.
-    if (this.world.nearestRoad(x, z, ROAD_SHOULDER, hit) && hit.dist <= hit.halfWidth + (hit.bridge ? ROAD_SHOULDER : 0) && hit.y <= yRef + 1.6) {
+    // Bridge decks run out to the parapets and city streets have raised
+    // sidewalks; elsewhere the shoulder is terrain.
+    if (this.world.nearestRoad(x, z, ROAD_SHOULDER, hit) && hit.y <= yRef + 1.6) {
+      const info = this.world.edges[hit.edge].info;
+      const onDeck = hit.dist <= hit.halfWidth || ((hit.bridge || info.sidewalk) && hit.dist <= hit.halfWidth + info.shoulder);
       // On the paved surface (or a bridge deck above the terrain).
-      if (hit.bridge || hit.y >= t.y - 0.3) {
-        out.y = hit.y;
+      if (onDeck && (hit.bridge || hit.y >= t.y - 0.3)) {
+        const kerb = info.sidewalk && hit.dist > hit.halfWidth;
+        out.y = hit.y + (kerb ? CURB_H : 0);
         out.nx = 0;
         out.ny = 1;
         out.nz = 0;
@@ -632,7 +643,7 @@ export class WorldGround implements Ground {
         out.nx = (-r.tx[i] * gy) / l;
         out.ny = 1 / l;
         out.nz = (-r.tz[i] * gy) / l;
-        out.surface = this.world.edges[hit.edge].info.surface;
+        out.surface = kerb ? SURFACE.concrete : info.surface;
         out.water = 0;
         applyBumps(x, z, out);
         return true;
@@ -654,7 +665,7 @@ export function addBridgeRails(world: World, out: Colliders): number {
   let count = 0;
   for (const e of world.edges) {
     const r = e.road;
-    const W = e.info.halfWidth + ROAD_SHOULDER - PARAPET_W;
+    const W = e.info.halfWidth + e.info.shoulder - PARAPET_W;
     for (let i = 0; i + 1 < r.n; i++) {
       if (!e.bridge[i] || !e.bridge[i + 1]) continue;
       const y0 = Math.min(r.y[i], r.y[i + 1]);
@@ -677,6 +688,32 @@ export function addBridgeRails(world: World, out: Colliders): number {
     }
   }
   return count;
+}
+
+/** Walls around every building (silos as circles). */
+export function addBuildingColliders(world: World, out: Colliders): number {
+  let n = 0;
+  for (const b of world.buildings.list) {
+    if (b.kind === BUILDING.silo) {
+      out.addCircle({ x: b.x, z: b.z, r: b.w / 2, top: b.floor + b.h, bottom: b.y0 - 1, kind: 'building' });
+      n++;
+      continue;
+    }
+    const rx = -b.fz;
+    const rz = b.fx;
+    const pts: { x: number; z: number }[] = [];
+    for (const [sa, sb] of [
+      [-1, -1],
+      [1, -1],
+      [1, 1],
+      [-1, 1],
+    ]) {
+      pts.push({ x: b.x + rx * sa * (b.w / 2) + b.fx * sb * (b.d / 2), z: b.z + rz * sa * (b.w / 2) + b.fz * sb * (b.d / 2) });
+    }
+    out.addPolyline(pts, { top: b.floor + b.h + 4, bottom: b.y0 - 1, bounce: 0.15, friction: 0.5, kind: 'wall' }, true);
+    n += 4;
+  }
+  return n;
 }
 
 /** Every plateau the island flattens, for the renderer and scenery. */

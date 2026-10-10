@@ -13,7 +13,7 @@ import { buildTestTrack, TestTrackGround, type TrackLayout } from './world/testt
 import { newNearest } from './world/road';
 import { applyBumps, newHit, type Ground, type GroundHit } from './world/ground';
 import type { Colliders } from './world/colliders';
-import { World, WorldGround, addBridgeRails, type RoadHit, type TreeCircle } from './world/world';
+import { World, WorldGround, addBridgeRails, addBuildingColliders, type RoadHit, type TreeCircle } from './world/world';
 import { PROVING_ORIGIN, PLATEAUS, REGION } from './world/island';
 
 export interface SimCar {
@@ -112,6 +112,7 @@ export class Sim {
     this.ground = wg;
     this.colliders = this.track.colliders;
     addBridgeRails(this.world, this.colliders);
+    addBuildingColliders(this.world, this.colliders);
     // Trees are generated per terrain tile; the world hands them to collisions on demand.
     this.colliders.extra = (x, z, r, cb) => this.world.queryTrees(x, z, r, cb as (c: TreeCircle) => void);
     this.reset();

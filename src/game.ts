@@ -16,6 +16,7 @@ import { TerrainView } from './world/render/terrain-view';
 import { TileSource } from './world/render/tile-source';
 import { Vegetation } from './world/render/vegetation';
 import { Grass } from './world/render/grass';
+import { buildBuildingsView, type BuildingsView } from './world/render/buildings-view';
 import { buildRoadView, type RoadView } from './world/render/road-view';
 import { SURFACES } from './world/surfaces';
 import { newHit } from './world/ground';
@@ -82,6 +83,7 @@ export class Game {
   readonly tiles: TileSource;
   readonly vegetation: Vegetation;
   readonly grass: Grass | null = null;
+  readonly buildings: BuildingsView;
   readonly roads: RoadView;
   readonly skid = new Skidmarks(4000);
   readonly puffs = new Puffs(700);
@@ -159,6 +161,9 @@ export class Game {
     this.scene.add(this.terrain.group);
     this.roads = buildRoadView(this.sim.world);
     this.scene.add(this.roads.group);
+    this.buildings = buildBuildingsView(this.sim.world);
+    this.buildings.uniforms.uNight.value = opts.time === 'night' ? 1 : opts.time === 'sunset' ? 0.35 : 0;
+    this.scene.add(this.buildings.group);
     const q = this.quality;
     this.vegetation = new Vegetation(this.renderer, this.tiles, { near: q.treeNear, far: q.treeFar, thinFrom: q.treeThin, thinKeep: q.treeKeep, shadows: q.treeShadows });
     this.scene.add(this.vegetation.group);

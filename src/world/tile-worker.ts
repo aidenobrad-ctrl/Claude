@@ -1,10 +1,10 @@
 // Tile worker: builds terrain tile meshes and tree cells off the main
 // thread from its own copy of the (deterministic) world.
 import { World } from './world';
-import { buildTerrainTile, buildTreeCell } from './terrain-data';
+import { buildTerrainTile, buildTreeCell, terrainRaster } from './terrain-data';
 
 interface Req {
-  type: 'init' | 'terrain' | 'trees';
+  type: 'init' | 'terrain' | 'trees' | 'map';
   id: number;
   seed?: number;
   level?: number;
@@ -31,6 +31,9 @@ ctx.onmessage = (e) => {
     const transfer: Transferable[] = [];
     for (const a of [d.pos, d.nrm, d.col, d.spl, d.waterPos, d.waterAttr]) if (a) transfer.push(a.buffer);
     ctx.postMessage({ type: 'terrain', id: m.id, data: d }, transfer);
+  } else if (m.type === 'map') {
+    const px = terrainRaster(world, m.level ?? 384);
+    ctx.postMessage({ type: 'map', id: m.id, px, n: m.level ?? 384 }, [px.buffer]);
   } else if (m.type === 'trees') {
     const t = buildTreeCell(world, m.cx ?? 0, m.cz ?? 0, m.keep ?? 1);
     ctx.postMessage({ type: 'trees', id: m.id, cx: m.cx, cz: m.cz, keep: m.keep, trees: t }, [t.buffer]);

@@ -18,6 +18,10 @@ import { Vegetation } from './world/render/vegetation';
 import { Grass } from './world/render/grass';
 import { buildBuildingsView, type BuildingsView } from './world/render/buildings-view';
 import { FestivalView } from './world/render/festival-view';
+import { GpsView } from './world/render/gps-view';
+import { findRoute, type Route } from './world/route';
+import { paintBaseMap, mapPois, Minimap, FullMap } from './ui/map';
+import { terrainRaster as terrainRasterQuick } from './world/terrain-data';
 import { buildRoadView, type RoadView } from './world/render/road-view';
 import { SURFACES } from './world/surfaces';
 import { newHit } from './world/ground';
@@ -86,6 +90,14 @@ export class Game {
   readonly grass: Grass | null = null;
   readonly buildings: BuildingsView;
   readonly festival: FestivalView;
+  readonly gps = new GpsView();
+  readonly minimap: Minimap;
+  readonly fullmap: FullMap;
+  route: Route | null = null;
+  waypoint: { x: number; z: number } | null = null;
+  private routeIndex = 0;
+  private routeS: Float64Array = new Float64Array(0);
+  private rerouteTimer = 0;
   readonly roads: RoadView;
   readonly skid = new Skidmarks(4000);
   readonly puffs = new Puffs(700);
@@ -181,6 +193,13 @@ export class Game {
     patchTree(this.scene);
 
     this.hud = new Hud(this.uiRoot);
+    // A quick coarse map now; a finer one from the worker when it is ready.
+    const circuit = this.sim.track.road;
+    const mapBase = paintBaseMap(this.sim.world, terrainRasterQuick(this.sim.world, opts.test ? 160 : 96), opts.test ? 160 : 96, circuit);
+    if (!opts.test) this.tiles.mapRaster(384, (px, n) => paintBaseMap(this.sim.world, px, n, circuit, mapBase));
+    this.minimap = new Minimap(this.hud.el, mapBase);
+    this.fullmap = new FullMap(this.uiRoot, mapBase, mapPois(this.sim.world), (x, z) => this.setWaypoint(x, z), () => this.toggleMap(false));
+    this.scene.add(this.gps.mesh);
     this.touch = new TouchControls(this.uiRoot, this.input, (a) => this.onAction(a));
     this.pause = new PauseMenu(this.uiRoot, {
       resume: () => this.setPaused(false),
@@ -287,7 +306,7 @@ export class Game {
     this.controls = this.input.poll();
     this.handleFrameActions(this.controls);
     if (this.loading) this.updateLoading(t);
-    if (!this.paused && !this.hidden && !this.loading) {
+    if (!this.paused && !this.hidden && !this.loading && !this.mapPaused) {
       this.perf.begin('sim');
       this.edgesUsed = false;
       this.stepper.advance(dt, () => this.tick());
@@ -356,12 +375,20 @@ export class Game {
       case 'pause':
         this.setPaused(!this.paused);
         break;
+      case 'map':
+        this.toggleMap();
+        break;
       default:
         this.input.tap(a);
     }
   }
 
   private handleFrameActions(c: Controls): void {
+    if (c.pressed.map) this.toggleMap();
+    if (this.fullmap.visible) {
+      if (c.pressed.pause) this.toggleMap(false);
+      return;
+    }
     if (c.pressed.pause) this.setPaused(!this.paused);
     if (this.paused) return;
     if (c.pressed.camera) this.onAction('camera');
@@ -369,6 +396,75 @@ export class Game {
     if (c.pressed.lights) for (const v of this.views) v.headlightsOn = !v.headlightsOn;
     if (c.pressed.horn) this.help.setVisible(this.help.el.style.display === 'none');
     this.rig.lookBack = c.held.lookBack;
+  }
+
+  /** Open or close the full map; the world pauses while it is open. */
+  toggleMap(open = !this.fullmap.visible): void {
+    if (open === this.fullmap.visible) return;
+    if (open) {
+      const v = this.sim.player.vehicle;
+      this.fullmap.open({ x: v.pos.x, z: v.pos.z, yaw: Math.atan2(-v.fwd.x, -v.fwd.z) }, this.route, this.waypoint);
+    } else this.fullmap.close();
+    this.mapPaused = open;
+    this.lastT = performance.now();
+    this.stepper.reset();
+  }
+
+  private mapPaused = false;
+
+  /** Route from the car to (x, z) over the roads; shown on the maps and as the GPS line. */
+  setWaypoint(x: number, z: number): void {
+    this.waypoint = { x, z };
+    this.computeRoute();
+    this.fullmap.setRoute(this.route);
+    if (this.route) this.hud.toast(`Route set · ${(this.route.length / 1000).toFixed(1)} km`);
+  }
+
+  clearWaypoint(): void {
+    this.waypoint = null;
+    this.route = null;
+    this.gps.setRoute(null);
+  }
+
+  private computeRoute(): void {
+    const v = this.sim.player.vehicle;
+    if (!this.waypoint) return;
+    this.route = findRoute(this.sim.world, v.pos.x, v.pos.z, this.waypoint.x, this.waypoint.z);
+    this.routeIndex = 0;
+    const pts = this.route?.points ?? [];
+    this.routeS = new Float64Array(pts.length);
+    for (let i = 1; i < pts.length; i++) this.routeS[i] = this.routeS[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z);
+    this.gps.setRoute(this.route);
+  }
+
+  /** Follow the car along the route: progress, rerouting when it strays, arrival. */
+  private updateRoute(dt: number): void {
+    if (!this.route) return;
+    const pts = this.route.points;
+    const v = this.sim.player.vehicle;
+    let best = Infinity;
+    let bi = this.routeIndex;
+    for (let i = Math.max(0, this.routeIndex - 20); i < Math.min(pts.length, this.routeIndex + 120); i++) {
+      const d = (pts[i].x - v.pos.x) ** 2 + (pts[i].z - v.pos.z) ** 2;
+      if (d < best) {
+        best = d;
+        bi = i;
+      }
+    }
+    this.routeIndex = bi;
+    this.rerouteTimer -= dt;
+    if (Math.sqrt(best) > 45 && this.rerouteTimer <= 0) {
+      this.rerouteTimer = 1.5;
+      this.computeRoute();
+      return;
+    }
+    const left = this.routeS[this.routeS.length - 1] - this.routeS[bi];
+    if (left < 25 && this.waypoint && Math.hypot(this.waypoint.x - v.pos.x, this.waypoint.z - v.pos.z) < 60) {
+      this.hud.toast('You have arrived');
+      this.clearWaypoint();
+      return;
+    }
+    this.gps.update(this.routeS[bi], dt);
   }
 
   resetCar(): void {
@@ -417,6 +513,7 @@ export class Game {
     this.vegetation.update(this.rig.camera.position, this.test);
     this.grass?.update(this.rig.camera.position);
     this.festival.update(dt);
+    this.updateRoute(dt);
     this.perf.counters.trees = this.vegetation.nearCount;
     this.perf.counters.impostors = this.vegetation.farCount;
     this.perf.end('terrain');
@@ -513,7 +610,15 @@ export class Game {
       },
       dt,
     );
+    // The minimap redraws at half the frame rate.
+    this.minimapFrame = (this.minimapFrame + 1) % 2;
+    if (this.minimapFrame === 0 || this.test) {
+      const left = this.route ? this.routeS[this.routeS.length - 1] - this.routeS[this.routeIndex] : 0;
+      this.minimap.draw(v.pos.x, v.pos.z, Math.atan2(-v.fwd.x, -v.fwd.z), v.speed, this.route, this.routeIndex, left);
+    }
   }
+
+  private minimapFrame = 0;
 
   resize(): void {
     const w = this.canvas.clientWidth || window.innerWidth;

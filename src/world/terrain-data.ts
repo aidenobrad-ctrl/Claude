@@ -263,3 +263,76 @@ export function buildTreeCell(world: World, cx: number, cz: number, keep = 1): F
   }
   return out;
 }
+
+/** Map colours per region (RGB). */
+const MAP_RGB: Record<number, [number, number, number]> = {
+  [REGION.plains]: [138, 164, 92],
+  [REGION.farmland]: [170, 176, 104],
+  [REGION.forest]: [78, 118, 62],
+  [REGION.mountains]: [140, 136, 126],
+  [REGION.desert]: [198, 146, 96],
+  [REGION.city]: [150, 150, 150],
+  [REGION.harbor]: [140, 140, 136],
+  [REGION.hub]: [176, 160, 120],
+  [REGION.proving]: [150, 152, 146],
+  [REGION.rally]: [104, 120, 70],
+  [REGION.beach]: [226, 210, 160],
+  [REGION.lake]: [74, 140, 180],
+};
+
+/** Shaded colour raster of the whole island for the map, n x n RGBA. */
+export function terrainRaster(world: World, n: number): Uint8ClampedArray {
+  const cell = (WORLD_HALF * 2) / n;
+  const s = newSample();
+  const h = new Float32Array(n * n);
+  const reg = new Uint8Array(n * n);
+  const fo = new Float32Array(n * n);
+  const wat = new Uint8Array(n * n);
+  for (let j = 0; j < n; j++) {
+    for (let i = 0; i < n; i++) {
+      world.island.sample(-WORLD_HALF + (i + 0.5) * cell, -WORLD_HALF + (j + 0.5) * cell, s);
+      const k = j * n + i;
+      h[k] = s.h;
+      reg[k] = s.region;
+      fo[k] = s.forest;
+      wat[k] = s.water > s.h ? 2 : s.h < 0.3 ? 1 : 0;
+    }
+  }
+  const out = new Uint8ClampedArray(n * n * 4);
+  for (let j = 0; j < n; j++) {
+    for (let i = 0; i < n; i++) {
+      const k = j * n + i;
+      let r: number;
+      let g: number;
+      let b: number;
+      if (wat[k]) {
+        const t = Math.min(1, (wat[k] === 2 ? 6 : Math.max(0, -h[k])) / 30);
+        r = 74 - 40 * t;
+        g = 150 - 60 * t;
+        b = 190 - 40 * t;
+      } else {
+        const c = MAP_RGB[reg[k]] ?? MAP_RGB[REGION.plains];
+        r = c[0] * (1 - fo[k] * 0.35);
+        g = c[1] * (1 - fo[k] * 0.15);
+        b = c[2] * (1 - fo[k] * 0.3);
+        if (h[k] > 520) {
+          const sn = Math.min(1, (h[k] - 520) / 120);
+          r += (240 - r) * sn;
+          g += (244 - g) * sn;
+          b += (250 - b) * sn;
+        }
+        const hx = h[j * n + Math.min(n - 1, i + 1)] - h[j * n + Math.max(0, i - 1)];
+        const hz = h[Math.min(n - 1, j + 1) * n + i] - h[Math.max(0, j - 1) * n + i];
+        const shade = Math.max(0.55, Math.min(1.3, 1 + ((-hx - hz) * 0.7 * 2.2) / (cell * 2)));
+        r *= shade;
+        g *= shade;
+        b *= shade;
+      }
+      out[k * 4] = r;
+      out[k * 4 + 1] = g;
+      out[k * 4 + 2] = b;
+      out[k * 4 + 3] = 255;
+    }
+  }
+  return out;
+}

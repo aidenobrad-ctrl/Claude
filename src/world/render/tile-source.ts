@@ -5,7 +5,7 @@
 // terrain and the trees of the same neighbourhood.
 import type { World } from '../world';
 import { WORLD_HALF } from '../island';
-import { buildTerrainTile, buildTreeCell, T_LEAF, VEG_CELL, type TerrainTileData } from '../terrain-data';
+import { buildTerrainTile, buildTreeCell, terrainRaster, T_LEAF, VEG_CELL, type TerrainTileData } from '../terrain-data';
 
 type TerrainCb = (d: TerrainTileData) => void;
 type TreesCb = (t: Float32Array) => void;
@@ -99,7 +99,26 @@ export class TileSource {
     this.route(cx * VEG_CELL + 1, cz * VEG_CELL + 1).postMessage({ type: 'trees', id, cx, cz, keep });
   }
 
-  private onMessage(m: { type: string; id: number; data?: TerrainTileData; trees?: Float32Array }): void {
+  private mapCbs = new Map<number, (px: Uint8ClampedArray, n: number) => void>();
+
+  /** Island map raster (n x n RGBA), from a worker when there is one. */
+  mapRaster(n: number, cb: (px: Uint8ClampedArray, n: number) => void, sync = false): void {
+    if (!this.async || sync) {
+      cb(terrainRaster(this.world, n), n);
+      return;
+    }
+    const id = this.nextId++;
+    this.mapCbs.set(id, cb);
+    this.workers[0].postMessage({ type: 'map', id, level: n });
+  }
+
+  private onMessage(m: { type: string; id: number; data?: TerrainTileData; trees?: Float32Array; px?: Uint8ClampedArray; n?: number }): void {
+    if (m.type === 'map') {
+      const cb = this.mapCbs.get(m.id);
+      this.mapCbs.delete(m.id);
+      if (cb && m.px) cb(m.px, m.n ?? 0);
+      return;
+    }
     if (m.type === 'terrain') {
       this.terrainInFlight--;
       const r = this.terrainCbs.get(m.id);

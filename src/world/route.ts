@@ -52,7 +52,11 @@ export function findRoute(world: World, ax: number, az: number, bx: number, bz: 
   const came = new Int32Array(n).fill(-1);
   const via = new Int32Array(n).fill(-1);
   const open: number[] = [];
-  const h = (k: number): number => Math.hypot(world.nodes[k].x - bx, world.nodes[k].z - bz);
+  const h = (k: number): number => {
+    const dx = world.nodes[k].x - bx;
+    const dz = world.nodes[k].z - bz;
+    return Math.sqrt(dx * dx + dz * dz);
+  };
   // Seed with both ends of the start edge.
   g[ea.a] = sA;
   g[ea.b] = ea.road.length - sA;

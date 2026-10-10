@@ -230,11 +230,11 @@ export class Island {
     if (shape < 0.002) return 0;
     // Eroded fBm carves drainage valleys into the flanks and leaves a few
     // dominant peaks; a light ridged term sharpens the crest lines.
-    const e = this.nRidge.eroded(x / 1700 + 3.7, z / 1700 - 1.3, 7);
+    const e = this.nRidge.eroded(x / 1900 + 3.7, z / 1900 - 1.3, 6, 0.4);
     const r = this.nDetail.ridged(x / 520, z / 520, 3);
-    const raw = 0.64 + 1.15 * e + 0.12 * (r - 0.4);
+    const raw = 0.66 + 1.0 * e + 0.08 * (r - 0.4);
     // Compress the top end so single noise maxima do not become needles.
-    const relief = raw > 1 ? 1 + (1 - dexp(-(raw - 1) * 2.5)) * 0.22 : Math.max(0.22, raw);
+    const relief = raw > 0.84 ? 0.84 + (1 - dexp(-(raw - 0.84) * 3.2)) * 0.24 : Math.max(0.22, raw);
     return shape * crest * relief + shape * 14 * this.nDetail.fbm(x / 140, z / 140, 2);
   }
 

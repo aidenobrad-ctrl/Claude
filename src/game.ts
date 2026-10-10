@@ -17,6 +17,7 @@ import { TileSource } from './world/render/tile-source';
 import { Vegetation } from './world/render/vegetation';
 import { Grass } from './world/render/grass';
 import { buildBuildingsView, type BuildingsView } from './world/render/buildings-view';
+import { FestivalView } from './world/render/festival-view';
 import { buildRoadView, type RoadView } from './world/render/road-view';
 import { SURFACES } from './world/surfaces';
 import { newHit } from './world/ground';
@@ -84,6 +85,7 @@ export class Game {
   readonly vegetation: Vegetation;
   readonly grass: Grass | null = null;
   readonly buildings: BuildingsView;
+  readonly festival: FestivalView;
   readonly roads: RoadView;
   readonly skid = new Skidmarks(4000);
   readonly puffs = new Puffs(700);
@@ -164,6 +166,8 @@ export class Game {
     this.buildings = buildBuildingsView(this.sim.world);
     this.buildings.uniforms.uNight.value = opts.time === 'night' ? 1 : opts.time === 'sunset' ? 0.35 : 0;
     this.scene.add(this.buildings.group);
+    this.festival = new FestivalView(this.sim.world.festival);
+    this.scene.add(this.festival.group);
     const q = this.quality;
     this.vegetation = new Vegetation(this.renderer, this.tiles, { near: q.treeNear, far: q.treeFar, thinFrom: q.treeThin, thinKeep: q.treeKeep, shadows: q.treeShadows });
     this.scene.add(this.vegetation.group);
@@ -412,6 +416,7 @@ export class Game {
     this.terrain.update(this.rig.camera.position, this.test);
     this.vegetation.update(this.rig.camera.position, this.test);
     this.grass?.update(this.rig.camera.position);
+    this.festival.update(dt);
     this.perf.counters.trees = this.vegetation.nearCount;
     this.perf.counters.impostors = this.vegetation.farCount;
     this.perf.end('terrain');

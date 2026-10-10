@@ -1,7 +1,7 @@
 // Render review shots of the current build: node tools/look.mjs [quality] [time] [prefix] [which]
 //   which: comma list of island,vista,forest,chase,hero (default all)
 import { launchBrowser, openGame, shot } from './browser.mjs';
-const [q = 'ultra', time = 'golden', prefix = 'look', which = 'island,vista,forest,city,village,chase,hero'] = process.argv.slice(2);
+const [q = 'ultra', time = 'golden', prefix = 'look', which = 'island,festival,vista,forest,city,village,chase,hero'] = process.argv.slice(2);
 const want = new Set(which.split(','));
 const b = await launchBrowser();
 const g = await openGame(b, { viewport: 'desktop', query: `test=1&q=${q}&time=${time}` });
@@ -17,6 +17,20 @@ if (want.has('island')) {
     for (let i = 0; i < 12; i++) api.step(8);
   });
   await shot(g.page, `${prefix}-${q}-${time}-island`);
+}
+if (want.has('festival')) {
+  // The festival from above the tents, looking at the stage and the wheel.
+  await g.page.evaluate(() => {
+    const api = window.__game;
+    const f = api.game.sim.world.festival;
+    api.setInput({});
+    api.setUiVisible(false);
+    const cx = f.stage.x + f.stage.fx * 170 + f.stage.fz * 60;
+    const cz = f.stage.z + f.stage.fz * 170 - f.stage.fx * 60;
+    api.setCamera(cx, f.stage.y + 34, cz, (f.stage.x + f.wheel.x) / 2, f.stage.y + 12, (f.stage.z + f.wheel.z) / 2, 50);
+  });
+  await shot(g.page, `${prefix}-${q}-${time}-festival`);
+  await g.page.evaluate(() => window.__game.setCamera());
 }
 if (want.has('vista')) {
   // 2. A wide view north across the lake to the mountains.

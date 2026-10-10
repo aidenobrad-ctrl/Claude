@@ -7,6 +7,7 @@ import { Island, LAKE, PLATEAUS, PROVING_ORIGIN, REGION, WORLD_HALF, newSample, 
 import { ROAD_CLASSES, ROAD_SHOULDER, PARAPET_W, CURB_H, type RoadClass, type RoadClassId } from './road-classes';
 import type { Colliders } from './colliders';
 import { buildSettlements, BUILDING, type BuildingIndex } from './settlements';
+import { buildFestival, type FestivalLayout } from './festival';
 import { ROAD_CLASS_ORDER, ROAD_EDGES, ROAD_NODES } from './data/roads';
 import { Road, sampleSpline, type RoadPoint } from './road';
 import { SURFACE, type SurfaceId } from './surfaces';
@@ -58,7 +59,7 @@ export interface Layers {
   snow: number;
 }
 
-export const SNOWLINE = 590;
+export const SNOWLINE = 520;
 
 export class World {
   readonly island: Island;
@@ -76,10 +77,14 @@ export class World {
   /** Every building on the island (villages, farms, harbor, city). */
   readonly buildings: BuildingIndex;
 
+  /** The festival site on the hub plateau. */
+  readonly festival: FestivalLayout;
+
   constructor(seed = 1) {
     this.island = new Island(seed);
     this.buildNetwork();
     this.buildings = buildSettlements(this);
+    this.festival = buildFestival(this);
   }
 
   // --- Road network ------------------------------------------------------
@@ -225,6 +230,8 @@ export class World {
     let dirt = s.desert * 0.85;
     // Forest floor: leaf litter and bare earth between the trees.
     dirt = Math.max(dirt, smoothstep(0.35, 0.9, s.forest) * 0.5);
+    // The festival field is trampled: worn grass and dusty paths.
+    if (s.region === REGION.hub) dirt = Math.max(dirt, 0.42 + 0.2 * dsin(h * 0.0 + s.coast * 0.02));
     // Road shoulders: worn earth and gravel.
     if (roadDist < 4.5) dirt = Math.max(dirt, smoothstep(4.5, 1.5, roadDist) * 0.8);
     const g = Math.max(0, 1 - rock - snow - sand - dirt);

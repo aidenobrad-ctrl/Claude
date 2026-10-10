@@ -15,6 +15,7 @@ import { applyBumps, newHit, type Ground, type GroundHit } from './world/ground'
 import type { Colliders } from './world/colliders';
 import { World, WorldGround, addBridgeRails, addBuildingColliders, type RoadHit, type TreeCircle } from './world/world';
 import { PROVING_ORIGIN, PLATEAUS, REGION } from './world/island';
+import { addFestivalColliders } from './world/festival';
 
 export interface SimCar {
   id: number;
@@ -113,6 +114,7 @@ export class Sim {
     this.colliders = this.track.colliders;
     addBridgeRails(this.world, this.colliders);
     addBuildingColliders(this.world, this.colliders);
+    addFestivalColliders(this.world.festival, this.colliders);
     // Trees are generated per terrain tile; the world hands them to collisions on demand.
     this.colliders.extra = (x, z, r, cb) => this.world.queryTrees(x, z, r, cb as (c: TreeCircle) => void);
     this.reset();
@@ -214,8 +216,13 @@ export class Sim {
     }
   }
 
-  /** First stretch of road heading north from the festival: mountains ahead. */
+  /** On the festival road, facing the entrance arch. */
   islandSpawn(): { x: number; z: number; yaw: number } {
+    return this.world.festival.spawn;
+  }
+
+  /** First stretch of road leaving the festival most nearly northward. */
+  northSpawn(): { x: number; z: number; yaw: number } {
     const hub = this.world.nodes.find((n) => n.id === 'hub') ?? this.world.nodes[0];
     let best = this.world.edges[0];
     let bestScore = Infinity;

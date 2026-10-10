@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Builds unity/Assets/Halcyon/Core outside Unity, against the same API
+       level Unity offers (.NET Standard 2.1, C# 9), so code that would not
+       compile in Unity fails here first. -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <RootNamespace>Halcyon.Core</RootNamespace>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <NoWarn>CS1591</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../unity/Assets/Halcyon/Core/**/*.cs" />
+  </ItemGroup>
+</Project>

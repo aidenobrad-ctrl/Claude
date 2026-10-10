@@ -4,7 +4,8 @@
 import { clamp, lerp, smoothstep } from '../engine/math';
 import { dsin } from '../engine/dmath';
 import { Island, LAKE, PLATEAUS, PROVING_ORIGIN, REGION, WORLD_HALF, newSample, type RegionId, type TerrainSample } from './island';
-import { ROAD_CLASSES, type RoadClass, type RoadClassId } from './road-classes';
+import { ROAD_CLASSES, ROAD_SHOULDER, PARAPET_W, type RoadClass, type RoadClassId } from './road-classes';
+import type { Colliders } from './colliders';
 import { ROAD_CLASS_ORDER, ROAD_EDGES, ROAD_NODES } from './data/roads';
 import { Road, sampleSpline, type RoadPoint } from './road';
 import { SURFACE, type SurfaceId } from './surfaces';
@@ -182,13 +183,18 @@ export class World {
   }
 
   // --- Terrain -----------------------------------------------------------
+  /** Distance beyond the nearest road's paved edge from the last terrainHeight call (99 if none). */
+  lastRoadDist = 99;
+
   /** Final terrain height: base terrain with cut and fill around roads. */
   terrainHeight(x: number, z: number, sample?: TerrainSample): number {
     const s = sample ?? this.s;
     this.island.sample(x, z, s);
     let h = s.h;
     const hit = hitScratch;
+    this.lastRoadDist = 99;
     if (this.nearestRoad(x, z, this.reach, hit)) {
+      this.lastRoadDist = Math.max(0, hit.dist - hit.halfWidth);
       const e = this.edges[hit.edge];
       if (!hit.bridge) {
         const base = e.base[hit.i];
@@ -212,6 +218,8 @@ export class World {
     if (s.region === REGION.beach || (s.coast < 90 && h < 5)) sand = smoothstep(8, 2.5, h);
     if (s.water > -Infinity && h < s.water + 1.6) sand = Math.max(sand, 0.7);
     let dirt = s.desert * 0.85;
+    // Forest floor: leaf litter and bare earth between the trees.
+    dirt = Math.max(dirt, smoothstep(0.35, 0.9, s.forest) * 0.5);
     // Road shoulders: worn earth and gravel.
     if (roadDist < 4.5) dirt = Math.max(dirt, smoothstep(4.5, 1.5, roadDist) * 0.8);
     const g = Math.max(0, 1 - rock - snow - sand - dirt);
@@ -239,42 +247,176 @@ export class World {
   }
 
   private buildTile(tx: number, tz: number): Tile {
-    const h = new Float32Array(TILE_N * TILE_N);
-    const surf = new Uint8Array(TILE_N * TILE_N);
-    const water = new Float32Array(TILE_N * TILE_N);
+    const NN = TILE_N * TILE_N;
+    const h = new Float32Array(NN);
+    const surf = new Uint8Array(NN);
+    const water = new Float32Array(NN);
     const x0 = tx * TILE;
     const z0 = tz * TILE;
     const s = newSample();
-    const regions = new Uint8Array(TILE_N * TILE_N);
-    const forest = new Float32Array(TILE_N * TILE_N);
+    const regions = new Uint8Array(NN);
+    const forest = new Float32Array(NN);
+    const coast = new Float32Array(NN);
+    const desert = new Float32Array(NN);
+    const baseWater = new Float32Array(NN);
+    const roadDist = new Float32Array(NN);
     for (let j = 0; j < TILE_N; j++) {
       for (let i = 0; i < TILE_N; i++) {
         const k = j * TILE_N + i;
         h[k] = this.terrainHeight(x0 + i * TILE_SPACING, z0 + j * TILE_SPACING, s);
+        roadDist[k] = this.lastRoadDist;
         water[k] = s.water > h[k] ? s.water : h[k] < 0 && s.coast < 30 ? 0 : -1e9;
         regions[k] = s.region;
         forest[k] = s.forest;
-        surf[k] = s.region;
+        coast[k] = s.coast;
+        desert[k] = s.desert;
+        baseWater[k] = s.water;
       }
     }
-    // Surfaces from layers (needs slopes, so a second pass).
+    // Surfaces from layers (needs slopes, so a second pass over the stored samples).
     const lay: Layers = { grass: 0, rock: 0, dirt: 0, sand: 0, snow: 0 };
-    const hit = hitScratch;
+    const splat = new Float32Array(NN * 4);
     for (let j = 0; j < TILE_N; j++) {
       for (let i = 0; i < TILE_N; i++) {
         const k = j * TILE_N + i;
         const hx = h[j * TILE_N + Math.min(TILE_N - 1, i + 1)] - h[j * TILE_N + Math.max(0, i - 1)];
         const hz = h[Math.min(TILE_N - 1, j + 1) * TILE_N + i] - h[Math.max(0, j - 1) * TILE_N + i];
         const slope = Math.sqrt(hx * hx + hz * hz) / (2 * TILE_SPACING);
-        const x = x0 + i * TILE_SPACING;
-        const z = z0 + j * TILE_SPACING;
-        this.island.sample(x, z, s);
-        const rd = this.nearestRoad(x, z, 6, hit) ? Math.max(0, hit.dist - hit.halfWidth) : 99;
-        this.layers(s, h[k], slope, rd, lay);
-        surf[k] = surfaceFor(lay, s.region as RegionId);
+        s.h = h[k];
+        s.region = regions[k] as RegionId;
+        s.coast = coast[k];
+        s.water = baseWater[k];
+        s.forest = forest[k];
+        s.desert = desert[k];
+        this.layers(s, h[k], slope, roadDist[k], lay);
+        surf[k] = surfaceFor(lay, s.region);
+        splat[k * 4] = lay.rock;
+        splat[k * 4 + 1] = lay.dirt;
+        splat[k * 4 + 2] = lay.sand;
+        splat[k * 4 + 3] = lay.snow;
       }
     }
-    return { tx, tz, h, surf, water, regions, forest };
+    const tile: Tile = { tx, tz, h, surf, water, regions, forest, coast, desert, roadDist, splat, trees: EMPTY_TREES };
+    tile.trees = this.placeTrees(tile);
+    return tile;
+  }
+
+  // --- Vegetation ----------------------------------------------------------
+  /**
+   * Trees for one 64 m tile: a jittered 8 m candidate grid thinned by a
+   * density from forest cover, region, height, slope, water and roads.
+   * Deterministic in (seed, tile), so physics and rendering agree.
+   */
+  private placeTrees(t: Tile): Float32Array {
+    const out: number[] = [];
+    const x0 = t.tx * TILE;
+    const z0 = t.tz * TILE;
+    const seed = this.island.seed * 7919;
+    for (let cj = 0; cj < 8; cj++) {
+      for (let ci = 0; ci < 8; ci++) {
+        let hsh = hash3(t.tx * 8 + ci, t.tz * 8 + cj, seed);
+        const r1 = (hsh >>> 0) / 4294967296;
+        hsh = hashNext(hsh);
+        const r2 = (hsh >>> 0) / 4294967296;
+        hsh = hashNext(hsh);
+        const r3 = (hsh >>> 0) / 4294967296;
+        hsh = hashNext(hsh);
+        const r4 = (hsh >>> 0) / 4294967296;
+        hsh = hashNext(hsh);
+        const r5 = (hsh >>> 0) / 4294967296;
+        const lx = ci * 8 + 0.6 + r1 * 6.8;
+        const lz = cj * 8 + 0.6 + r2 * 6.8;
+        const i = Math.min(TILE_N - 2, Math.floor(lx / TILE_SPACING));
+        const j = Math.min(TILE_N - 2, Math.floor(lz / TILE_SPACING));
+        const k = j * TILE_N + i;
+        const hk = t.h[k];
+        if (t.water[k] > -1e8 || t.water[k + 1] > -1e8 || t.water[k + TILE_N + 1] > -1e8) continue;
+        if (t.roadDist[k] < 4 || t.roadDist[k + TILE_N + 1] < 4) continue;
+        const region = t.regions[k];
+        if (region === REGION.hub || region === REGION.proving || region === REGION.city || region === REGION.harbor) continue;
+        const hx = t.h[k + 1] - hk;
+        const hz = t.h[k + TILE_N] - hk;
+        const slope = Math.sqrt(hx * hx + hz * hz) / TILE_SPACING;
+        if (slope > 0.95 || hk > 780) continue;
+        const surf = t.surf[k];
+        if (surf === SURFACE.snow || surf === SURFACE.rock) continue;
+        const x = x0 + lx;
+        const z = z0 + lz;
+        const f = t.forest[k];
+        const coast = t.coast[k];
+        // Groves: clumps of trees across open country.
+        const grove = valueNoise(x / 140, z / 140, seed + 11);
+        let dens: number;
+        let type: number;
+        if (region === REGION.desert || surf === SURFACE.sand) {
+          dens = region === REGION.beach || coast < 260 ? (coast > 25 && coast < 260 ? 0.06 + 0.1 * grove : 0) : 0.012;
+          type = region === REGION.desert ? TREE.dead : TREE.palm;
+        } else if (region === REGION.beach || coast < 160) {
+          dens = coast > 25 ? 0.05 + 0.12 * grove : 0;
+          type = TREE.palm;
+        } else {
+          dens = 0.012 + 0.32 * Math.max(0, grove - 0.55) * 2 + f * 0.8;
+          const conifer = clamp((hk - 160) / 300, 0, 1) * 0.85 + (region === REGION.mountains ? 0.3 : 0);
+          type = r4 < conifer ? TREE.conifer : TREE.broadleaf;
+          if (region === REGION.farmland && t.roadDist[k] < 16 && r5 < 0.45) {
+            type = TREE.cypress;
+            dens = Math.max(dens, 0.22);
+          }
+          if (hk > 560) dens *= clamp((780 - hk) / 220, 0, 1);
+        }
+        dens *= 1 - smoothstep(0.55, 0.95, slope);
+        if (r3 >= dens) continue;
+        // Undergrowth: a share of the candidates become bushes.
+        if (type !== TREE.palm && type !== TREE.dead && r5 > 0.78) type = TREE.bush;
+        // Height on the render/physics mesh (same triangle split as groundAt).
+        const u = lx / TILE_SPACING - i;
+        const v = lz / TILE_SPACING - j;
+        const h00 = hk;
+        const h10 = t.h[k + 1];
+        const h01 = t.h[k + TILE_N];
+        const h11 = t.h[k + TILE_N + 1];
+        const y = u >= v ? h00 + (h10 - h00) * u + (h11 - h10) * v : h00 + (h01 - h00) * v + (h11 - h01) * u;
+        const scale = 0.72 + 0.56 * ((r1 + r2 * 0.7 + r4 * 0.3) % 1);
+        out.push(x, y, z, scale, r2 * 6.2831853, type, r3 / Math.max(dens, 1e-6));
+      }
+    }
+    return new Float32Array(out);
+  }
+
+  /** Bushes cars have driven through (by tree id), part of the simulation state. */
+  readonly brokenTrees = new Set<number>();
+
+  /** Visit tree trunks within r of (x, z) as collision circles. */
+  queryTrees(x: number, z: number, r: number, cb: (c: TreeCircle) => void): void {
+    const tx0 = Math.floor((x - r) / TILE);
+    const tx1 = Math.floor((x + r) / TILE);
+    const tz0 = Math.floor((z - r) / TILE);
+    const tz1 = Math.floor((z + r) / TILE);
+    const c = treeCircle;
+    for (let tx = tx0; tx <= tx1; tx++) {
+      for (let tz = tz0; tz <= tz1; tz++) {
+        const tr = this.tile(tx, tz).trees;
+        for (let k = 0; k < tr.length; k += TREE_STRIDE) {
+          const type = tr[k + 5];
+          const dx = tr[k] - x;
+          const dz = tr[k + 2] - z;
+          const rr = r + 1;
+          if (dx * dx + dz * dz > rr * rr) continue;
+          c.x = tr[k];
+          c.z = tr[k + 2];
+          c.r = TREE_TRUNK[type] * tr[k + 3];
+          c.bottom = tr[k + 1] - 1;
+          c.top = tr[k + 1] + 6;
+          c.breakable = type === TREE.bush;
+          // Flattened bushes stay flattened until the session resets.
+          const id = (tx * 4096 + tz) * 64 + k / TREE_STRIDE;
+          if (c.breakable && this.brokenTrees.has(id)) continue;
+          c.broken = false;
+          cb(c);
+          if (c.broken) this.brokenTrees.add(id);
+        }
+      }
+    }
   }
 
   /** Terrain height and normal at (x, z), interpolated exactly like the render mesh. */
@@ -329,6 +471,60 @@ export interface Tile {
   water: Float32Array;
   regions: Uint8Array;
   forest: Float32Array;
+  coast: Float32Array;
+  desert: Float32Array;
+  /** Render splat weights per sample: rock, dirt, sand, snow. */
+  splat: Float32Array;
+  /** Distance beyond the nearest road's paved edge, m (99 if far). */
+  roadDist: Float32Array;
+  /** Trees: TREE_STRIDE floats each (x, y, z, scale, yaw, type, rank). */
+  trees: Float32Array;
+}
+
+/** Tree kinds placed by the world. */
+export const TREE = { broadleaf: 0, conifer: 1, palm: 2, cypress: 3, bush: 4, dead: 5 } as const;
+export const TREE_KINDS = 6;
+export const TREE_STRIDE = 7;
+/** Trunk collision radius per kind at scale 1, m (bushes break). */
+const TREE_TRUNK = [0.38, 0.32, 0.24, 0.26, 0.9, 0.22];
+const EMPTY_TREES = new Float32Array(0);
+
+export interface TreeCircle {
+  x: number;
+  z: number;
+  r: number;
+  top: number;
+  bottom: number;
+  kind: 'tree';
+  breakable: boolean;
+  broken: boolean;
+}
+const treeCircle: TreeCircle = { x: 0, z: 0, r: 0, top: 0, bottom: 0, kind: 'tree', breakable: false, broken: false };
+
+/** 32-bit integer hash of three ints (deterministic everywhere). */
+function hash3(a: number, b: number, c: number): number {
+  let h = Math.imul(a | 0, 0x27d4eb2d) ^ Math.imul(b | 0, 0x165667b1) ^ Math.imul(c | 0, 0x9e3779b1);
+  h = Math.imul(h ^ (h >>> 15), 0x85ebca6b);
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+  return (h ^ (h >>> 16)) >>> 0;
+}
+function hashNext(h: number): number {
+  h = Math.imul(h ^ (h >>> 16), 0x7feb352d);
+  h = Math.imul(h ^ (h >>> 15), 0x846ca68b);
+  return (h ^ (h >>> 16)) >>> 0;
+}
+/** Smooth value noise in [0, 1] on an integer lattice. */
+function valueNoise(x: number, z: number, seed: number): number {
+  const ix = Math.floor(x);
+  const iz = Math.floor(z);
+  const fx = x - ix;
+  const fz = z - iz;
+  const sx = fx * fx * (3 - 2 * fx);
+  const sz = fz * fz * (3 - 2 * fz);
+  const v = (a: number, b: number): number => hash3(a, b, seed) / 4294967296;
+  const a = v(ix, iz) + (v(ix + 1, iz) - v(ix, iz)) * sx;
+  const b = v(ix, iz + 1) + (v(ix + 1, iz + 1) - v(ix, iz + 1)) * sx;
+  return a + (b - a) * sz;
 }
 
 export const TILE_SAMPLES = TILE_N;
@@ -419,7 +615,8 @@ export class WorldGround implements Ground {
     const t = this.terr;
     this.world.groundAt(x, z, t);
     const hit = this.hit;
-    if (this.world.nearestRoad(x, z, 0, hit) && hit.dist <= hit.halfWidth && hit.y <= yRef + 1.6) {
+    // Bridge decks run out to the parapets; elsewhere the shoulder is terrain.
+    if (this.world.nearestRoad(x, z, ROAD_SHOULDER, hit) && hit.dist <= hit.halfWidth + (hit.bridge ? ROAD_SHOULDER : 0) && hit.y <= yRef + 1.6) {
       // On the paved surface (or a bridge deck above the terrain).
       if (hit.bridge || hit.y >= t.y - 0.3) {
         out.y = hit.y;
@@ -450,6 +647,36 @@ export class WorldGround implements Ground {
     applyBumps(x, z, out);
     return true;
   }
+}
+
+/** Parapet walls along every bridge run, so cars cannot drive off the deck. */
+export function addBridgeRails(world: World, out: Colliders): number {
+  let count = 0;
+  for (const e of world.edges) {
+    const r = e.road;
+    const W = e.info.halfWidth + ROAD_SHOULDER - PARAPET_W;
+    for (let i = 0; i + 1 < r.n; i++) {
+      if (!e.bridge[i] || !e.bridge[i + 1]) continue;
+      const y0 = Math.min(r.y[i], r.y[i + 1]);
+      const y1 = Math.max(r.y[i], r.y[i + 1]);
+      for (const side of [-1, 1]) {
+        const lat = side * W;
+        out.addSegment({
+          ax: r.x[i] - r.tz[i] * lat,
+          az: r.z[i] + r.tx[i] * lat,
+          bx: r.x[i + 1] - r.tz[i + 1] * lat,
+          bz: r.z[i + 1] + r.tx[i + 1] * lat,
+          top: y1 + 0.85,
+          bottom: y0 - 1.5,
+          bounce: 0.2,
+          friction: 0.4,
+          kind: 'barrier',
+        });
+        count++;
+      }
+    }
+  }
+  return count;
 }
 
 /** Every plateau the island flattens, for the renderer and scenery. */

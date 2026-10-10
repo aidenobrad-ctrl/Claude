@@ -1,23 +1,24 @@
-// Streamed terrain: a quadtree of tiles from 128 m (4 m spacing, matching
-// the physics heightfield exactly) up to 2 km, each 32x32 quads with skirts
-// that hide cracks between levels. One splat material for every tile.
+// Streamed terrain: a quadtree of tiles from 256 m (4 m spacing, matching
+// the physics heightfield exactly) up to 2 km, each 64x64 quads with skirts
+// that hide cracks between levels, plus the water surface of each tile.
+// Tile data is built by the tile worker (or synchronously when priming).
 import * as THREE from 'three';
-import { WORLD_HALF, newSample, REGION } from '../island';
-import { TILE, TILE_SAMPLES, TILE_SPACING, type World, type Layers } from '../world';
+import { WORLD_HALF } from '../island';
+import type { World } from '../world';
+import { T_QUADS, T_LEAF, T_MAX_LEVEL, T_ROOT, skirtRing, type TerrainTileData } from '../terrain-data';
 import { terrainTextures } from './terrain-textures';
 import { patchMaterial } from '../../engine/render/materials';
 import { atmoUniforms } from '../../engine/render/atmosphere';
-
-const QUADS = 32;
-const ROOT = 2048;
-const LEAF = 128;
-const MAX_LEVEL = 4; // 128 * 2^4 = 2048
+import { createWaterMaterial, oceanRing } from './water';
+import type { TileSource } from './tile-source';
 
 interface TileMesh {
   key: string;
-  mesh: THREE.Mesh;
+  mesh: THREE.Mesh | null;
+  water: THREE.Mesh | null;
   level: number;
   used: number;
+  ready: boolean;
 }
 
 const SPLAT_VERT_PARS = /* glsl */ `
@@ -64,6 +65,13 @@ const SPLAT_MAP = /* glsl */ `
   vec2 uB = mat2(0.8, -0.6, 0.6, 0.8) * p.xz * 0.037;
   float far = smoothstep(40.0, 260.0, dist);
   vec4 g = mix(texture2D(tGrass, uA), texture2D(tGrass, uB), 0.35 + 0.4 * far);
+  // Meadow variation: dry straw-coloured swathes and lush darker hollows.
+  float mA = texture2D(tMacro, p.xz / 380.0 + 0.13).r;
+  float mB = texture2D(tMacro, p.xz / 95.0 + 0.61).r;
+  float dryness = smoothstep(0.42, 0.78, mA * 0.7 + mB * 0.3);
+  float lush = smoothstep(0.55, 0.25, mA * 0.6 + mB * 0.4);
+  g.rgb = mix(g.rgb, g.rgb * vec3(1.32, 1.14, 0.72), dryness * 0.75);
+  g.rgb = mix(g.rgb, g.rgb * vec3(0.78, 0.92, 0.82), lush * 0.6);
   vec4 d = mix(texture2D(tDirt, uA * 0.8), texture2D(tDirt, uB), 0.35 + 0.4 * far);
   vec4 s = mix(texture2D(tSand, uA * 0.6), texture2D(tSand, uB), 0.3 + 0.4 * far);
   vec4 sn = mix(texture2D(tSnow, uA), texture2D(tSnow, uB), 0.4);
@@ -116,15 +124,22 @@ const SPLAT_NORMAL = /* glsl */ `
 export class TerrainView {
   readonly group = new THREE.Group();
   readonly material: THREE.MeshStandardMaterial;
+  readonly waterMaterial: THREE.MeshStandardMaterial;
   private tiles = new Map<string, TileMesh>();
   private frame = 0;
-  private sample = newSample();
-  private lay: Layers = { grass: 0, rock: 0, dirt: 0, sand: 0, snow: 0 };
-  /** Tiles built in the last update (for perf counters). */
+  private terrainIndex: THREE.BufferAttribute;
+  private waterIndex: THREE.BufferAttribute;
+  /** Tiles that arrived in the last update (for perf counters). */
   built = 0;
-  splitK = 1.65;
+  splitK = 1.5;
+  /** Maximum worker requests outstanding at once. */
+  maxInFlight = 6;
 
-  constructor(readonly world: World, detailScale = 1) {
+  constructor(
+    readonly world: World,
+    private source: TileSource,
+    detailScale = 1,
+  ) {
     this.group.name = 'terrain';
     this.splitK *= detailScale;
     const tex = terrainTextures();
@@ -152,59 +167,125 @@ export class TerrainView {
         .replace('#include <roughnessmap_fragment>', SPLAT_ROUGH)
         .replace('#include <normal_fragment_maps>', SPLAT_NORMAL);
     };
-    mat.customProgramCacheKey = () => 'terrain-splat-v1';
+    mat.customProgramCacheKey = () => 'terrain-splat-v2';
     this.material = patchMaterial(mat, { key: 'terrain' });
+    this.waterMaterial = createWaterMaterial();
+    this.group.add(oceanRing(this.waterMaterial));
+    // Shared index buffers: the grid (counter-clockwise from above, split
+    // like World.groundAt) and the skirts.
+    const N = T_QUADS + 1;
+    const grid: number[] = [];
+    for (let j = 0; j < T_QUADS; j++) {
+      for (let i = 0; i < T_QUADS; i++) {
+        const a = j * N + i;
+        const b = a + 1;
+        const c = a + N;
+        const d = c + 1;
+        grid.push(a, d, b, a, c, d);
+      }
+    }
+    const idx = grid.slice();
+    const ring = skirtRing();
+    for (let k = 0; k < ring.length; k++) {
+      const a = ring[k];
+      const b = ring[(k + 1) % ring.length];
+      const sa = N * N + k;
+      const sb = N * N + ((k + 1) % ring.length);
+      idx.push(a, b, sa, b, sb, sa, a, sa, b, b, sa, sb);
+    }
+    this.terrainIndex = new THREE.BufferAttribute(new Uint16Array(idx), 1);
+    this.waterIndex = new THREE.BufferAttribute(new Uint16Array(grid), 1);
   }
 
-  /** Refine the quadtree around the camera; build at most `budgetMs` of new tiles. */
-  update(camera: THREE.Vector3, budgetMs: number): void {
+  /** Refine the quadtree around the camera and request missing tiles. */
+  update(camera: THREE.Vector3, sync = false): void {
     this.frame++;
     this.built = 0;
-    const want: { level: number; ix: number; iz: number }[] = [];
-    const roots = Math.ceil((WORLD_HALF * 2) / ROOT);
-    for (let rx = 0; rx < roots; rx++) for (let rz = 0; rz < roots; rz++) this.select(MAX_LEVEL, rx, rz, camera, want);
-    const t0 = performance.now();
-    // Near tiles first.
-    want.sort((a, b) => a.level - b.level);
-    const ready = new Set<string>();
-    let pending = false;
+    const want: { level: number; ix: number; iz: number; d: number }[] = [];
+    const roots = Math.ceil((WORLD_HALF * 2) / T_ROOT);
+    for (let rx = 0; rx < roots; rx++) for (let rz = 0; rz < roots; rz++) this.select(T_MAX_LEVEL, rx, rz, camera, want);
+    // Nearest first.
+    want.sort((a, b) => a.d - b.d);
+    let missing = false;
     for (const w of want) {
       const key = `${w.level}:${w.ix}:${w.iz}`;
       let t = this.tiles.get(key);
       if (!t) {
-        if (performance.now() - t0 > budgetMs && this.tiles.size > 0) {
-          pending = true;
+        if (!sync && this.source.async && this.source.terrainInFlight >= this.maxInFlight * this.source.workerCount) {
+          missing = true;
           continue;
         }
-        t = { key, mesh: this.buildMesh(w.level, w.ix, w.iz), level: w.level, used: this.frame };
+        t = { key, mesh: null, water: null, level: w.level, used: this.frame, ready: false };
         this.tiles.set(key, t);
-        this.group.add(t.mesh);
-        this.built++;
+        const tile = t;
+        this.source.terrain(w.level, w.ix, w.iz, (d) => this.onTile(tile, d), sync);
       }
       t.used = this.frame;
-      ready.add(key);
+      if (!t.ready) missing = true;
     }
     // Keep stale tiles until their replacements exist, then drop them.
     for (const [key, t] of this.tiles) {
-      if (t.used === this.frame) {
-        t.mesh.visible = true;
-        continue;
-      }
-      if (!pending || this.frame - t.used > 120) {
-        this.group.remove(t.mesh);
-        t.mesh.geometry.dispose();
-        this.tiles.delete(key);
-      } else t.mesh.visible = true;
+      if (t.used === this.frame) continue;
+      if (!missing || this.frame - t.used > 240) this.dropTile(key, t);
     }
+  }
+
+  private onTile(t: TileMesh, d: TerrainTileData): void {
+    if (this.tiles.get(t.key) !== t) return;
+    t.ready = true;
+    this.built++;
+    if (d.pos && d.nrm && d.col && d.spl) {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(d.pos, 3));
+      geo.setAttribute('normal', new THREE.BufferAttribute(d.nrm, 3));
+      geo.setAttribute('color', new THREE.BufferAttribute(d.col, 3));
+      geo.setAttribute('aSplat', new THREE.BufferAttribute(d.spl, 4));
+      geo.setIndex(this.terrainIndex);
+      geo.computeBoundingSphere();
+      const m = new THREE.Mesh(geo, this.material);
+      m.receiveShadow = true;
+      m.castShadow = d.level <= 1;
+      m.matrixAutoUpdate = false;
+      this.group.add(m);
+      t.mesh = m;
+    }
+    if (d.waterPos && d.waterAttr) {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(d.waterPos, 3));
+      const n = new Float32Array(d.waterPos.length);
+      for (let i = 1; i < n.length; i += 3) n[i] = 1;
+      geo.setAttribute('normal', new THREE.BufferAttribute(n, 3));
+      geo.setAttribute('aWater', new THREE.BufferAttribute(d.waterAttr, 4));
+      geo.setIndex(this.waterIndex);
+      geo.computeBoundingSphere();
+      const m = new THREE.Mesh(geo, this.waterMaterial);
+      m.receiveShadow = true;
+      m.matrixAutoUpdate = false;
+      m.renderOrder = 1;
+      this.group.add(m);
+      t.water = m;
+    }
+  }
+
+  private dropTile(key: string, t: TileMesh): void {
+    if (t.mesh) {
+      this.group.remove(t.mesh);
+      t.mesh.geometry.dispose();
+    }
+    if (t.water) {
+      this.group.remove(t.water);
+      t.water.geometry.dispose();
+    }
+    this.tiles.delete(key);
   }
 
   /** Build every tile the camera needs right now (loading screens, tests). */
   prime(camera: THREE.Vector3): void {
-    this.update(camera, 1e9);
+    this.update(camera, true);
   }
 
-  private select(level: number, ix: number, iz: number, cam: THREE.Vector3, out: { level: number; ix: number; iz: number }[]): void {
-    const size = LEAF * 2 ** level;
+  private select(level: number, ix: number, iz: number, cam: THREE.Vector3, out: { level: number; ix: number; iz: number; d: number }[]): void {
+    const size = T_LEAF * 2 ** level;
     const x0 = -WORLD_HALF + ix * size;
     const z0 = -WORLD_HALF + iz * size;
     const cx = Math.max(x0, Math.min(cam.x, x0 + size));
@@ -215,154 +296,28 @@ export class TerrainView {
     const d = Math.sqrt(dx * dx + dz * dz + dy * dy);
     if (level > 0 && d < size * this.splitK) {
       for (const [ox, oz] of [[0, 0], [1, 0], [0, 1], [1, 1]]) this.select(level - 1, ix * 2 + ox, iz * 2 + oz, cam, out);
-    } else out.push({ level, ix, iz });
-  }
-
-  private buildMesh(level: number, ix: number, iz: number): THREE.Mesh {
-    const size = LEAF * 2 ** level;
-    const step = size / QUADS;
-    const x0 = -WORLD_HALF + ix * size;
-    const z0 = -WORLD_HALF + iz * size;
-    const N = QUADS + 1;
-    // Heights with a one-sample border for normals.
-    const B = N + 2;
-    const H = new Float32Array(B * B);
-    for (let j = 0; j < B; j++) {
-      for (let i = 0; i < B; i++) {
-        H[j * B + i] = this.height(x0 + (i - 1) * step, z0 + (j - 1) * step, level);
-      }
-    }
-    const skirtVerts = QUADS * 4;
-    const vcount = N * N + skirtVerts;
-    const pos = new Float32Array(vcount * 3);
-    const nrm = new Float32Array(vcount * 3);
-    const col = new Float32Array(vcount * 3);
-    const spl = new Float32Array(vcount * 4);
-    const s = this.sample;
-    const lay = this.lay;
-    for (let j = 0; j < N; j++) {
-      for (let i = 0; i < N; i++) {
-        const v = j * N + i;
-        const x = x0 + i * step;
-        const z = z0 + j * step;
-        const h = H[(j + 1) * B + i + 1];
-        pos[v * 3] = x;
-        pos[v * 3 + 1] = h;
-        pos[v * 3 + 2] = z;
-        const hx = H[(j + 1) * B + i + 2] - H[(j + 1) * B + i];
-        const hz = H[(j + 2) * B + i + 1] - H[j * B + i + 1];
-        let nx = -hx / (2 * step);
-        let nz = -hz / (2 * step);
-        const l = Math.sqrt(nx * nx + 1 + nz * nz);
-        nx /= l;
-        nz /= l;
-        nrm[v * 3] = nx;
-        nrm[v * 3 + 1] = 1 / l;
-        nrm[v * 3 + 2] = nz;
-        this.world.island.sample(x, z, s);
-        const slope = Math.sqrt(hx * hx + hz * hz) / (2 * step);
-        const hit = roadHit;
-        const rd = this.world.nearestRoad(x, z, 8, hit) ? Math.max(0, hit.dist - hit.halfWidth) : 99;
-        this.world.layers(s, h, slope, rd, lay);
-        spl[v * 4] = lay.rock;
-        spl[v * 4 + 1] = lay.dirt;
-        spl[v * 4 + 2] = lay.sand;
-        spl[v * 4 + 3] = lay.snow;
-        // Biome tint: lush forest floor, sun-bleached farmland, red desert.
-        let r = 1;
-        let g = 1;
-        let b = 1;
-        if (s.desert > 0) {
-          r = 1 + 0.32 * s.desert;
-          g = 1 - 0.1 * s.desert;
-          b = 1 - 0.28 * s.desert;
-        }
-        if (s.forest > 0) {
-          r *= 1 - 0.22 * s.forest;
-          g *= 1 - 0.06 * s.forest;
-          b *= 1 - 0.12 * s.forest;
-        }
-        if (s.region === REGION.farmland) {
-          r *= 1.08;
-          g *= 1.04;
-        }
-        // Darken hollows a little: cheap baked ambient occlusion from curvature.
-        const lap = H[(j + 1) * B + i] + H[(j + 1) * B + i + 2] + H[j * B + i + 1] + H[(j + 2) * B + i + 1] - 4 * h;
-        const ao = Math.max(0.7, Math.min(1.08, 1 - lap * 0.02 / Math.max(1, step / 4)));
-        col[v * 3] = r * ao;
-        col[v * 3 + 1] = g * ao;
-        col[v * 3 + 2] = b * ao;
-      }
-    }
-    // Skirts: duplicate the border ring, dropped down.
-    const drop = Math.max(2, step * 1.5);
-    let sv = N * N;
-    const ring: number[] = [];
-    for (let i = 0; i < QUADS; i++) ring.push(i);
-    for (let j = 0; j < QUADS; j++) ring.push(j * N + QUADS);
-    for (let i = QUADS; i > 0; i--) ring.push(QUADS * N + i);
-    for (let j = QUADS; j > 0; j--) ring.push(j * N);
-    const skirtOf: number[] = [];
-    for (const v of ring) {
-      pos[sv * 3] = pos[v * 3];
-      pos[sv * 3 + 1] = pos[v * 3 + 1] - drop;
-      pos[sv * 3 + 2] = pos[v * 3 + 2];
-      for (let c = 0; c < 3; c++) {
-        nrm[sv * 3 + c] = nrm[v * 3 + c];
-        col[sv * 3 + c] = col[v * 3 + c] * 0.9;
-      }
-      for (let c = 0; c < 4; c++) spl[sv * 4 + c] = spl[v * 4 + c];
-      skirtOf.push(sv);
-      sv++;
-    }
-    const idx: number[] = [];
-    for (let j = 0; j < QUADS; j++) {
-      for (let i = 0; i < QUADS; i++) {
-        const a = j * N + i;
-        const b = a + 1;
-        const c = a + N;
-        const d = c + 1;
-        // Same split as World.groundAt: (a,b,d) for u>=v and (a,d,c) for u<v.
-        idx.push(a, d, b, a, c, d);
-      }
-    }
-    for (let k = 0; k < ring.length; k++) {
-      const a = ring[k];
-      const b = ring[(k + 1) % ring.length];
-      const sa = skirtOf[k];
-      const sb = skirtOf[(k + 1) % ring.length];
-      idx.push(a, b, sa, b, sb, sa, a, sa, b, b, sa, sb);
-    }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    geo.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
-    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    geo.setAttribute('aSplat', new THREE.BufferAttribute(spl, 4));
-    geo.setIndex(idx);
-    geo.computeBoundingSphere();
-    const m = new THREE.Mesh(geo, this.material);
-    m.receiveShadow = true;
-    m.castShadow = level <= 1;
-    m.matrixAutoUpdate = false;
-    m.updateMatrix();
-    return m;
-  }
-
-  /** Height for a mesh vertex: exact physics tiles at the finest level. */
-  private height(x: number, z: number, level: number): number {
-    if (level === 0) {
-      const tx = Math.floor(x / TILE);
-      const tz = Math.floor(z / TILE);
-      const lx = Math.round((x - tx * TILE) / TILE_SPACING);
-      const lz = Math.round((z - tz * TILE) / TILE_SPACING);
-      if (lx >= 0 && lz >= 0 && lx < TILE_SAMPLES && lz < TILE_SAMPLES) return this.world.tile(tx, tz).h[lz * TILE_SAMPLES + lx];
-    }
-    return this.world.terrainHeight(x, z);
+    } else out.push({ level, ix, iz, d });
   }
 
   get tileCount(): number {
     return this.tiles.size;
   }
-}
 
-const roadHit = { edge: 0, i: 0, t: 0, lateral: 0, dist: 0, y: 0, halfWidth: 0, bridge: false };
+  /** Fraction of the tiles in the current view that have arrived. */
+  get progress(): number {
+    let n = 0;
+    let ready = 0;
+    for (const t of this.tiles.values()) {
+      if (t.used !== this.frame) continue;
+      n++;
+      if (t.ready) ready++;
+    }
+    return n ? ready / n : 0;
+  }
+
+  /** True when every wanted tile has arrived. */
+  get settled(): boolean {
+    for (const t of this.tiles.values()) if (!t.ready) return false;
+    return true;
+  }
+}

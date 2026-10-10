@@ -33,6 +33,24 @@ function checkSelfContained(html) {
   if (bad) throw new Error(`dist/index.html references remote resources: ${bad.join(', ')}`);
 }
 
+// The tile worker is bundled first and inlined into the main bundle as a
+// string; the game starts it from a Blob URL, so it stays one HTML file.
+async function buildWorker() {
+  const r = await esbuild.build({
+    entryPoints: [path.join(root, 'src/world/tile-worker.ts')],
+    bundle: true,
+    write: false,
+    format: 'iife',
+    target: ['es2020', 'safari15'],
+    minify: !dev,
+    legalComments: 'none',
+    define: { __DEV__: dev ? 'true' : 'false', __BUILD_TIME__: '""', __TILE_WORKER__: '""' },
+    logLevel: 'warning',
+  });
+  return r.outputFiles[0].text;
+}
+const workerSource = await buildWorker();
+
 const buildOptions = {
   entryPoints: [path.join(root, 'src/main.ts')],
   bundle: true,
@@ -46,6 +64,7 @@ const buildOptions = {
   define: {
     __DEV__: dev ? 'true' : 'false',
     __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+    __TILE_WORKER__: JSON.stringify(workerSource),
   },
   logLevel: 'warning',
   metafile: true,

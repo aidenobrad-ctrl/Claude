@@ -67,7 +67,7 @@ vec3 agxLook(vec3 c) {
   vec3 slope = vec3(1.0);
   vec3 power = vec3(1.35);
   c = pow(c * slope, power);
-  return l + 1.22 * (c - l);
+  return l + 1.14 * (c - l);
 }
 float hash(vec2 p) {
   return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);

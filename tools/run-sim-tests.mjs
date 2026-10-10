@@ -42,7 +42,7 @@ await esbuild.build({
   sourcemap: 'inline',
   outExtension: { '.js': '.mjs' },
   loader: { '.css': 'text', '.glsl': 'text' },
-  define: { __DEV__: 'true', __BUILD_TIME__: '"test"' },
+  define: { __DEV__: 'true', __BUILD_TIME__: '"test"', __TILE_WORKER__: '""' },
   logLevel: 'warning',
 });
 

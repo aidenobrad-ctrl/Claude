@@ -80,8 +80,16 @@ export class Colliders {
     }
   }
 
+  /** Extra circles generated on demand (the island's trees), visited after the grid. */
+  extra: ((x: number, z: number, r: number, onCircle: (c: Circle) => void) => void) | null = null;
+
   /** Visit colliders whose cells overlap a circle of radius r around (x, z). */
   query(x: number, z: number, r: number, onSeg: (s: Segment) => void, onCircle: (c: Circle) => void): void {
+    this.queryGrid(x, z, r, onSeg, onCircle);
+    this.extra?.(x, z, r, onCircle);
+  }
+
+  private queryGrid(x: number, z: number, r: number, onSeg: (s: Segment) => void, onCircle: (c: Circle) => void): void {
     const g = this.cell;
     const seenS = querySeen;
     seenS.clear();

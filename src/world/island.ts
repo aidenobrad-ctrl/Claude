@@ -117,6 +117,8 @@ const BLOBS: Blob[] = [
   { region: REGION.rally, x: -2500, z: -1100, r: 900, blend: 500 },
 ];
 
+const segOut = { d: 0, t: 0 };
+/** Distance from (px, pz) to segment ab; the result object is reused between calls. */
 function segDist(px: number, pz: number, a: Pt, b: Pt): { d: number; t: number } {
   const dx = b.x - a.x;
   const dz = b.z - a.z;
@@ -125,10 +127,13 @@ function segDist(px: number, pz: number, a: Pt, b: Pt): { d: number; t: number }
   t = clamp(t, 0, 1);
   const cx = a.x + dx * t;
   const cz = a.z + dz * t;
-  return { d: Math.sqrt((px - cx) * (px - cx) + (pz - cz) * (pz - cz)), t };
+  segOut.d = Math.sqrt((px - cx) * (px - cx) + (pz - cz) * (pz - cz));
+  segOut.t = t;
+  return segOut;
 }
 
-/** Distance to a polyline, with the fractional index of the nearest point. */
+const polyOut = { d: 0, s: 0 };
+/** Distance to a polyline, with the fractional index of the nearest point (result reused between calls). */
 export function polylineDist(px: number, pz: number, pts: Pt[]): { d: number; s: number } {
   let best = Infinity;
   let bs = 0;
@@ -139,7 +144,9 @@ export function polylineDist(px: number, pz: number, pts: Pt[]): { d: number; s:
       bs = i + r.t;
     }
   }
-  return { d: best, s: bs };
+  polyOut.d = best;
+  polyOut.s = bs;
+  return polyOut;
 }
 
 export interface TerrainSample {
@@ -220,8 +227,15 @@ export class Island {
     const warp = 1 + 0.35 * this.nWarp.fbm(x / 900, z / 900, 3);
     const w = best / (1350 * warp);
     const shape = dexp(-w * w * 1.6);
-    const ridged = this.nRidge.ridged(x / 650, z / 650, 5);
-    return shape * (crest * (0.72 + 0.4 * ridged)) + shape * 60 * this.nDetail.fbm(x / 180, z / 180, 3);
+    if (shape < 0.002) return 0;
+    // Eroded fBm carves drainage valleys into the flanks and leaves a few
+    // dominant peaks; a light ridged term sharpens the crest lines.
+    const e = this.nRidge.eroded(x / 1700 + 3.7, z / 1700 - 1.3, 7);
+    const r = this.nDetail.ridged(x / 520, z / 520, 3);
+    const raw = 0.64 + 1.15 * e + 0.12 * (r - 0.4);
+    // Compress the top end so single noise maxima do not become needles.
+    const relief = raw > 1 ? 1 + (1 - dexp(-(raw - 1) * 2.5)) * 0.22 : Math.max(0.22, raw);
+    return shape * crest * relief + shape * 14 * this.nDetail.fbm(x / 140, z / 140, 2);
   }
 
   private plains(x: number, z: number): number {
@@ -256,10 +270,8 @@ export class Island {
     return h;
   }
 
-  /** Weight of each authored region at (x, z), via warped radial falloffs. */
-  private blobWeight(b: Blob, x: number, z: number): number {
-    const wx = x + 260 * this.nWarp.fbm(x / 1500, z / 1500, 3);
-    const wz = z + 260 * this.nWarp.fbm(x / 1500 + 7, z / 1500 - 3, 3);
+  /** Weight of an authored region at the (already warped) point (wx, wz). */
+  private blobWeight(b: Blob, wx: number, wz: number): number {
     const d = Math.sqrt((wx - b.x) * (wx - b.x) + (wz - b.z) * (wz - b.z));
     return smoothstep(b.r + b.blend, b.r - b.blend * 0.3, d);
   }
@@ -288,8 +300,11 @@ export class Island {
     let h = this.plains(x, z) * 0.15;
     let bestW = 0.15;
     let region: RegionId = REGION.plains;
+    // One domain warp shared by every region outline.
+    const wx = x + 260 * this.nWarp.fbm(x / 1500, z / 1500, 3);
+    const wz = z + 260 * this.nWarp.fbm(x / 1500 + 7, z / 1500 - 3, 3);
     for (const b of BLOBS) {
-      const w = this.blobWeight(b, x, z);
+      const w = this.blobWeight(b, wx, wz);
       if (w <= 0) continue;
       let hb: number;
       switch (b.region) {

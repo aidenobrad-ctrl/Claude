@@ -20,7 +20,7 @@ await esbuild.build({
   format: 'esm',
   target: 'node22',
   sourcemap: 'inline',
-  define: { __DEV__: 'true', __BUILD_TIME__: '"tool"' },
+  define: { __DEV__: 'true', __BUILD_TIME__: '"tool"', __TILE_WORKER__: '""' },
   loader: { '.css': 'text', '.glsl': 'text' },
   logLevel: 'warning',
 });

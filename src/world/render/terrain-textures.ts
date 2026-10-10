@@ -90,13 +90,15 @@ export function terrainTextures(size = 512): TerrainTextures {
   const n3 = fbmTile(size, 37, 64, 3, 0.5);
   const blades = fbmTile(size, 41, 128, 2, 0.4);
   // Grass: mottled greens with fine blade streaks; alpha = height.
+  // Olive summer grass: darker clumps, sun-dried straw patches, fine blades.
   const grass = toTexture(size, (i) => {
     const v = n1[i] * 0.6 + n2[i] * 0.4;
     const b = blades[i];
-    const dry = Math.max(0, n3[i] - 0.55) * 2;
-    const r = 52 + v * 50 + b * 26 + dry * 60;
-    const g = 82 + v * 62 + b * 34 + dry * 30;
-    const bl = 30 + v * 24 + b * 10;
+    const dry = Math.min(1, Math.max(0, n3[i] - 0.5) * 2.6);
+    const clump = Math.max(0, 0.45 - n2[i]) * 1.6;
+    const r = 66 + v * 34 + b * 22 + dry * 58 - clump * 22;
+    const g = 80 + v * 40 + b * 26 + dry * 34 - clump * 18;
+    const bl = 34 + v * 14 + b * 8 + dry * 8 - clump * 8;
     return [r, g, bl, 80 + b * 175];
   });
   // Rock: strata and cracks.

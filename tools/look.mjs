@@ -1,7 +1,7 @@
 // Render review shots of the current build: node tools/look.mjs [quality] [time] [prefix] [which]
-//   which: comma list of island,vista,chase,hero (default all)
+//   which: comma list of island,vista,forest,chase,hero (default all)
 import { launchBrowser, openGame, shot } from './browser.mjs';
-const [q = 'ultra', time = 'golden', prefix = 'look', which = 'island,vista,chase,hero'] = process.argv.slice(2);
+const [q = 'ultra', time = 'golden', prefix = 'look', which = 'island,vista,forest,chase,hero'] = process.argv.slice(2);
 const want = new Set(which.split(','));
 const b = await launchBrowser();
 const g = await openGame(b, { viewport: 'desktop', query: `test=1&q=${q}&time=${time}` });
@@ -30,6 +30,35 @@ if (want.has('vista')) {
     api.setCamera(150, y + 60, 900, 300, 120, -2600, 55);
   });
   await shot(g.page, `${prefix}-${q}-${time}-vista`);
+}
+if (want.has('forest')) {
+  // A road through the eastern forest, chase cam.
+  await g.page.evaluate(() => {
+    const api = window.__game;
+    api.setUiVisible(true);
+    api.setCamera();
+    const w = api.game.sim.world;
+    const s = { h: 0, region: 0, coast: 0, water: -Infinity, forest: 0, desert: 0 };
+    let best = null;
+    for (const e of w.edges) {
+      const r = e.road;
+      for (let i = 20; i < r.n - 20; i += 10) {
+        w.island.sample(r.x[i], r.z[i], s);
+        if (s.forest > 0.85 && !e.bridge[i] && e.info.halfWidth > 4) {
+          best = { x: r.x[i], z: r.z[i], tx: r.tx[i], tz: r.tz[i], lane: e.info.halfWidth * 0.45 };
+          break;
+        }
+      }
+      if (best) break;
+    }
+    if (best) {
+      api.teleport(best.x - best.tz * best.lane, best.z + best.tx * best.lane, Math.atan2(-best.tx, -best.tz));
+      api.game.sim.player.vehicle.setSpeed(20);
+      api.setInput({ throttle: 0.3 });
+      for (let i = 0; i < 12; i++) api.step(8);
+    }
+  });
+  await shot(g.page, `${prefix}-${q}-${time}-forest`);
 }
 if (want.has('chase')) {
   // 3. Chase cam on the circuit at speed.

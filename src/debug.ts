@@ -6,6 +6,8 @@ import { SIM_HZ } from './engine/loop';
 
 export interface DebugApi {
   version: string;
+  /** False while the island streams in at startup (normal play only). */
+  readonly ready: boolean;
   /** Advance n fixed 1/240 s steps. Returns the sim tick. */
   step(n?: number): number;
   /** Advance the given number of simulated seconds. */
@@ -34,6 +36,9 @@ export interface DebugApi {
 export function installDebugApi(game: Game): DebugApi {
   const api: DebugApi = {
     version: __BUILD_TIME__,
+    get ready() {
+      return !game.loading;
+    },
     step(n = 1) {
       game.stepTicks(Math.max(0, Math.floor(n)));
       return game.sim.tick;

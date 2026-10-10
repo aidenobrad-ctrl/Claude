@@ -27,3 +27,8 @@ export const ROAD_CLASSES = {
 } satisfies Record<string, RoadClass>;
 
 export type RoadClassId = keyof typeof ROAD_CLASSES;
+
+/** Gravel shoulder beyond the paved half width; on bridges it is deck. */
+export const ROAD_SHOULDER = 1.3;
+/** Bridge parapet width, m. */
+export const PARAPET_W = 0.32;

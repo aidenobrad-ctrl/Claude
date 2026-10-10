@@ -13,6 +13,9 @@ import { CameraRig, CAM_LABELS } from './engine/render/camera-rig';
 import { Puffs, Skidmarks } from './engine/render/effects';
 import { buildTrackView } from './world/render/track-view';
 import { TerrainView } from './world/render/terrain-view';
+import { TileSource } from './world/render/tile-source';
+import { Vegetation } from './world/render/vegetation';
+import { buildRoadView, type RoadView } from './world/render/road-view';
 import { SURFACES } from './world/surfaces';
 import { newHit } from './world/ground';
 import { CarView } from './vehicles/render/car-view';
@@ -75,6 +78,9 @@ export class Game {
   readonly pause: PauseMenu;
   readonly help: HelpCard;
   readonly terrain: TerrainView;
+  readonly tiles: TileSource;
+  readonly vegetation: Vegetation;
+  readonly roads: RoadView;
   readonly skid = new Skidmarks(4000);
   readonly puffs = new Puffs(700);
   views: CarView[] = [];
@@ -86,6 +92,11 @@ export class Game {
   /** Maximum internal render pixels; quality presets change this. */
   pixelBudget = 1280 * 720;
   fatalError: Error | null = null;
+  /** True until the island around the player has streamed in (normal play). */
+  loading = true;
+  private loadStart = 0;
+  private loadPct = 0;
+  private boot: HTMLElement | null = null;
   /** Fixed camera for reviews and photo tools: [x, y, z, targetX, targetY, targetZ, fov]. */
   cameraOverride: number[] | null = null;
   private raf = 0;
@@ -139,8 +150,16 @@ export class Game {
     this.scene.environment = this.atmo.buildEnvironment(this.renderer);
     this.reflections = new CarReflections(this.renderer);
 
-    this.terrain = new TerrainView(this.sim.world, this.quality.terrain);
+    // Tests build tiles synchronously so every frame is deterministic.
+    const cores = typeof navigator !== 'undefined' ? navigator.hardwareConcurrency || 4 : 4;
+    this.tiles = new TileSource(this.sim.world, !opts.test, Math.max(1, Math.min(3, cores - 2)));
+    this.terrain = new TerrainView(this.sim.world, this.tiles, this.quality.terrain);
     this.scene.add(this.terrain.group);
+    this.roads = buildRoadView(this.sim.world);
+    this.scene.add(this.roads.group);
+    const q = this.quality;
+    this.vegetation = new Vegetation(this.renderer, this.tiles, { near: q.treeNear, far: q.treeFar, thinFrom: q.treeThin, thinKeep: q.treeKeep, shadows: q.treeShadows });
+    this.scene.add(this.vegetation.group);
     this.scene.add(buildTrackView(this.sim.track));
     this.scene.add(this.skid.mesh, this.puffs.points);
     this.rebuildCarViews();
@@ -161,7 +180,9 @@ export class Game {
     this.help = new HelpCard(this.uiRoot);
     this.help.setVisible(!this.test && !this.mobile);
     this.setTouchVisible(opts.touch ?? this.mobile);
-    document.getElementById('boot')?.remove();
+    this.boot = document.getElementById('boot');
+    if (opts.test) this.boot?.remove();
+    else this.boot?.classList.add('boot-loading');
 
     this.input.attach(window);
     // Mobile browsers drop the GL context when backgrounded. Keep the page
@@ -179,7 +200,15 @@ export class Game {
     this.resize();
     this.rig.snap();
     const p0 = this.sim.player.vehicle.pos;
-    this.terrain.prime(new THREE.Vector3(p0.x, p0.y + 2, p0.z));
+    if (opts.test) {
+      // Tests build everything up front, synchronously and deterministically.
+      this.terrain.prime(new THREE.Vector3(p0.x, p0.y + 2, p0.z));
+      this.vegetation.update(new THREE.Vector3(p0.x, p0.y + 2, p0.z), true);
+      this.loading = false;
+    } else {
+      this.loadStart = performance.now();
+      this.terrain.maxInFlight = 12;
+    }
   }
 
   get camera(): THREE.PerspectiveCamera {
@@ -242,13 +271,39 @@ export class Game {
     this.perf.frame();
     this.controls = this.input.poll();
     this.handleFrameActions(this.controls);
-    if (!this.paused && !this.hidden) {
+    if (this.loading) this.updateLoading(t);
+    if (!this.paused && !this.hidden && !this.loading) {
       this.perf.begin('sim');
       this.edgesUsed = false;
       this.stepper.advance(dt, () => this.tick());
       this.perf.end('sim');
     }
     this.present(dt, this.stepper.alpha);
+  }
+
+  /** Hold the car while terrain and trees around it stream in, with progress on the boot screen. */
+  private updateLoading(t: number): void {
+    const cam = this.rig.camera.position;
+    const tReady = this.terrain.settled && this.terrain.tileCount > 0;
+    const vReady = this.vegetation.nearReady(cam);
+    const waited = t - this.loadStart;
+    if ((tReady && vReady) || waited > 15000) {
+      this.loading = false;
+      this.terrain.maxInFlight = 6;
+      this.lastT = t;
+      if (this.boot) {
+        this.boot.classList.add('boot-done');
+        const b = this.boot;
+        setTimeout(() => b.remove(), 700);
+      }
+      return;
+    }
+    if (this.boot) {
+      // Progress never runs backwards, even as the tile set refines.
+      const pct = Math.round(this.terrain.progress * 60 + this.vegetation.progress(cam, this.quality.treeNear + 256) * 40);
+      this.loadPct = Math.max(this.loadPct, Math.min(99, pct));
+      this.boot.textContent = `BUILDING THE ISLAND  ${this.loadPct}%`;
+    }
   }
 
   /** One fixed step. Input edges (shifts) apply to the first step of a frame only. */
@@ -343,7 +398,10 @@ export class Game {
       (x, z) => (this.sim.ground.sample(x, z, 100, this.groundHit) ? this.groundHit.y : 0),
     );
     this.perf.begin('terrain');
-    this.terrain.update(this.rig.camera.position, this.test ? 1e9 : 4);
+    this.terrain.update(this.rig.camera.position, this.test);
+    this.vegetation.update(this.rig.camera.position, this.test);
+    this.perf.counters.trees = this.vegetation.nearCount;
+    this.perf.counters.impostors = this.vegetation.farCount;
     this.perf.end('terrain');
     this.perf.counters.tiles = this.terrain.tileCount;
     this.atmo.update(dt, this.rig.camera, pv.root.position, 420);

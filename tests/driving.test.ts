@@ -91,7 +91,8 @@ test('gravel trap slows a car that runs wide', () => {
 
 test('soak: random driving with resets stays finite, on the ground and in bounds', () => {
   const minutes = QUICK ? 2 : 10;
-  const sim = new Sim(7);
+  const sim = new Sim(7, 'proving');
+  const o = sim.track.origin;
   const rng = new RNG('soak');
   const v = sim.player.vehicle;
   let c = controls();
@@ -119,20 +120,20 @@ test('soak: random driving with resets stays finite, on the ground and in bounds
       resets++;
     }
     if (!v.pos.isFinite() || !v.vel.isFinite() || !v.quat.isFinite()) throw new Error(`NaN at tick ${i}`);
-    worstY = Math.min(worstY, v.pos.y);
+    worstY = Math.min(worstY, v.pos.y - sim.groundHeight(v.pos.x, v.pos.z));
     maxSpeed = Math.max(maxSpeed, v.speed);
     if (v.airTime > 3) airborneLong++;
     // Keep the bot inside the facility.
-    if (Math.abs(v.pos.x) > 1900 || Math.abs(v.pos.z) > 1900) {
+    if (Math.abs(v.pos.x - o.x) > 900 || Math.abs(v.pos.z - o.z - 200) > 500) {
       sim.resetToRoad();
       resets++;
     }
   }
   const ms = performance.now() - t0;
-  log(`${minutes} min simulated in ${(ms / 1000).toFixed(1)} s: lowest COM ${worstY.toFixed(2)} m, top ${(maxSpeed * 3.6).toFixed(0)} km/h, ${resets} resets`);
+  log(`${minutes} min simulated in ${(ms / 1000).toFixed(1)} s: lowest COM ${worstY.toFixed(2)} m above ground, top ${(maxSpeed * 3.6).toFixed(0)} km/h, ${resets} resets`);
   metric('soakMinutes', minutes);
   metric('soakSeconds', ms / 1000);
-  assertRange(worstY, 0.15, 10, 'lowest COM height (m)');
+  assertRange(worstY, 0.15, 10, 'lowest COM height above ground (m)');
   assert(airborneLong === 0, 'car was airborne for over 3 s on flat ground');
   assert(maxSpeed < 120, `implausible speed ${(maxSpeed * 3.6).toFixed(0)} km/h`);
 });

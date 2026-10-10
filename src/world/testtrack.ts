@@ -15,6 +15,9 @@ export interface Rect {
 
 export interface TrackLayout {
   road: Road;
+  origin: { x: number; z: number };
+  /** Surface height of the facility. */
+  height: number;
   skidpad: { x: number; z: number; r: number; width: number };
   paddock: Rect;
   spawn: { x: number; z: number; yaw: number };
@@ -38,8 +41,9 @@ const CIRCUIT: [number, number][] = [
   [-280, 470], [-420, 480], [-560, 420], [-640, 300], [-700, 180], [-760, 80], [-740, 10],
 ];
 
-export function buildTestTrack(): TrackLayout {
-  const pts = sampleSpline(CIRCUIT.map(([x, z]) => ({ x, y: 0, z })), true, 2);
+/** Build the proving ground with its origin at (ox, oz) and the surface at height y. */
+export function buildTestTrack(ox = 0, oz = 0, y = 0): TrackLayout {
+  const pts = sampleSpline(CIRCUIT.map(([x, z]) => ({ x: x + ox, y, z: z + oz })), true, 2);
   const road = new Road(pts, { closed: true, halfWidth: TRACK_HALF_WIDTH });
   const n = road.n;
   const cornerKind = new Uint8Array(n);
@@ -75,15 +79,23 @@ export function buildTestTrack(): TrackLayout {
   // Armco along both sides of the main straight.
   for (const side of [-1, 1]) {
     const line: { x: number; z: number }[] = [];
-    for (let x = -640; x <= 460; x += 20) line.push({ x, z: side * (TRACK_HALF_WIDTH + 9) });
-    colliders.addPolyline(line, { top: 0.8, bottom: -1, bounce: 0.25, friction: 0.35, kind: 'rail' });
+    for (let x = -640; x <= 460; x += 20) line.push({ x: x + ox, z: side * (TRACK_HALF_WIDTH + 9) + oz });
+    colliders.addPolyline(line, { top: y + 0.8, bottom: y - 1, bounce: 0.25, friction: 0.35, kind: 'rail' });
   }
-  const startS = nearestS(road, -400, 0);
+  for (const s of colliders.segments) {
+    if (s.kind === 'tires') {
+      s.top = y + 1.1;
+      s.bottom = y - 1;
+    }
+  }
+  const startS = nearestS(road, -400 + ox, oz);
   return {
     road,
-    skidpad: { x: -150, z: 200, r: 40, width: 14 },
-    paddock: { x0: -650, z0: -95, x1: -350, z1: -30 },
-    spawn: { x: -470, z: -60, yaw: -Math.PI / 2 },
+    origin: { x: ox, z: oz },
+    height: y,
+    skidpad: { x: -150 + ox, z: 200 + oz, r: 40, width: 14 },
+    paddock: { x0: -650 + ox, z0: -95 + oz, x1: -350 + ox, z1: -30 + oz },
+    spawn: { x: -470 + ox, z: -60 + oz, yaw: -Math.PI / 2 },
     colliders,
     startS,
     cornerKind,
@@ -101,6 +113,12 @@ function nearestS(road: Road, x: number, z: number): number {
 export class TestTrackGround implements Ground {
   private near: NearestResult = newNearest();
   constructor(readonly t: TrackLayout) {}
+
+  /** Paved (or graveled) surface of the facility at (x, z), or -1 for plain ground. */
+  pavedAt(x: number, z: number): number {
+    const s = this.surfaceAt(x, z);
+    return s === SURFACE.grass ? -1 : s;
+  }
 
   surfaceAt(x: number, z: number): SurfaceId {
     const t = this.t;
@@ -120,12 +138,14 @@ export class TestTrackGround implements Ground {
     if (kind > 0 && a <= TRACK_HALF_WIDTH + CURB_WIDTH) return SURFACE.curb;
     if (kind === 2 && Math.sign(lat) === t.outside[i] && a <= TRACK_HALF_WIDTH + CURB_WIDTH + GRAVEL_WIDTH) return SURFACE.gravel;
     // Paved shoulder on the straight.
-    if (kind === 0 && a <= TRACK_HALF_WIDTH + 2 && Math.abs(z) < 20 && x > -720 && x < 520) return SURFACE.concrete;
+    const lx = x - t.origin.x;
+    const lz = z - t.origin.z;
+    if (kind === 0 && a <= TRACK_HALF_WIDTH + 2 && Math.abs(lz) < 20 && lx > -720 && lx < 520) return SURFACE.concrete;
     return SURFACE.grass;
   }
 
   sample(x: number, z: number, _yRef: number, out: GroundHit): boolean {
-    out.y = 0;
+    out.y = this.t.height;
     out.nx = 0;
     out.ny = 1;
     out.nz = 0;

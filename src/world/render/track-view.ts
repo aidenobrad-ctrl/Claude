@@ -2,8 +2,6 @@
 // material so the whole facility costs a handful of draw calls.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { RNG } from '../../engine/rng';
-import { Noise2 } from '../../engine/noise';
 import { texture, trackTexture, signTexture } from '../../engine/render/textures';
 import { CURB_WIDTH, GRAVEL_WIDTH, TRACK_HALF_WIDTH, type TrackLayout } from '../testtrack';
 import type { Road } from '../road';
@@ -87,38 +85,14 @@ export function buildTrackView(t: TrackLayout): THREE.Group {
   const road = t.road;
   const n = road.n;
 
-  // Ground: a gently varied grass plane with vertex-color macro variation.
-  {
-    const size = 4000;
-    const seg = 96;
-    const geo = new THREE.PlaneGeometry(size, size, seg, seg).rotateX(-Math.PI / 2);
-    const noise = new Noise2('grass-tint');
-    const pos = geo.getAttribute('position') as THREE.BufferAttribute;
-    const uv = geo.getAttribute('uv') as THREE.BufferAttribute;
-    const col = new Float32Array(pos.count * 3);
-    for (let i = 0; i < pos.count; i++) {
-      const x = pos.getX(i);
-      const z = pos.getZ(i);
-      const v = noise.fbm(x / 180, z / 180, 3);
-      const w = noise.fbm(x / 40 + 7, z / 40, 2);
-      col[i * 3] = 0.86 + v * 0.16 + w * 0.05;
-      col[i * 3 + 1] = 0.92 + v * 0.1 + w * 0.04;
-      col[i * 3 + 2] = 0.8 + v * 0.08;
-      uv.setXY(i, x / 9, z / 9);
-    }
-    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: texture('grass'), vertexColors: true }));
-    m.receiveShadow = true;
-    m.name = 'ground';
-    g.add(m);
-  }
+  const H = t.height;
 
   // Track surface.
   {
-    const geo = ribbon(road, 0, n - 1, -TRACK_HALF_WIDTH, TRACK_HALF_WIDTH, () => 0.03, 8);
+    const geo = ribbon(road, 0, n - 1, -TRACK_HALF_WIDTH, TRACK_HALF_WIDTH, () => H + 0.03, 8);
     // Close the loop with one more quad.
-    const closing = ribbon(road, n - 1, 0, -TRACK_HALF_WIDTH, TRACK_HALF_WIDTH, () => 0.03, 8);
-    const mat = decal(new THREE.MeshStandardMaterial({ map: trackTexture(), roughness: 0.9, metalness: 0 }), 2);
+    const closing = ribbon(road, n - 1, 0, -TRACK_HALF_WIDTH, TRACK_HALF_WIDTH, () => H + 0.03, 8);
+    const mat = decal(new THREE.MeshStandardMaterial({ map: trackTexture(), roughness: 0.92, metalness: 0, envMapIntensity: 0.35 }), 2);
     const m = new THREE.Mesh(mergeGeometries([geo, closing]), mat);
     m.receiveShadow = true;
     m.name = 'track';
@@ -133,7 +107,7 @@ export function buildTrackView(t: TrackLayout): THREE.Group {
       for (const side of [-1, 1]) {
         const inner = side * TRACK_HALF_WIDTH;
         const outer = side * (TRACK_HALF_WIDTH + CURB_WIDTH);
-        curbGeos.push(ribbon(road, a, b, inner, outer, (_i, s) => (s === 0 ? 0.035 : 0.07), 4));
+        curbGeos.push(ribbon(road, a, b, inner, outer, (_i, s) => H + (s === 0 ? 0.035 : 0.07), 4));
       }
     }
     for (const [a, b] of runs((i) => t.cornerKind[i] === 2, n)) {
@@ -142,7 +116,7 @@ export function buildTrackView(t: TrackLayout): THREE.Group {
       let i = a;
       const flush = (end: number): void => {
         const side = t.outside[start];
-        gravelGeos.push(ribbon(road, start, end, side * (TRACK_HALF_WIDTH + CURB_WIDTH), side * (TRACK_HALF_WIDTH + CURB_WIDTH + GRAVEL_WIDTH), () => 0.015, 10));
+        gravelGeos.push(ribbon(road, start, end, side * (TRACK_HALF_WIDTH + CURB_WIDTH), side * (TRACK_HALF_WIDTH + CURB_WIDTH + GRAVEL_WIDTH), () => H + 0.015, 10));
       };
       for (;;) {
         const nx = (i + 1) % n;
@@ -185,7 +159,7 @@ export function buildTrackView(t: TrackLayout): THREE.Group {
     tex.colorSpace = THREE.SRGBColorSpace;
     const geo = new THREE.PlaneGeometry(TRACK_HALF_WIDTH * 2, 1.6).rotateX(-Math.PI / 2);
     const m = new THREE.Mesh(geo, decal(new THREE.MeshStandardMaterial({ map: tex, roughness: 0.8 }), 4));
-    m.position.set(at.x, 0.035, at.z);
+    m.position.set(at.x, H + 0.035, at.z);
     m.rotation.y = Math.atan2(at.tx, at.tz);
     g.add(m);
     // Gantry over the line.
@@ -207,7 +181,7 @@ export function buildTrackView(t: TrackLayout): THREE.Group {
     sign2.position.z = -0.41;
     sign2.rotation.y = Math.PI;
     gantry.add(sign, sign2);
-    gantry.position.set(at.x, 0, at.z);
+    gantry.position.set(at.x, H, at.z);
     gantry.rotation.y = Math.atan2(at.tx, at.tz) + Math.PI / 2;
     g.add(gantry);
   }
@@ -226,12 +200,12 @@ export function buildTrackView(t: TrackLayout): THREE.Group {
         const b = new THREE.BoxGeometry(0.9, 1.0, len + 0.05);
         const uv = b.getAttribute('uv') as THREE.BufferAttribute;
         for (let i = 0; i < uv.count; i++) uv.setX(i, uv.getX(i) * (len / 1.2));
-        b.rotateY(yaw).translate((s.ax + s.bx) / 2, 0.5, (s.az + s.bz) / 2);
+        b.rotateY(yaw).translate((s.ax + s.bx) / 2, H + 0.5, (s.az + s.bz) / 2);
         tires.push(b);
       } else if (s.kind === 'rail') {
-        const b = new THREE.BoxGeometry(0.08, 0.32, len + 0.02).rotateY(yaw).translate((s.ax + s.bx) / 2, 0.62, (s.az + s.bz) / 2);
+        const b = new THREE.BoxGeometry(0.08, 0.32, len + 0.02).rotateY(yaw).translate((s.ax + s.bx) / 2, H + 0.62, (s.az + s.bz) / 2);
         rails.push(b);
-        const p = new THREE.BoxGeometry(0.12, 0.75, 0.12).translate(s.ax, 0.37, s.az);
+        const p = new THREE.BoxGeometry(0.12, 0.75, 0.12).translate(s.ax, H + 0.37, s.az);
         posts.push(p);
       }
     }
@@ -257,11 +231,11 @@ export function buildTrackView(t: TrackLayout): THREE.Group {
     const ct = texture('concrete').clone();
     ct.repeat.set(w / 12, d / 12);
     const con = new THREE.Mesh(new THREE.PlaneGeometry(w, d).rotateX(-Math.PI / 2), decal(new THREE.MeshStandardMaterial({ map: ct, roughness: 0.85 }), 1));
-    con.position.set((pd.x0 + pd.x1) / 2, 0.02, (pd.z0 + pd.z1) / 2);
+    con.position.set((pd.x0 + pd.x1) / 2, H + 0.02, (pd.z0 + pd.z1) / 2);
     con.receiveShadow = true;
     g.add(con);
     const pit = buildPitBuilding(w - 40);
-    pit.position.set((pd.x0 + pd.x1) / 2, 0, pd.z0 - 9);
+    pit.position.set((pd.x0 + pd.x1) / 2, H, pd.z0 - 9);
     g.add(pit);
 
     const sk = t.skidpad;
@@ -269,12 +243,12 @@ export function buildTrackView(t: TrackLayout): THREE.Group {
     const at = texture('asphalt').clone();
     const diameter = (sk.r + sk.width / 2) * 2;
     at.repeat.set(diameter / 8, diameter / 8);
-    const ring = new THREE.Mesh(new THREE.RingGeometry(sk.r - sk.width / 2, sk.r + sk.width / 2, 128, 1).rotateX(-Math.PI / 2), decal(new THREE.MeshStandardMaterial({ map: at, roughness: 0.9 }), 2));
-    ring.position.set(sk.x, 0.025, sk.z);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(sk.r - sk.width / 2, sk.r + sk.width / 2, 128, 1).rotateX(-Math.PI / 2), decal(new THREE.MeshStandardMaterial({ map: at, roughness: 0.92, envMapIntensity: 0.35 }), 2));
+    ring.position.set(sk.x, H + 0.025, sk.z);
     ring.receiveShadow = true;
     g.add(ring);
     const line = new THREE.Mesh(new THREE.RingGeometry(sk.r - 0.12, sk.r + 0.12, 160, 1).rotateX(-Math.PI / 2), decal(new THREE.MeshBasicMaterial({ color: 0xf2f2ee }), 4));
-    line.position.set(sk.x, 0.03, sk.z);
+    line.position.set(sk.x, H + 0.03, sk.z);
     g.add(line);
     // Cones around the inner edge of the pad.
     const cone = new THREE.ConeGeometry(0.18, 0.5, 10).translate(0, 0.25, 0);
@@ -282,14 +256,13 @@ export function buildTrackView(t: TrackLayout): THREE.Group {
     const m4 = new THREE.Matrix4();
     for (let i = 0; i < 32; i++) {
       const a = (i / 32) * Math.PI * 2;
-      m4.makeTranslation(sk.x + Math.cos(a) * (sk.r - sk.width / 2 - 1), 0, sk.z + Math.sin(a) * (sk.r - sk.width / 2 - 1));
+      m4.makeTranslation(sk.x + Math.cos(a) * (sk.r - sk.width / 2 - 1), H, sk.z + Math.sin(a) * (sk.r - sk.width / 2 - 1));
       cones.setMatrixAt(i, m4);
     }
     cones.castShadow = true;
     g.add(cones);
   }
 
-  g.add(buildTrees(t));
   return g;
 }
 
@@ -321,52 +294,5 @@ function buildPitBuilding(length: number): THREE.Group {
   roof.position.set(0, 9.4, 0);
   roof.castShadow = true;
   g.add(roof);
-  return g;
-}
-
-function buildTrees(t: TrackLayout): THREE.Group {
-  const g = new THREE.Group();
-  const rng = new RNG('proving-trees');
-  const trunk = new THREE.CylinderGeometry(0.18, 0.28, 2.4, 6).translate(0, 1.2, 0);
-  const crown = new THREE.ConeGeometry(2.2, 6.5, 8).translate(0, 5.2, 0);
-  const crown2 = new THREE.IcosahedronGeometry(2.6, 0).translate(0, 4.4, 0);
-  const max = 600;
-  const trunks = new THREE.InstancedMesh(trunk, new THREE.MeshLambertMaterial({ color: 0x5b4330 }), max);
-  const pines = new THREE.InstancedMesh(crown, new THREE.MeshLambertMaterial({ color: 0x2f5a32 }), max);
-  const oaks = new THREE.InstancedMesh(crown2, new THREE.MeshLambertMaterial({ color: 0x4e7a34, flatShading: true }), max);
-  const near = { i: 0, t: 0, s: 0, lateral: 0, dist: 0, y: 0 };
-  const m4 = new THREE.Matrix4();
-  const q = new THREE.Quaternion();
-  const sc = new THREE.Vector3();
-  const p = new THREE.Vector3();
-  let nt = 0;
-  let np = 0;
-  let no = 0;
-  for (let k = 0; k < 4000 && nt < max; k++) {
-    const x = rng.range(-1300, 1300);
-    const z = rng.range(-700, 1100);
-    if (t.road.nearest(x, z, near) && near.dist < 40) continue;
-    const pd = t.paddock;
-    if (x > pd.x0 - 40 && x < pd.x1 + 40 && z > pd.z0 - 60 && z < pd.z1 + 30) continue;
-    const sk = t.skidpad;
-    if (Math.hypot(x - sk.x, z - sk.z) < sk.r + 40) continue;
-    // Keep the infield open; trees cluster around the outside.
-    if (x > -720 && x < 700 && z > 30 && z < 470 && rng.next() < 0.85) continue;
-    const s = rng.range(0.7, 1.4);
-    q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rng.range(0, Math.PI * 2));
-    sc.set(s, s * rng.range(0.85, 1.2), s);
-    p.set(x, 0, z);
-    m4.compose(p, q, sc);
-    trunks.setMatrixAt(nt++, m4);
-    if (rng.next() < 0.6) pines.setMatrixAt(np++, m4);
-    else oaks.setMatrixAt(no++, m4);
-  }
-  trunks.count = nt;
-  pines.count = np;
-  oaks.count = no;
-  for (const m of [trunks, pines, oaks]) {
-    m.castShadow = true;
-    g.add(m);
-  }
   return g;
 }

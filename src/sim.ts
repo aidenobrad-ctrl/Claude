@@ -11,8 +11,10 @@ import { PlayerControlFilter } from './vehicles/controls';
 import { collideCars, collideWorld } from './vehicles/collision';
 import { buildTestTrack, TestTrackGround, type TrackLayout } from './world/testtrack';
 import { newNearest } from './world/road';
-import type { Ground } from './world/ground';
+import { applyBumps, newHit, type Ground, type GroundHit } from './world/ground';
 import type { Colliders } from './world/colliders';
+import { World, WorldGround, type RoadHit } from './world/world';
+import { PROVING_ORIGIN, PLATEAUS, REGION } from './world/island';
 
 export interface SimCar {
   id: number;
@@ -65,9 +67,13 @@ export class Sim {
   time = 0;
   readonly seed: number;
   rng: RNG;
+  readonly world: World;
   readonly track: TrackLayout;
+  readonly trackGround: TestTrackGround;
   readonly ground: Ground;
   readonly colliders: Colliders;
+  /** Where new sessions start: on the island's roads, or at the proving ground. */
+  spawnAt: 'island' | 'proving' = 'island';
   cars: SimCar[] = [];
   player!: SimCar;
   readonly filter = new PlayerControlFilter();
@@ -77,14 +83,44 @@ export class Sim {
   private near = newNearest();
   private nextId = 1;
 
-  constructor(seed = 1) {
+  constructor(seed = 1, spawnAt: 'island' | 'proving' = 'island') {
     this.seed = seed;
     this.rng = new RNG(seed);
-    this.track = buildTestTrack();
-    this.ground = new TestTrackGround(this.track);
+    this.spawnAt = spawnAt;
+    this.world = new World(seed);
+    const plateau = PLATEAUS.find((p) => p.region === REGION.proving);
+    const h = plateau ? plateau.height : 12;
+    this.track = buildTestTrack(PROVING_ORIGIN.x, PROVING_ORIGIN.z, h);
+    this.trackGround = new TestTrackGround(this.track);
+    const wg = new WorldGround(this.world);
+    const tg = this.trackGround;
+    const o = this.track.origin;
+    // The proving ground's paved areas sit on its flat plateau.
+    wg.overlay = (x: number, z: number, out: GroundHit): boolean => {
+      if (x < o.x - 800 || x > o.x + 720 || z < o.z - 130 || z > o.z + 540) return false;
+      const surf = tg.pavedAt(x, z);
+      if (surf < 0) return false;
+      out.y = h;
+      out.nx = 0;
+      out.ny = 1;
+      out.nz = 0;
+      out.surface = surf as GroundHit['surface'];
+      out.water = 0;
+      applyBumps(x, z, out);
+      return true;
+    };
+    this.ground = wg;
     this.colliders = this.track.colliders;
     this.reset();
   }
+
+  /** Height of the drivable surface at (x, z) (top surface, for placing cars). */
+  groundHeight(x: number, z: number): number {
+    return this.ground.sample(x, z, 1e5, this.hitScratch) ? this.hitScratch.y : 0;
+  }
+
+  private hitScratch = newHit();
+  private roadScratch: RoadHit = { edge: 0, i: 0, t: 0, lateral: 0, dist: 0, y: 0, halfWidth: 0, bridge: false };
 
   reset(): void {
     this.tick = 0;
@@ -95,8 +131,13 @@ export class Sim {
     this.events = [];
     this.filter.reset();
     this.player = this.addCar(CARS[0].id, true);
-    const sp = this.track.spawn;
-    this.player.vehicle.place(sp.x, 0, sp.z, sp.yaw);
+    if (this.spawnAt === 'proving') {
+      const sp = this.track.spawn;
+      this.player.vehicle.place(sp.x, this.groundHeight(sp.x, sp.z), sp.z, sp.yaw);
+    } else {
+      const sp = this.islandSpawn();
+      this.player.vehicle.place(sp.x, this.groundHeight(sp.x, sp.z), sp.z, sp.yaw);
+    }
     this.lap = { laps: 0, start: 0, last: NaN, best: NaN, sector: 0, s: 0 };
   }
 
@@ -168,36 +209,100 @@ export class Sim {
     }
   }
 
-  teleport(x: number, z: number, yaw = 0, y = 0): void {
-    if (![x, z, yaw, y].every(Number.isFinite)) throw new Error(`teleport: non-finite argument (${x}, ${z}, ${yaw}, ${y})`);
-    this.player.vehicle.place(x, y, z, yaw);
+  /** First stretch of road heading north from the festival: mountains ahead. */
+  islandSpawn(): { x: number; z: number; yaw: number } {
+    const hub = this.world.nodes.find((n) => n.id === 'hub') ?? this.world.nodes[0];
+    let best = this.world.edges[0];
+    let bestScore = Infinity;
+    for (const id of hub.edges) {
+      const e = this.world.edges[id];
+      // Prefer the road leaving the hub most nearly northward.
+      const r = e.road;
+      const fromA = e.a === this.world.nodes.indexOf(hub);
+      const k = fromA ? Math.min(r.n - 1, 40) : Math.max(0, r.n - 41);
+      const dz = r.z[k] - hub.z;
+      if (dz < bestScore) {
+        bestScore = dz;
+        best = e;
+      }
+    }
+    const r = best.road;
+    const fromA = best.a === this.world.nodes.indexOf(hub);
+    const i = fromA ? Math.min(r.n - 2, 60) : Math.max(1, r.n - 61);
+    const dir = fromA ? 1 : -1;
+    const tx = r.tx[i] * dir;
+    const tz = r.tz[i] * dir;
+    // Keep to the right-hand lane.
+    const lane = best.info.halfWidth * 0.45;
+    return { x: r.x[i] - tz * lane, z: r.z[i] + tx * lane, yaw: datan2(-tx, -tz) };
+  }
+
+  teleport(x: number, z: number, yaw = 0, y?: number): void {
+    if (![x, z, yaw, y ?? 0].every(Number.isFinite)) throw new Error(`teleport: non-finite argument (${x}, ${z}, ${yaw}, ${y})`);
+    this.player.vehicle.place(x, y ?? this.groundHeight(x, z), z, yaw);
     this.filter.reset();
   }
 
-  /** Put the player back on the nearest point of the circuit, facing along it. */
+  /** Put the player back on the nearest road (circuit or island network), facing along it. */
   resetToRoad(): void {
     const v = this.player.vehicle;
-    const road = this.track.road;
-    const near = this.near;
-    let x = v.pos.x;
-    let z = v.pos.z;
+    const px = v.pos.x;
+    const pz = v.pos.z;
+    let x = px;
+    let z = pz;
     let yaw = datan2(-v.fwd.x, -v.fwd.z);
-    road.nearestAny(v.pos.x, v.pos.z, near);
-    if (near.dist > 4) {
+    // Nearest point on the circuit.
+    const near = this.near;
+    this.track.road.nearestAny(px, pz, near);
+    let bestD = near.dist;
+    let bx = 0;
+    let bz = 0;
+    let btx = 0;
+    let btz = 0;
+    {
       const at = { x: 0, y: 0, z: 0, tx: 0, tz: 0, i: 0 };
-      road.at(near.s, at);
-      x = at.x;
-      z = at.z;
-      yaw = datan2(-at.tx, -at.tz);
+      this.track.road.at(near.s, at);
+      bx = at.x;
+      bz = at.z;
+      btx = at.tx;
+      btz = at.tz;
     }
-    v.place(x, 0, z, yaw);
+    // Nearest point on the island's roads (keep the car's travel direction).
+    for (const e of this.world.edges) {
+      const r = e.road;
+      for (let i = 0; i < r.n; i += 2) {
+        const d = Math.sqrt((r.x[i] - px) * (r.x[i] - px) + (r.z[i] - pz) * (r.z[i] - pz));
+        if (d < bestD) {
+          bestD = d;
+          bx = r.x[i];
+          bz = r.z[i];
+          const same = r.tx[i] * v.fwd.x + r.tz[i] * v.fwd.z >= 0 ? 1 : -1;
+          btx = r.tx[i] * same;
+          btz = r.tz[i] * same;
+        }
+      }
+    }
+    if (bestD > 3) {
+      x = bx;
+      z = bz;
+      yaw = datan2(-btx, -btz);
+    }
+    v.place(x, this.groundHeight(x, z), z, yaw);
     this.filter.reset();
     this.emit('reset', this.player.id, x, z, 0);
   }
 
+  /** True when the player is on a paved or dirt road surface. */
+  onRoad(): boolean {
+    const v = this.player.vehicle;
+    if (this.track.road.nearest(v.pos.x, v.pos.z, this.near) && this.near.dist <= 6.5) return true;
+    return this.world.nearestRoad(v.pos.x, v.pos.z, 0.5, this.roadScratch) && this.roadScratch.dist <= this.roadScratch.halfWidth + 0.5;
+  }
+
   getState(): SimState {
     const v = this.player.vehicle;
-    const onRoad = this.track.road.nearest(v.pos.x, v.pos.z, this.near) && this.near.dist <= 6;
+    const onRoad = this.onRoad();
+    this.track.road.nearest(v.pos.x, v.pos.z, this.near);
     return {
       tick: this.tick,
       time: this.time,

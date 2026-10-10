@@ -4,10 +4,15 @@ import * as THREE from 'three';
 import { FixedStepper, SIM_DT } from './engine/loop';
 import { Input, neutralControls, type Action, type Controls } from './engine/input';
 import { Perf } from './engine/perf';
-import { Sky } from './engine/render/sky';
+import { Atmosphere, type TimeOfDay } from './engine/render/atmosphere';
+import { Pipeline } from './engine/render/pipeline';
+import { QUALITY, autoQuality, type Quality, type QualityName } from './engine/render/quality';
+import { patchTree } from './engine/render/materials';
+import { CarReflections } from './vehicles/render/reflections';
 import { CameraRig, CAM_LABELS } from './engine/render/camera-rig';
 import { Puffs, Skidmarks } from './engine/render/effects';
 import { buildTrackView } from './world/render/track-view';
+import { TerrainView } from './world/render/terrain-view';
 import { SURFACES } from './world/surfaces';
 import { newHit } from './world/ground';
 import { CarView } from './vehicles/render/car-view';
@@ -43,6 +48,8 @@ export interface GameOptions {
   seed: number;
   /** Force touch controls on or off (default: on for touch devices). */
   touch?: boolean;
+  quality?: QualityName;
+  time?: TimeOfDay;
 }
 
 const tmpVel = new THREE.Vector3();
@@ -59,11 +66,15 @@ export class Game {
   readonly perf = new Perf();
   readonly stepper = new FixedStepper();
   readonly mobile = isMobileDevice();
-  readonly sky: Sky;
+  readonly atmo: Atmosphere;
+  readonly pipeline: Pipeline;
+  readonly reflections: CarReflections;
+  quality: Quality;
   readonly hud: Hud;
   readonly touch: TouchControls;
   readonly pause: PauseMenu;
   readonly help: HelpCard;
+  readonly terrain: TerrainView;
   readonly skid = new Skidmarks(4000);
   readonly puffs = new Puffs(700);
   views: CarView[] = [];
@@ -73,7 +84,7 @@ export class Game {
   contextLost = false;
   units: 'kmh' | 'mph' = 'kmh';
   /** Maximum internal render pixels; quality presets change this. */
-  pixelBudget = isMobileDevice() ? 1280 * 720 : 1920 * 1080;
+  pixelBudget = 1280 * 720;
   fatalError: Error | null = null;
   /** Fixed camera for reviews and photo tools: [x, y, z, targetX, targetY, targetZ, fov]. */
   cameraOverride: number[] | null = null;
@@ -88,37 +99,52 @@ export class Game {
     this.canvas = opts.canvas;
     this.uiRoot = opts.ui;
     this.sim = new Sim(opts.seed);
+    const nav = typeof navigator !== 'undefined' ? (navigator as Navigator & { deviceMemory?: number }) : undefined;
+    this.quality = QUALITY[opts.quality ?? autoQuality(this.mobile, nav?.hardwareConcurrency ?? 4, nav?.deviceMemory)];
+    this.pixelBudget = this.quality.pixelBudget;
     this.renderer = new THREE.WebGLRenderer({
       canvas: this.canvas,
-      antialias: !this.mobile,
+      // MSAA happens in the HDR target when post-processing is on.
+      antialias: !this.quality.post && !this.mobile,
       powerPreference: 'high-performance',
       // Tests read pixels back after rendering.
       preserveDrawingBuffer: opts.test,
     });
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.0;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-    this.scene.fog = new THREE.Fog(0xc4d6e6, 350, 2600);
-    this.sky = new Sky(this.scene);
-    const sun = this.sky.sun;
-    sun.castShadow = true;
-    const sm = this.mobile ? 1024 : 2048;
-    sun.shadow.mapSize.set(sm, sm);
-    const sc = sun.shadow.camera;
-    sc.left = sc.bottom = -45;
-    sc.right = sc.top = 45;
-    sc.near = 10;
-    sc.far = 320;
-    sun.shadow.bias = -0.0004;
-    sun.shadow.normalBias = 0.03;
-    this.scene.environment = this.sky.buildEnvironment(this.renderer);
+    // Fog presence enables the patched atmospheric fog in every material.
+    this.scene.fog = new THREE.FogExp2(0xc4d6e6, 0);
+    this.atmo = new Atmosphere(this.scene, this.quality.clouds);
+    this.atmo.setTime(opts.time ?? 'golden');
+    this.pipeline = new Pipeline(this.renderer, this.scene, this.rig.camera, this.quality);
+    this.pipeline.setupShadows(this.atmo.sunDir, this.atmo.sun.intensity, this.atmo.sun.color);
+    const sun = this.atmo.sun;
+    if (this.pipeline.csm) {
+      // The cascades carry the direct sunlight.
+      sun.intensity = 0;
+    } else {
+      sun.castShadow = true;
+      const sm = this.quality.shadowSize;
+      sun.shadow.mapSize.set(sm, sm);
+      const sc = sun.shadow.camera;
+      sc.left = sc.bottom = -60;
+      sc.right = sc.top = 60;
+      sc.near = 10;
+      sc.far = 420;
+      sun.shadow.bias = -0.0004;
+      sun.shadow.normalBias = 0.03;
+    }
+    this.scene.environment = this.atmo.buildEnvironment(this.renderer);
+    this.reflections = new CarReflections(this.renderer);
 
+    this.terrain = new TerrainView(this.sim.world, this.quality.terrain);
+    this.scene.add(this.terrain.group);
     this.scene.add(buildTrackView(this.sim.track));
     this.scene.add(this.skid.mesh, this.puffs.points);
     this.rebuildCarViews();
+    patchTree(this.scene);
 
     this.hud = new Hud(this.uiRoot);
     this.touch = new TouchControls(this.uiRoot, this.input, (a) => this.onAction(a));
@@ -152,6 +178,8 @@ export class Game {
     document.addEventListener('visibilitychange', () => this.onVisibility());
     this.resize();
     this.rig.snap();
+    const p0 = this.sim.player.vehicle.pos;
+    this.terrain.prime(new THREE.Vector3(p0.x, p0.y + 2, p0.z));
   }
 
   get camera(): THREE.PerspectiveCamera {
@@ -163,9 +191,11 @@ export class Game {
     this.views = this.sim.cars.map((c) => {
       const spec = CARS.find((s) => s.id === c.specId) ?? CARS[0];
       const view = new CarView(c.vehicle, spec);
-      this.scene.add(view.root);
+      this.scene.add(view.root, view.contactShadow);
+      patchTree(view.root);
       return view;
     });
+    if (this.views[0] && this.reflections) this.reflections.track(this.views[0].root);
   }
 
   setTouchVisible(v: boolean): void {
@@ -312,10 +342,21 @@ export class Game {
       },
       (x, z) => (this.sim.ground.sample(x, z, 100, this.groundHit) ? this.groundHit.y : 0),
     );
-    this.sky.follow(pv.root.position, this.rig.camera);
+    this.perf.begin('terrain');
+    this.terrain.update(this.rig.camera.position, this.test ? 1e9 : 4);
+    this.perf.end('terrain');
+    this.perf.counters.tiles = this.terrain.tileCount;
+    this.atmo.update(dt, this.rig.camera, pv.root.position, 420);
+    if (this.pipeline.csm) this.pipeline.setSun(this.atmo.sunDir, this.atmo.preset.sunIntensity, this.atmo.sun.color);
+    // Speed sensations: a touch of radial blur and fringing near top speed.
+    const kmh = veh.speed * 3.6;
+    this.pipeline.speedBlur = this.rig.mode === 'bonnet' ? 0 : Math.max(0, Math.min(1, (kmh - 120) / 180)) * 0.045;
+    this.pipeline.aberration = Math.max(0, Math.min(1, (kmh - 150) / 200)) * 0.0025;
+    this.pipeline.exposure = this.atmo.exposure;
     if (render) {
       this.perf.begin('render');
-      this.renderer.render(this.scene, this.rig.camera);
+      this.reflections.update(this.renderer, this.scene, pv.root, this.quality.carReflections);
+      this.pipeline.render(dt > 0 ? dt : 1 / 60);
       this.perf.end('render');
       const info = this.renderer.info.render;
       this.perf.counters.draws = info.calls;
@@ -402,8 +443,10 @@ export class Game {
   resize(): void {
     const w = this.canvas.clientWidth || window.innerWidth;
     const h = this.canvas.clientHeight || window.innerHeight;
-    this.renderer.setPixelRatio(pixelRatioForBudget(w, h, window.devicePixelRatio || 1, this.pixelBudget));
+    const pr = pixelRatioForBudget(w, h, window.devicePixelRatio || 1, this.pixelBudget);
+    this.renderer.setPixelRatio(pr);
     this.renderer.setSize(w, h, false);
+    this.pipeline?.setSize(w, h, pr);
     this.rig.setAspect(w / Math.max(1, h));
     this.rig.camera.updateProjectionMatrix();
     this.puffs.setViewportHeight(h * this.renderer.getPixelRatio());

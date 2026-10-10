@@ -30,6 +30,8 @@ if (!hasWebGL2()) {
     ui,
     test: params.has('test'),
     seed: Number(params.get('seed') ?? 1) || 1,
+    quality: (['low', 'medium', 'high', 'ultra'] as const).find((q) => q === params.get('q')),
+    time: (['morning', 'noon', 'golden', 'sunset', 'night'] as const).find((t) => t === params.get('time')),
   });
   installDebugApi(game);
   game.start();

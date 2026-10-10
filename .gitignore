@@ -1,0 +1,11 @@
+node_modules/
+.cache/
+artifacts/
+*.log
+.DS_Store
+
+# .NET builds of the Unity core (dotnet/)
+dotnet/**/bin/
+dotnet/**/obj/
+# Python caches from the Blender scripts
+__pycache__/

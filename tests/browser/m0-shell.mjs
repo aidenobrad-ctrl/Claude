@@ -225,7 +225,8 @@ export const scenarios = [
           throw new Error('injected failure');
         };
       });
-      await g.page.waitForTimeout(400);
+      // Software rendering can take a few hundred ms per frame: wait for the next frame to hit it.
+      await g.page.waitForFunction(() => document.querySelector('.fatal p'), null, { timeout: 15000 }).catch(() => {});
       const r = await g.page.evaluate(() => ({
         overlay: document.querySelector('.fatal p')?.textContent ?? null,
         frames: window.__game.game.perf.frames,

@@ -140,6 +140,7 @@ export class Game {
       preserveDrawingBuffer: opts.test,
     });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.info.autoReset = false;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
@@ -527,6 +528,8 @@ export class Game {
     this.pipeline.exposure = this.atmo.exposure;
     if (render) {
       this.perf.begin('render');
+      // Count every draw of the frame: reflections, shadow cascades, scene and post.
+      this.renderer.info.reset();
       this.reflections.update(this.renderer, this.scene, pv.root, this.quality.carReflections);
       this.pipeline.render(dt > 0 ? dt : 1 / 60);
       this.perf.end('render');

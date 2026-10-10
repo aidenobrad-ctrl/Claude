@@ -218,9 +218,13 @@ function simplify(pts: XZ[], tol: number): XZ[] {
     const [bx, bz] = pts[b];
     const dx = bx - ax;
     const dz = bz - az;
-    const l = Math.sqrt(dx * dx + dz * dz) || 1;
+    const l2 = dx * dx + dz * dz;
     for (let i = a + 1; i < b; i++) {
-      const d = Math.abs((pts[i][0] - ax) * dz - (pts[i][1] - az) * dx) / l;
+      // Distance to the segment (not the infinite line): a hairpin that
+      // runs out along the chord and back must not fold flat.
+      let t = l2 > 0 ? ((pts[i][0] - ax) * dx + (pts[i][1] - az) * dz) / l2 : 0;
+      t = Math.max(0, Math.min(1, t));
+      const d = Math.hypot(pts[i][0] - (ax + dx * t), pts[i][1] - (az + dz * t));
       if (d > best) {
         best = d;
         bi = i;
@@ -350,18 +354,21 @@ function polyFromCells(path: number[], cls: RoadClassId): XZ[] {
   return chaikin(simplify(raw, tol), 1).map(([x, z]) => [Math.round(x * 2) / 2, Math.round(z * 2) / 2]);
 }
 
-/** Route node to node through optional waypoints. */
+/**
+ * Route a chain of places: one edge per consecutive pair, so every place in
+ * the chain is a real junction other roads can meet. Existing roads are not
+ * reused (that ran routes alongside each other at different heights);
+ * they cost extra to approach, so new roads cross them instead.
+ */
 function link(cls: RoadClassId, ids: string[]): void {
-  let pts: XZ[] = [];
   for (let i = 0; i + 1 < ids.length; i++) {
     const a = nodes[nid(ids[i])];
     const b = nodes[nid(ids[i + 1])];
-    const p = polyFromCells(route(cellOf(a.x, a.z), cellOf(b.x, b.z), { cls, reuse: 1 }), cls);
+    const p = polyFromCells(route(cellOf(a.x, a.z), cellOf(b.x, b.z), { cls }), cls);
     p[0] = [a.x, a.z];
     p[p.length - 1] = [b.x, b.z];
-    pts = pts.length ? [...pts, ...p.slice(1)] : p;
+    addEdge(cls, nid(ids[i]), nid(ids[i + 1]), p);
   }
-  addEdge(cls, nid(ids[0]), nid(ids[ids.length - 1]), pts);
 }
 
 /** Route from a node to the nearest part of the existing network. */
@@ -502,6 +509,31 @@ for (let pass = 0; pass < 200; pass++) {
     }
   }
   if (!changed) break;
+}
+
+// Check: closest approach between far-apart parts of each road (after all edits).
+for (const e of edges) {
+  const ptsD: XZ[] = [];
+  for (let k = 0; k + 1 < e.pts.length; k++) {
+    const len = Math.hypot(e.pts[k + 1][0] - e.pts[k][0], e.pts[k + 1][1] - e.pts[k][1]);
+    const n = Math.max(1, Math.ceil(len / 3));
+    for (let t = 0; t < n; t++) ptsD.push([e.pts[k][0] + ((e.pts[k + 1][0] - e.pts[k][0]) * t) / n, e.pts[k][1] + ((e.pts[k + 1][1] - e.pts[k][1]) * t) / n]);
+  }
+  const sD = [0];
+  for (let k = 1; k < ptsD.length; k++) sD.push(sD[k - 1] + Math.hypot(ptsD[k][0] - ptsD[k - 1][0], ptsD[k][1] - ptsD[k - 1][1]));
+  let worst = Infinity;
+  let where = '';
+  for (let i = 0; i < ptsD.length; i += 2) for (let j = i + 1; j < ptsD.length; j += 2) {
+    if (sD[j] - sD[i] < 60) continue;
+    const d = Math.hypot(ptsD[i][0] - ptsD[j][0], ptsD[i][1] - ptsD[j][1]);
+    if (d < worst) {
+      worst = d;
+      where = `(${ptsD[i][0].toFixed(0)}, ${ptsD[i][1].toFixed(0)}) s ${sD[i].toFixed(0)}/${sD[j].toFixed(0)} of ${sD[sD.length - 1].toFixed(0)}`;
+    }
+  }
+  if (worst < 2 * ROAD_CLASSES[e.cls].halfWidth + 10) {
+    console.log(`  close legs ${nodes[e.a].id}->${nodes[e.b].id}: ${worst.toFixed(1)} m at ${where} pts ${e.pts.length}`);
+  }
 }
 
 // Drop orphan nodes and write the data file.

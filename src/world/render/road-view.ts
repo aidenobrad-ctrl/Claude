@@ -7,6 +7,7 @@ import type { World, NetEdge } from '../world';
 import { patchMaterial } from '../../engine/render/materials';
 import { fbmTile } from './terrain-textures';
 import { PARAPET_W, CURB_H } from '../road-classes';
+import { railFoot } from '../guardrails';
 import { SURFACE } from '../surfaces';
 
 const CHUNK = 512;
@@ -319,6 +320,73 @@ export function buildRoadView(world: World): RoadView {
   for (const e of world.edges) {
     addRibbon(e, getB, keyOf);
     addBridges(e, getS, keyOf);
+  }
+
+  // Guardrails: a W-beam strip on posts every 2 m.
+  const steel = patchMaterial(new THREE.MeshStandardMaterial({ color: 0xb9bdc2, roughness: 0.38, metalness: 0.75, envMapIntensity: 0.9 }), { key: 'rail' });
+  const postPos: number[] = [];
+  // One mesh for every beam and one for every retaining wall: a handful of
+  // draw calls however many runs there are.
+  const s = new Solid();
+  const wall = new Solid();
+  for (const run of world.rails) {
+    const r = world.edges[run.edge].road;
+    const info = world.edges[run.edge].info;
+    const off = run.offset * run.side;
+    let since = 0;
+    for (let i = run.i0; i < run.i1; i++) {
+      const p = (k: number, dy: number): number[] => [r.x[k] - r.tz[k] * off, r.y[k] + dy, r.z[k] + r.tx[k] * off];
+      // Beam faces the road on its inner side and outward on the other.
+      const nIn = [r.tz[i] * run.side, 0, -r.tx[i] * run.side];
+      s.quad(p(i, 0.5), p(i + 1, 0.5), p(i + 1, 0.82), p(i, 0.82), nIn);
+      s.quad(p(i + 1, 0.5), p(i, 0.5), p(i, 0.82), p(i + 1, 0.82), [-nIn[0], 0, -nIn[2]]);
+      // Retaining wall: deck out to just past the rail, then a concrete face down to the ground.
+      const w = (k: number, dy: number, extra: number): number[] => {
+        const o = off + run.side * extra;
+        return [r.x[k] - r.tz[k] * o, r.y[k] + dy, r.z[k] + r.tx[k] * o];
+      };
+      const bottom = (k: number): number => railFoot(world, run, k);
+      const b0 = bottom(i);
+      const b1 = bottom(i + 1);
+      if (b0 < r.y[i] - 0.3 || b1 < r.y[i + 1] - 0.3) {
+        const W = info.halfWidth + info.shoulder;
+        const inner = (k: number): number[] => {
+          const o = W * run.side;
+          return [r.x[k] - r.tz[k] * o, r.y[k] - 0.07, r.z[k] + r.tx[k] * o];
+        };
+        if (Math.abs(off) + 0.2 > W) wall.quad(inner(i), inner(i + 1), w(i + 1, -0.07, 0.2), w(i, -0.07, 0.2), [0, 1, 0]);
+        const t0 = w(i, -0.07, 0.2);
+        const t1 = w(i + 1, -0.07, 0.2);
+        wall.quad(t1, t0, [t0[0], Math.min(b0, t0[1]), t0[2]], [t1[0], Math.min(b1, t1[1]), t1[2]], [-nIn[0], 0, -nIn[2]]);
+      }
+      since += r.s[i + 1] - r.s[i];
+      if (since >= 2) {
+        since = 0;
+        const q = p(i, 0);
+        postPos.push(q[0] + nIn[0] * -0.12, q[1], q[2] + nIn[2] * -0.12);
+      }
+    }
+  }
+  if (postPos.length) {
+    const postGeo = new THREE.BoxGeometry(0.12, 0.85, 0.16).translate(0, 0.42, 0);
+    const posts = new THREE.InstancedMesh(postGeo, steel, postPos.length / 3);
+    const m4 = new THREE.Matrix4();
+    for (let k = 0; k < postPos.length / 3; k++) posts.setMatrixAt(k, m4.makeTranslation(postPos[k * 3], postPos[k * 3 + 1], postPos[k * 3 + 2]));
+    posts.castShadow = true;
+    posts.receiveShadow = true;
+    group.add(posts);
+  }
+  if (world.rails.length) {
+    const beams = new THREE.Mesh(s.geometry(), steel);
+    beams.castShadow = true;
+    beams.receiveShadow = true;
+    beams.matrixAutoUpdate = false;
+    group.add(beams);
+    const walls = new THREE.Mesh(wall.geometry(), concrete);
+    walls.castShadow = true;
+    walls.receiveShadow = true;
+    walls.matrixAutoUpdate = false;
+    group.add(walls);
   }
 
   for (const b of chunks.values()) {

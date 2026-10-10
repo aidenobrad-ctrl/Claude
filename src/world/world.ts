@@ -8,6 +8,7 @@ import { ROAD_CLASSES, ROAD_SHOULDER, PARAPET_W, CURB_H, type RoadClass, type Ro
 import type { Colliders } from './colliders';
 import { buildSettlements, BUILDING, type BuildingIndex } from './settlements';
 import { buildFestival, type FestivalLayout } from './festival';
+import { findRailRuns, type RailRun } from './guardrails';
 import { ROAD_CLASS_ORDER, ROAD_EDGES, ROAD_NODES } from './data/roads';
 import { Road, sampleSpline, type RoadPoint } from './road';
 import { SURFACE, type SurfaceId } from './surfaces';
@@ -46,6 +47,10 @@ export interface RoadHit {
   bridge: boolean;
 }
 
+export function newHitRoad(): RoadHit {
+  return { edge: 0, i: 0, t: 0, lateral: 0, dist: 0, y: 0, halfWidth: 0, bridge: false };
+}
+
 export const TILE = 64;
 export const TILE_SPACING = 4;
 const TILE_N = TILE / TILE_SPACING + 1; // 17 samples per side
@@ -79,6 +84,28 @@ export class World {
 
   /** The festival site on the hub plateau. */
   readonly festival: FestivalLayout;
+  private railRuns: RailRun[] | null = null;
+
+  /** Guardrail runs along drop-offs (computed on first use; workers never need them). */
+  get rails(): RailRun[] {
+    if (!this.railRuns) this.railRuns = findRailRuns(this);
+    return this.railRuns;
+  }
+
+  private railOffs: Float32Array[] | null = null;
+  /** Per road sample of an edge: rail offset on the left (index 2i) and right (2i + 1), 0 if none. */
+  railOffsets(edge: number): Float32Array {
+    if (!this.railOffs) {
+      const offs = this.edges.map((e) => new Float32Array(e.road.n * 2));
+      for (const run of this.rails) {
+        const m = offs[run.edge];
+        const k = run.side > 0 ? 1 : 0;
+        for (let i = run.i0; i <= run.i1; i++) m[i * 2 + k] = run.offset;
+      }
+      this.railOffs = offs;
+    }
+    return this.railOffs[edge];
+  }
 
   constructor(seed = 1) {
     this.island = new Island(seed);
@@ -215,6 +242,58 @@ export class World {
         const target = hit.y - (hit.dist < hit.halfWidth - 0.6 ? 0.12 : 0.04);
         h = lerp(h, target, w);
       }
+      // Never bury a road: wherever another road's paved band passes (the
+      // other leg of a hairpin, a fork), cut the ground down under it.
+      h = this.cutUnderRoads(x, z, h);
+    }
+    return h;
+  }
+
+  /** Lower h below every non-bridge road surface whose paved band covers (x, z). */
+  private cutUnderRoads(x: number, z: number, h: number): number {
+    const list = this.grid.get(Math.floor(x / this.cell) * 100003 + Math.floor(z / this.cell));
+    if (!list) return h;
+    // Each leg of road in reach (a run of consecutive segments of one edge)
+    // cuts to the height of its own nearest point. Taking every segment in
+    // reach would pick up the clamped end of a neighbouring segment on a
+    // slope and dig the trench too deep; taking one per edge would miss the
+    // other leg of a hairpin. The grid lists segments in edge, index order.
+    let edgeId = -1;
+    let lastI = -10;
+    let bestD2 = Infinity;
+    let bestY = 0;
+    let bestCut = false;
+    for (let k = 0; k <= list.length; k++) {
+      const packed = k < list.length ? list[k] : -1;
+      const e = packed < 0 ? -2 : (packed / 65536) | 0;
+      const i = packed - e * 65536;
+      if (e !== edgeId || i > lastI + 2) {
+        if (bestCut && h > bestY) h = bestY;
+        if (packed < 0) break;
+        edgeId = e;
+        bestD2 = Infinity;
+        bestCut = false;
+      }
+      lastI = i;
+      const edge = this.edges[e];
+      const r = edge.road;
+      const ax = r.x[i];
+      const az = r.z[i];
+      const dx = r.x[i + 1] - ax;
+      const dz = r.z[i + 1] - az;
+      const l2 = dx * dx + dz * dz;
+      let t = l2 > 0 ? ((x - ax) * dx + (z - az) * dz) / l2 : 0;
+      t = t < 0 ? 0 : t > 1 ? 1 : t;
+      const px = ax + dx * t - x;
+      const pz = az + dz * t - z;
+      const d2 = px * px + pz * pz;
+      if (d2 >= bestD2) continue;
+      bestD2 = d2;
+      // A trench a few metres wider than the road, so no leg of a hairpin
+      // or fork is buried by its neighbour's embankment between grid points.
+      const band = edge.info.halfWidth + 4;
+      bestCut = d2 <= band * band && !edge.bridge[i] && !edge.bridge[i + 1];
+      bestY = r.y[i] + (r.y[i + 1] - r.y[i]) * t - 0.12;
     }
     return h;
   }
@@ -633,9 +712,15 @@ export class WorldGround implements Ground {
     // sidewalks; elsewhere the shoulder is terrain.
     if (this.world.nearestRoad(x, z, ROAD_SHOULDER, hit) && hit.y <= yRef + 1.6) {
       const info = this.world.edges[hit.edge].info;
-      const onDeck = hit.dist <= hit.halfWidth || ((hit.bridge || info.sidewalk) && hit.dist <= hit.halfWidth + info.shoulder);
-      // On the paved surface (or a bridge deck above the terrain).
-      if (onDeck && (hit.bridge || hit.y >= t.y - 0.3)) {
+      const paved = hit.dist <= hit.halfWidth;
+      // Behind a guardrail the shoulder is a retaining-wall deck out to the rail.
+      const ro = paved ? 0 : this.world.railOffsets(hit.edge)[hit.i * 2 + (hit.lateral > 0 ? 1 : 0)];
+      const railed = ro > 0 && hit.dist <= ro;
+      const onDeck = paved || railed || ((hit.bridge || info.sidewalk) && hit.dist <= hit.halfWidth + info.shoulder);
+      // The paved surface always wins under the wheels (there are no tunnels:
+      // terrain above a road is an interpolation artifact); sidewalks and
+      // bridge shoulders only where they are not below the ground.
+      if (onDeck && (paved || hit.bridge || hit.y >= t.y - 0.3)) {
         const kerb = info.sidewalk && hit.dist > hit.halfWidth;
         out.y = hit.y + (kerb ? CURB_H : 0);
         out.nx = 0;

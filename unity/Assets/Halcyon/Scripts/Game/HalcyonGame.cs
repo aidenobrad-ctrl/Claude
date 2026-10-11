@@ -15,6 +15,8 @@ namespace Halcyon
         public static HalcyonGame Instance { get; private set; }
 
         public string CarId = "halden-aster-gt";
+        /// <summary>Repaint the car (otherwise it wears its own colour from the Blender style file).</summary>
+        public bool OverridePaint;
         public Color Paint = new Color(0.78f, 0.15f, 0.18f);
         public bool BuildTrees = true;
         public bool BuildBuildings = true;
@@ -27,6 +29,9 @@ namespace Halcyon
 
         IslandRuntime island;
         DriverInput input;
+        Garage garage;
+        /// <summary>The keyboard and gamepad (menus read their keys here).</summary>
+        public DriverInput Driver => input;
         string captureDir;
         Controls scripted;
         double accumulator;
@@ -107,10 +112,11 @@ namespace Halcyon
             yield return null;
             Sim = new Simulation(data, SpawnAt.Island, CarId);
             input = new DriverInput();
-            PlayerRig = CarRig.Create(Sim.Player.vehicle, Sim.Player.specId, Paint);
+            PlayerRig = CarRig.Create(Sim.Player.vehicle, Sim.Player.specId, OverridePaint ? Paint : (Color?)null);
             CameraRig = new ChaseCamera(cam);
             CameraRig.Snap();
             UpdateCamera(0.016f);
+            garage = Garage.Create(this, data, world);
             Ready = true;
             Debug.Log($"Halcyon: ready in {Time.realtimeSinceStartup - loadStart:F1} s");
             captureDir = Arg("-halcyon-capture");
@@ -169,10 +175,35 @@ namespace Halcyon
             yield return null;
         }
 
+        /// <summary>Put the player in another car (from the garage) where they stand.</summary>
+        public void SwitchCar(string specId, Color? paint)
+        {
+            Sim.ChangePlayerCar(specId);
+            Sim.Events.Clear();
+            if (PlayerRig != null) Destroy(PlayerRig.gameObject);
+            PlayerRig = CarRig.Create(Sim.Player.vehicle, specId, paint ?? (OverridePaint ? Paint : (Color?)null));
+            CameraRig.Snap();
+            accumulator = 0;
+        }
+
         void Update()
         {
             if (!Ready) return;
-            var c = scripted ?? input.Poll();
+            if (scripted == null && garage != null)
+            {
+                input.Poll();
+                if (garage.IsOpen)
+                {
+                    garage.Tick(); // the garage reads the menu keys; the car waits
+                    return;
+                }
+                if (input.Menu.garage)
+                {
+                    garage.Open(Sim.Player.specId);
+                    return;
+                }
+            }
+            var c = scripted ?? input.Controls;
             if (c.pressed[ControlAction.Pause]) Paused = !Paused;
             if (c.pressed[ControlAction.Camera]) CameraRig.Cycle();
             if (c.pressed[ControlAction.Lights]) PlayerRig.Headlights = !PlayerRig.Headlights;
@@ -208,7 +239,7 @@ namespace Halcyon
 
         void LateUpdate()
         {
-            if (!Ready) return;
+            if (!Ready || (garage != null && garage.IsOpen)) return;
             UpdateCamera(Mathf.Min(Time.deltaTime, 0.1f));
         }
 
@@ -231,6 +262,7 @@ namespace Halcyon
                 shadow = new GUIStyle(big);
                 shadow.normal.textColor = new Color(0, 0, 0, 0.5f);
             }
+            if (garage != null && garage.IsOpen) return;
             if (!Ready)
             {
                 GUI.color = new Color(0.05f, 0.06f, 0.08f, 1);
@@ -257,7 +289,8 @@ namespace Halcyon
             GUI.DrawTexture(new Rect(Screen.width - 250, Screen.height - 18, 220 * frac, 6), Texture2D.whiteTexture);
             GUI.color = Color.white;
             var help = new GUIStyle(small) { alignment = TextAnchor.UpperLeft, fontSize = 13 };
-            GUI.Label(new Rect(14, 10, 700, 22), "W/S throttle & brake · A/D steer · Space handbrake · E/Q shift · R reset · C camera · B look back · L lights · Esc pause", help);
+            GUI.Label(new Rect(14, 10, 900, 22), "W/S throttle & brake · A/D steer · Space handbrake · E/Q shift · R reset · C camera · B look back · L lights · G garage · Esc pause", help);
+            GUI.Label(new Rect(14, 30, 600, 22), PlayerRig.Visual.Look.name, help);
             if (Paused)
             {
                 var p = new GUIStyle(big) { alignment = TextAnchor.MiddleCenter };

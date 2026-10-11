@@ -3,9 +3,11 @@
 // otherwise the legacy Input Manager.
 //   Keyboard: W/S or arrows (throttle/brake), A/D or arrows (steer), Space
 //   (handbrake), E/Q (shift up/down), R (reset to road), C (camera),
-//   B (look back), Esc (pause).
+//   B (look back), L (lights), Esc (pause), G (garage).
 //   Gamepad: left stick (steer), RT/LT (throttle/brake), A (handbrake),
-//   B/X (shift), Y (camera), Back (reset), Start (pause).
+//   B/X (shift), Y (camera), Back (reset), Start (pause), LB (garage).
+//   Menus (the garage): arrows / WASD / d-pad, Enter / Space / A to pick,
+//   Esc / Backspace / B to go back.
 using Halcyon.Core;
 using UnityEngine;
 #if HALCYON_INPUT_SYSTEM && ENABLE_INPUT_SYSTEM
@@ -19,6 +21,15 @@ namespace Halcyon
         public readonly Controls Controls = new Controls();
         readonly ActionStates prevHeld = new ActionStates();
         readonly PadSettings pad = PadSettings.Default();
+
+        /// <summary>Menu keys (the garage): true on the frame they go down.</summary>
+        public struct MenuKeys
+        {
+            public bool left, right, up, down, select, back, garage;
+        }
+
+        public MenuKeys Menu;
+        MenuKeys menuHeld;
 
         /// <summary>Poll devices; call once per rendered frame.</summary>
         public Controls Poll()
@@ -34,6 +45,24 @@ namespace Halcyon
 #if ENABLE_LEGACY_INPUT_MANAGER
             if (!any) any |= ReadLegacy(c);
 #endif
+            var m = new MenuKeys();
+#if HALCYON_INPUT_SYSTEM && ENABLE_INPUT_SYSTEM
+            ReadMenuInputSystem(ref m);
+#endif
+#if ENABLE_LEGACY_INPUT_MANAGER
+            ReadMenuLegacy(ref m);
+#endif
+            Menu = new MenuKeys
+            {
+                left = m.left && !menuHeld.left,
+                right = m.right && !menuHeld.right,
+                up = m.up && !menuHeld.up,
+                down = m.down && !menuHeld.down,
+                select = m.select && !menuHeld.select,
+                back = m.back && !menuHeld.back,
+                garage = m.garage && !menuHeld.garage,
+            };
+            menuHeld = m;
             // Edges: pressed this frame and not the last.
             c.pressed.Clear();
             for (int i = 0; i < ActionStates.Count; i++)
@@ -45,6 +74,18 @@ namespace Halcyon
         }
 
 #if ENABLE_LEGACY_INPUT_MANAGER
+        static void ReadMenuLegacy(ref MenuKeys m)
+        {
+            bool Key(KeyCode k) => Input.GetKey(k);
+            m.left |= Key(KeyCode.LeftArrow) || Key(KeyCode.A);
+            m.right |= Key(KeyCode.RightArrow) || Key(KeyCode.D);
+            m.up |= Key(KeyCode.UpArrow) || Key(KeyCode.W);
+            m.down |= Key(KeyCode.DownArrow) || Key(KeyCode.S);
+            m.select |= Key(KeyCode.Return) || Key(KeyCode.KeypadEnter) || Key(KeyCode.Space);
+            m.back |= Key(KeyCode.Escape) || Key(KeyCode.Backspace);
+            m.garage |= Key(KeyCode.G);
+        }
+
         bool ReadLegacy(Controls c)
         {
             bool Key(KeyCode k) => Input.GetKey(k);
@@ -71,6 +112,33 @@ namespace Halcyon
 #endif
 
 #if HALCYON_INPUT_SYSTEM && ENABLE_INPUT_SYSTEM
+        static void ReadMenuInputSystem(ref MenuKeys m)
+        {
+            var kb = Keyboard.current;
+            if (kb != null)
+            {
+                m.left |= kb.leftArrowKey.isPressed || kb.aKey.isPressed;
+                m.right |= kb.rightArrowKey.isPressed || kb.dKey.isPressed;
+                m.up |= kb.upArrowKey.isPressed || kb.wKey.isPressed;
+                m.down |= kb.downArrowKey.isPressed || kb.sKey.isPressed;
+                m.select |= kb.enterKey.isPressed || kb.numpadEnterKey.isPressed || kb.spaceKey.isPressed;
+                m.back |= kb.escapeKey.isPressed || kb.backspaceKey.isPressed;
+                m.garage |= kb.gKey.isPressed;
+            }
+            var gp = Gamepad.current;
+            if (gp != null)
+            {
+                var stick = gp.leftStick.ReadValue();
+                m.left |= gp.dpad.left.isPressed || stick.x < -0.6f;
+                m.right |= gp.dpad.right.isPressed || stick.x > 0.6f;
+                m.up |= gp.dpad.up.isPressed || stick.y > 0.6f;
+                m.down |= gp.dpad.down.isPressed || stick.y < -0.6f;
+                m.select |= gp.buttonSouth.isPressed;
+                m.back |= gp.buttonEast.isPressed;
+                m.garage |= gp.leftShoulder.isPressed;
+            }
+        }
+
         bool ReadInputSystem(Controls c)
         {
             bool used = false;

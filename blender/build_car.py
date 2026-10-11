@@ -31,7 +31,7 @@ def args():
     argv = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
     p = argparse.ArgumentParser()
     p.add_argument('--car', default='halden-aster-gt')
-    p.add_argument('--out', default=os.path.join(HERE, '..', 'unity', 'Assets', 'Halcyon', 'Art', 'Cars'))
+    p.add_argument('--out', default=os.path.join(HERE, '..', 'unity', 'Assets', 'Halcyon', 'Art', 'Resources', 'Cars'))
     p.add_argument('--render', default='')
     p.add_argument('--voxel', type=float, default=0.012)
     p.add_argument('--samples', type=int, default=48)

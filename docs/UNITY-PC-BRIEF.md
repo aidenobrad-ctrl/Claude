@@ -1,179 +1,113 @@
 # Halcyon in Unity + Blender — brief for the session on the user's PC
 
 You are the hands-on-the-PC half of a two-session team building **Halcyon**, an original-IP
-open-world festival racer (in the spirit of Forza Horizon, but our own world, cars and brands).
-You run on the user's Windows PC ("Hexro") through Remote Control. The other half is a cloud
-Claude Code session that wrote the existing web version and is porting its data and physics.
-The user's request: **"Make it in Unity and Blender by controlling my PC."** Your job is to do
-exactly that, on this PC, for real. The user may follow along from the Claude app and may not
-be sitting at the PC.
+open-world festival racer (in the spirit of Forza Horizon, but our own world, cars and
+brands). You run on the user's Windows PC ("Hexro") through Remote Control. The other half
+is a cloud Claude Code session that wrote the web version and the Unity version so far.
 
-## The project
+The user asked: **"Make it in Unity and Blender by controlling my PC."** Your job is to
+run, verify and polish it in the real Unity Editor and Blender on this PC, visibly. The
+user may follow along from the Claude app rather than sitting at the PC.
 
-- Repo (public): https://github.com/aidenobrad-ctrl/Claude, branch `claude/make-this-gmpw4y`
-  (PR #1). Commit and push only to that branch.
-- It already holds a full web version (TypeScript + three.js): a 10.24 km square island
-  (WORLD_HALF = 5120 m, sea level y = 0) with mountains, coast, rivers and lakes, a 63 km road
-  network, villages, a city, the festival hub, and a 240 Hz car physics sim.
-- Read first: `prompts/open-world-racer.md` (the original brief and priorities),
-  `docs/DESIGN.md`, `docs/CARS.md` (the planned car roster), `docs/STATE.md`.
-- Priorities, highest first: driving feel, AI, car visuals, map size, event variety, polish.
-  On top of that, the user wants graphics that look insane.
+## What already exists
 
-## Split of work (so the two sessions never edit the same files)
+Repo (public): https://github.com/aidenobrad-ctrl/Claude, branch `claude/make-this-gmpw4y`
+(PR #1). Commit and push only to that branch. Read `docs/UNITY.md` first; it has the full
+layout and how everything was verified.
 
-**The cloud session owns** (don't edit; say in your transcript if something is wrong):
-
-- `tools/export-unity.ts`
-- `unity/Assets/Halcyon/Data/**`: the island exported from the web version (heightmap, splat
-  weights, roads, guardrails, trees, buildings, festival layout, spawn), with a README
-  describing every format and a C# loader.
-- `unity/Assets/Halcyon/Core/**`: pure C#, covering the vehicle physics port, ground and collider
-  queries, and routing.
-- `unity/Assets/Halcyon/Scripts/Driving/**`: car controller, chase camera, input glue.
-
-These land on the branch over time. Run `git pull --rebase` between tasks to pick them up. If
-they break compilation in your Unity, make the smallest change that compiles and say exactly
-what you changed.
-
-**Blender scripts** (`blender/**`) are written and verified by the cloud session, which
-runs the same Blender version (5.1.1) headless. Run them on this PC with the local Blender
-(`C:\Program Files\Blender Foundation\Blender 5.1\blender.exe`, found by an earlier
-session), open the results in Blender's GUI so the user sees them, and report anything
-that looks wrong. Improve them if you like; just say what you changed.
-
-**You own everything else**:
-
-- The Unity project itself: `unity/ProjectSettings`, `unity/Packages`, scenes, render
-  settings, shaders, materials, world builders, editor tools, UI.
-- Importing the Blender exports (under `unity/Assets/Halcyon/Art/**`) into Unity:
-  materials, prefabs, LODs.
+- `unity/`: a Unity 6 project.
+  - It has a package manifest (URP, Input System) and an editor script that sets up URP,
+    linear colour and the game scene on first open.
+  - Pressing Play in any scene builds the island: terrain, roads, water, 185k trees,
+    buildings and the festival.
+  - It spawns the Halden Aster GT on the festival road, driven by a C# port of the web
+    version's 240 Hz physics. That port is bit-exact with the TypeScript.
+  - Every script compiles against Unity reference assemblies, but **it has never run in a
+    real Unity Editor**. That is your first job.
+- `blender/build_car.py`: generates the car in Blender 5.1. It has been tested with the
+  bpy 5.1.1 module.
+  - The car's FBX is in `unity/Assets/Halcyon/Art/Resources/Cars/`.
+  - Blender 5.1.1 is installed here at
+    `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe`.
 
 ## Step 0 — look before you touch
 
-Report this first, briefly, without changing anything:
+Report briefly, changing nothing:
 
 - Windows version.
 - CPU, GPU and VRAM.
 - Free disk space.
-- git version, and whether push credentials exist (`git config --global credential.helper`,
-  `gh auth status` if gh is installed).
-- Blender installs and their versions (5.1.1 is known to be at
-  `C:\Program Files\Blender Foundation\Blender 5.1\`).
-- Unity Hub and the installed editors (`C:\Program Files\Unity\Hub\Editor\*`).
-- Node (optional).
+- git, and whether push credentials exist.
+- Blender version.
+- Unity Hub and installed editors (`C:\Program Files\Unity\Hub\Editor\*`).
 
 ## Step 1 — tools and repo
 
-- **Blender:** use the newest installed version. If there is none, get the latest stable
-  release. A portable zip in `C:\Users\aiden\Tools\` needs no admin rights; winget is fine too.
-- **Unity:** use the newest installed Unity 6 (6000.x) editor; otherwise the newest at or after
-  2022.3 LTS.
-  - If none is installed, install Unity Hub and the current Unity 6 LTS editor
-    (`"Unity Hub.exe" -- --headless install --version <v> --changeset <c>`).
-  - Then ask the user to sign in to Unity Hub once for a free Personal licence. Tell them
-    exactly what to click, and keep going on Blender work while you wait.
-  - Never ask for or handle their passwords.
-- **Repo:** clone the branch to `C:\Users\aiden\Halcyon`. If you can't write outside your
-  working folder, clone inside it instead.
-- **Git identity:** use the existing one. If there is none, set a repo-local
-  `user.name aidenobrad-ctrl` and `user.email aidenobrad@gmail.com`.
-- **Scope:** stay inside the clone, the Tools folder and the app install folders. Don't modify
-  anything else on the PC, don't change system settings, and don't close the user's other apps.
+**Unity.** Use the newest installed Unity 6 (6000.x).
 
-## Step 2 — the Unity project (`unity/` in the repo)
+- If none is installed, install Unity Hub and the current Unity 6 LTS editor with Windows
+  Build Support.
+- Then ask the user to sign in to the Hub once for a free Personal licence. Tell them
+  exactly what to click.
+- Never handle their passwords.
 
-**Project setup**
+**Repo.** Clone the branch to `C:\Users\aiden\Halcyon`, or inside your working folder if
+you can't write outside it.
 
-- Create it from the URP template, e.g. `Unity.exe -batchmode -createProject <repo>\unity
-  -cloneFromTemplate "<Editor>\Data\Resources\PackageManager\ProjectTemplates\com.unity.template.universal-*.tgz"`
-  (or the URP blank template, or via the Hub).
-- Use Linear colour space, Force Text serialization and visible meta files.
-- Add a Unity `.gitignore` (Library, Temp, Logs, obj, UserSettings, Build*, *.csproj, *.sln).
-- Add a `.gitattributes` marking fbx, blend, png, jpg, exr, tif, bytes and wav as binary.
-- Packages: URP, Input System (both input handlers on is fine), TextMeshPro/uGUI. Cinemachine
-  only if you want it.
+- Use the existing git identity. If there is none, set a repo-local `user.name
+  aidenobrad-ctrl` and `user.email aidenobrad@gmail.com`.
 
-**Graphics bar (PC/High tier)**
+**Scope.** Stay inside the clone, a Tools folder and the app install folders. Don't change
+system settings or close the user's apps.
 
-- HDR and Forward+.
-- TAA (or MSAA 4x).
-- SSAO.
-- Soft shadows: 4 cascades over about 600 m, with a 4096 shadow map.
-- A global Volume: bloom, ACES or neutral tonemapping, colour grading, a subtle vignette, light
-  motion blur.
-- Fog.
-- A strong sun with an HDRI or procedural sky.
-- A reflection probe that follows the car.
+## Step 2 — first real run
 
-Medium and Low tiers (laptops, mobile) come later.
+1. Open `unity/` in the Editor and let it import.
+   - Watch the Console. `Halcyon: created and assigned Assets/Settings/Halcyon_URP.asset`
+     means setup worked.
+   - Fix any compile error that only real Unity reports with the smallest change, and
+     note it.
+2. Build and capture screenshots, then look at every PNG (Read tool) and judge it
+   honestly:
 
-**Editor tooling to build early**
+   ```
+   Unity.exe -batchmode -quit -projectPath unity -executeMethod Halcyon.EditorTools.HalcyonBuild.BuildWindows -logFile build.log
+   unity\Builds\Windows\Halcyon.exe -screen-width 1280 -screen-height 720 -halcyon-capture shots
+   ```
 
-- A batchmode compile check: `Unity.exe -batchmode -quit -projectPath … -logFile …`, then grep
-  the log for `error CS`.
-- `Halcyon/Capture Screenshots`: an `-executeMethod` entry that opens a scene, renders named
-  viewpoints to PNG at 1280×720, 390×844 and 844×390, and quits.
-- LOOK at every PNG (Read tool), critique it honestly, fix, re-shoot. That is the playtest loop.
-- Batchmode can't open a project that is open in the Editor GUI, so close the GUI before batch
-  runs.
+   Batchmode can't open a project that is open in the Editor GUI, so close the GUI first.
+3. Open the project in the Editor GUI, open `Assets/Scenes/Halcyon.unity`, and press Play
+   so the user sees the island and the car on their screen.
 
-## Step 3 — Blender
+## Step 3 — make it look insane
 
-The cloud session writes the Blender generators in `blender/` and checks them with
-Blender 5.1.1 headless (Cycles renders in `blender/renders/`). Your part:
+Work through these, highest value first. Shoot screenshots and look at them after each.
 
-- Run them here (`blender -b -P blender/<script>.py -- <args>`; each script's header gives
-  its arguments).
-- Open the results in Blender's GUI on screen so the user can see the cars.
-- Import the FBX exports into Unity with URP materials. Exported materials are named
-  `Halcyon_*` (Paint, Glass, Trim, Chrome, LightFront, LightRear, Rubber, Rim, Brake,
-  Caliper); map them to URP Lit/Complex Lit materials. Car paint should use clear coat.
-- If you have time before the cloud scripts land: trees and plants, rocks, poles, signs,
-  festival structures, and CC0 PBR terrain/road textures (Poly Haven / ambientCG; record
-  sources and licences in `unity/Assets/Halcyon/Art/CREDITS.md`).
-- Tell the cloud session in your transcript which assets you are making, so you don't
-  both make the same one.
-
-## Step 4 — the island in Unity (when the cloud data lands)
-
-The exact data formats are in `unity/Assets/Halcyon/Data/README.md`.
-
-- **Terrain** from the exported heightmap and splat weights.
-- **Road meshes** from the road samples:
-  - asphalt with markings
-  - kerbs and sidewalks in towns
-  - bridges
-  - guardrails
-- **Water:** a custom URP water shader with depth tint, scrolling normals, fresnel sky
-  reflection and shore foam.
-- **Vegetation:** trees and plants instanced from the data.
-- **Buildings** and the festival hub.
-- **The drivable car,** using the cloud session's controller.
-
-First playable target: spawn at the festival and drive the island at 60 fps on this PC.
+- **Terrain:** swap the procedural terrain layers for CC0 PBR sets from Poly Haven or
+  ambientCG. Record sources and licences in `unity/Assets/Halcyon/Art/CREDITS.md`.
+- **Water:** a real URP water shader (depth tint, normals, fresnel, shore foam) in place
+  of the transparent Lit.
+- **Trees:** Blender-made trees in place of `TreeMeshes`.
+- **Lighting and post:** sky, fog and post-processing tuned from screenshots.
+- **The car:** check it in the Editor. Paint should use Complex Lit clear coat, and the
+  wheels should sit right and spin the right way.
+- **Blender on screen:** run `blender/build_car.py` here, then open the result in
+  Blender's GUI for the user.
 
 ## How we work
 
-**Commits**
-
-- Commit small and often: `git pull --rebase`, then push to `claude/make-this-gmpw4y`.
-- Don't commit Library/Temp, or .blend files over about 20 MB.
-- Don't put AI model names in commits or code.
-- If a push fails for credentials, keep committing locally and tell the user the one command
-  that fixes it (e.g. `gh auth login`). Don't wait on it.
-
-**Docs:** keep `docs/UNITY.md` current: how to open and run, what's done, decisions, what each
-script does, known issues.
-
-**Showing the user:** put the work on screen at good moments. Open the hero car in Blender's
-GUI, and open the Unity project in the Editor on the scene. Close the Editor again before batch
-runs.
-
-**Reporting**
-
-- Don't fake results. If a render or build fails, say so and fix it.
-- Write a short progress line after each step. The cloud session reads this transcript and may
-  send you messages (e.g. "data landed in <commit>").
-- Work autonomously. Only stop to ask the user when something needs them (Unity sign-in, a UAC
-  prompt).
+- **Commits:**
+  - Commit small and often: `git pull --rebase`, then push to `claude/make-this-gmpw4y`.
+  - Don't commit `Library/`, `Temp/`, `Builds/` or big `.blend` files.
+  - No AI model names in commits or code.
+  - If a push fails for credentials, keep committing locally and tell the user the one
+    command that fixes it (e.g. `gh auth login`).
+- **Scripts:**
+  - `Core/`, `Data/`, `Scripts/` and `blender/` were written by the cloud session. Fix
+    what Unity reports, and improve freely.
+  - Say what you changed and why in your progress notes and in `docs/UNITY.md`, so the
+    cloud session can keep the TypeScript references and tests in step.
+- **Honesty:** don't fake results. If something fails, say so and fix it.
+- **Progress:** write a short progress line after each step.
+- **Autonomy:** work on your own, and stop only for things that need the user (Unity
+  sign-in, a UAC prompt).

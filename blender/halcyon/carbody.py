@@ -21,6 +21,10 @@ import numpy as np
 
 
 # --- Smooth operators ---------------------------------------------------------------
+# Minimum body above a wheel arch, m (see CarBody.arch_lift).
+ARCH_SKIN = 0.08
+
+
 def smin(a, b, k):
     h = np.clip(0.5 + 0.5 * (b - a) / k, 0.0, 1.0)
     return b + (a - b) * h - k * h * (1.0 - h)
@@ -227,7 +231,27 @@ class CarBody:
         crown = s.crown * (v / hw) ** 2
         fender = s.fender_crown * sstep(0.42, 0.72, np.abs(v)) * (bump(u - s.axle_f, 0.8) + 0.9 * bump(u - s.axle_r, 0.85))
         bulge = s.hood_bulge * bump(v, 0.32) * sstep(s.u_front - 0.1, s.axle_f, u) * w_hood
-        return z - crown + fender + bulge
+        z = z - crown + fender + bulge
+        return z + self.arch_lift(u, v, z)
+
+    def arch_lift(self, u, v, z):
+        """
+        How far the top surface must rise over the wheels to keep ARCH_SKIN of
+        body above each arch: a thinner skin than about two voxels tears when
+        it is polygonized. Zero wherever the fender is already high enough.
+        """
+        s = self.s
+        r = s.tire_r + s.arch_gap
+        lift = 0.0 * z
+        for axle, track, tw in ((s.axle_f, s.track_f, s.tire_w_f), (s.axle_r, s.track_r, s.tire_w_r)):
+            du = u - axle
+            edge = s.tire_r + np.sqrt(np.maximum(r * r - du * du, 0.0)) + ARCH_SKIN
+            inner = track / 2 - tw / 2 - 0.08
+            weight = bump(du, r + 0.18) * sstep(inner - 0.12, inner + 0.04, np.abs(v))
+            k = 0.006
+            need = k * np.log1p(np.exp(np.clip((edge - z) / k, -60.0, 60.0)))  # a smooth max(0, edge - z)
+            lift = np.maximum(lift, need * weight)
+        return lift
 
     def bottom_z(self, u):
         s = self.s

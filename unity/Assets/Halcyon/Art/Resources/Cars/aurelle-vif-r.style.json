@@ -1,0 +1,14 @@
+{
+  "id": "aurelle-vif-r",
+  "name": "Aurelle Vif R",
+  "paint": "#E8E8EA",
+  "accent": "#C8102E",
+  "rim": "#1B1B1D",
+  "caliper": "#D01F1F",
+  "interior": "#1A1A1C",
+  "metallic": 0.1,
+  "paintRoughness": 0.32,
+  "accentMetallic": 0.1,
+  "rimMetallic": 0.4,
+  "rimRoughness": 0.35
+}

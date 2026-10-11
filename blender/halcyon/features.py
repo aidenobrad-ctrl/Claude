@@ -116,10 +116,14 @@ def make_features(b):
     out += side_trim(b, side)
     if L.get('stripes'):
         sv, sw = L['stripes']
+        glass_regions = [f.region for f in out if f.kind == 'hole' and f.material == 'Glass']
 
         def stripes(u, v, z, n):
             d = np.abs(np.abs(v) - sv) - sw
-            return smax(d, facing(nz_min=0.25)(n), 0.004)
+            d = smax(d, facing(nz_min=0.25)(n), 0.004)
+            for g in glass_regions:
+                d = np.maximum(d, -(g(u, v, z, n) - 0.012))  # paint, not glass, with a little gap
+            return d
         out.append(Hole('Stripes', stripes, 0.0008, 'Accent', wall='Accent', margin=0.003))
     if s.style == 'pickup':
         u0, u1 = s.u_rear + 0.03, b.cab_back_u - 0.04
@@ -455,7 +459,7 @@ def front_openings(b, on_front):
         def splitter(u, v, z, n):
             return smax(z - (lo_z + L.get('split_h', 0.04)), (s.axle_f + 0.35) - u, 0.01)
         out.append(Hole('Splitter', splitter, 0.004, L.get('split_mat', 'Trim'), wall='Trim', margin=0.008))
-    if L.get('plates', True):
+    if L.get('plates', True) and L.get('plate_front', True):
         pz = L.get('pf_z', iz + ih + 0.075 if intake in ('center', 'triple', 'wide') else lo_z + 0.27)
 
         def plate(u, v, z, n):

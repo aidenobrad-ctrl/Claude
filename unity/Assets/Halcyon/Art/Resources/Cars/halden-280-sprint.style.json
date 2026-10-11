@@ -1,0 +1,14 @@
+{
+  "id": "halden-280-sprint",
+  "name": "Halden 280 Sprint",
+  "paint": "#1D5C3A",
+  "accent": "#111111",
+  "rim": "#D8D8DC",
+  "caliper": "#D92B1C",
+  "interior": "#8A5A3A",
+  "metallic": 0.35,
+  "paintRoughness": 0.32,
+  "accentMetallic": 0.3,
+  "rimMetallic": 1.0,
+  "rimRoughness": 0.1
+}

@@ -1,0 +1,14 @@
+{
+  "id": "orsini-saetta",
+  "name": "Orsini Saetta",
+  "paint": "#F07A10",
+  "accent": "#111111",
+  "rim": "#2A2C30",
+  "caliper": "#F2C014",
+  "interior": "#1A1A1C",
+  "metallic": 0.45,
+  "paintRoughness": 0.32,
+  "accentMetallic": 0.3,
+  "rimMetallic": 1.0,
+  "rimRoughness": 0.24
+}

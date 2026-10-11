@@ -1,0 +1,14 @@
+{
+  "id": "stallworth-prairie",
+  "name": "Stallworth Prairie",
+  "paint": "#8E1B1B",
+  "accent": "#111111",
+  "rim": "#D0D2D6",
+  "caliper": "#55585C",
+  "interior": "#1A1A1C",
+  "metallic": 0.5,
+  "paintRoughness": 0.32,
+  "accentMetallic": 0.3,
+  "rimMetallic": 1.0,
+  "rimRoughness": 0.12
+}

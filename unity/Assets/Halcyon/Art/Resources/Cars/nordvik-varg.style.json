@@ -1,0 +1,14 @@
+{
+  "id": "nordvik-varg",
+  "name": "Nordvik Varg",
+  "paint": "#101418",
+  "accent": "#111111",
+  "rim": "#5C4A36",
+  "caliper": "#B4D33A",
+  "interior": "#1A1A1C",
+  "metallic": 0.7,
+  "paintRoughness": 0.32,
+  "accentMetallic": 0.3,
+  "rimMetallic": 1.0,
+  "rimRoughness": 0.3
+}

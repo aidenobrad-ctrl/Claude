@@ -19,6 +19,8 @@ from .surfacenets import polygonize
 
 
 def _obj(name, V, F, mats, mat_index=None, smooth=True, lod=None):
+    if len(F) and (np.asarray(F).max() >= len(V) or np.asarray(F).min() < 0):
+        raise ValueError(f'{name}: face index out of range ({np.asarray(F).max()} >= {len(V)})')
     me = bpy.data.meshes.new(name)
     me.from_pydata(np.asarray(V, dtype=np.float64).tolist(), [], np.asarray(F, dtype=np.int64).tolist())
     me.update()
@@ -172,10 +174,18 @@ def seats_and_dash(body, mats, z_floor):
         for side in (1, -1):
             v = side * sv
             y = -(ru - body.mid)
+            # Never taller than the roof (or rear window) above the backrest.
+            hb = back_h
+            if s.style != 'roadster':
+                ub = ru - 0.30
+                roof = float(body.roof_z(np.array(ub), np.array(v)))
+                hb = min(hb, roof - 0.16 - 0.15 - (seat_z + 0.10))
+            if hb < 0.18:
+                continue
             _box(bm, (v, y, seat_z + 0.05), (0.44, 0.48, 0.11), 0)
             back = Matrix.Rotation(math.radians(-14), 3, 'X')
-            _box(bm, (v, y + 0.22, seat_z + 0.10 + back_h / 2), (0.44, 0.12, back_h), 0, back)
-            _box(bm, (v, y + 0.22 + back_h * 0.24 + 0.02, seat_z + 0.10 + back_h + 0.08), (0.24, 0.09, 0.15), 0, back)
+            _box(bm, (v, y + 0.22, seat_z + 0.10 + hb / 2), (0.44, 0.12, hb), 0, back)
+            _box(bm, (v, y + 0.22 + hb * 0.24 + 0.02, seat_z + 0.10 + hb + 0.08), (0.24, 0.09, 0.15), 0, back)
     # Dashboard under the windshield, well inside the cabin.
     du0, du1 = s.cowl_u - 0.16, s.cowl_u - 0.58
     dz1 = min(s.belt_z + 0.02, float(body.windshield_line(np.array(du0))) - 0.06)
@@ -192,6 +202,13 @@ def seats_and_dash(body, mats, z_floor):
     tilt = Matrix.Rotation(math.radians(-62), 3, 'X')
     centre = Vector((sv, -((s.cowl_u - 0.42) - body.mid), s.belt_z + 0.02))
     P3 = np.array([tuple(centre + tilt @ p) for p in pts])
+    if s.style != 'roadster':
+        # Under a low, raked screen the rim must stay clear of the glass: find the body's
+        # surface above every point of the rim (the screen drops towards its sides).
+        above = np.stack([P3[:, 0], P3[:, 1], np.full(len(P3), s.height + 0.3)], axis=1)
+        hit, ok = body.surface_along(above, np.array([0.0, 0.0, -1.0]), tmax=s.height + 0.3, steps=160)
+        if ok.any():
+            P3[:, 2] -= max(0.0, float(np.max(P3[ok, 2] - (hit[ok, 2] - 0.05))))
     V, F = sweep(P3, circle_profile(0.018, 6), ups=np.tile(np.array(tuple(tilt @ Vector((0, 1, 0)))), (len(P3), 1)))
     out.append(_obj('SteeringWheel_LOD0', V, F, [mats['Interior']], lod=0))
     return out
@@ -214,12 +231,22 @@ def wipers(body, mats):
         return []
     out = []
     zb = s.cowl_z + 0.045
-    for v0, length in ((0.30, 0.62), (-0.22, 0.55)):
-        vs = np.linspace(v0, v0 - length, 12)
-        zs = zb + np.linspace(0, 0.05, 12)
-        u_start = np.full(12, s.cowl_u + 0.9)
-        P0 = np.stack([vs, -(u_start - body.mid), zs], axis=1)
-        hit, ok = body.surface_along(P0, np.array([0.0, 1.0, 0.0]), tmax=1.6, steps=60)
+    blades = ((0.30, 0.62), (-0.22, 0.55))
+    if s.style == 'mid':
+        # A wide screen that wraps back at the sides: one central blade, as on most mid-engined cars.
+        blades = ((0.27, 0.54),)
+    for v0, length in blades:
+        # Where the screen meets the cowl at the middle of the blade...
+        vm = v0 - length / 2
+        Pm = np.stack([[vm], [-((s.cowl_u + 0.9) - body.mid)], [zb]], axis=1)
+        hm, okm = body.surface_along(Pm, np.array([0.0, 1.0, 0.0]), tmax=1.6, steps=60)
+        if not okm.all():
+            continue
+        # ...a blade that is straight seen from above, resting on whatever lies under it
+        # (the screen, or the cowl where a wrapped screen curves away behind it).
+        xs = np.linspace(v0, v0 - length, 12)
+        P0 = np.stack([xs, np.full(12, hm[0, 1] + 0.02), np.full(12, s.height + 0.3)], axis=1)
+        hit, ok = body.surface_along(P0, np.array([0.0, 0.0, -1.0]), tmax=s.height + 0.3, steps=160)
         if not ok.all():
             continue
         N = mo.unit(mo.gradient(body.base_blender, hit, 0.002))
@@ -233,6 +260,8 @@ def build_parts(body, spec, mats, bb):
     out = []
     out += interior(body, mats, bb)
     out += wipers(body, mats)
+    if body.look.get('rear_vents'):
+        out += rear_vent_slats(body, spec, mats)
     for name in spec.get('parts', []):
         fn = PARTS.get(name if isinstance(name, str) else name[0])
         if fn is None:
@@ -322,13 +351,53 @@ def bumper(body, spec, mats, end='front', z=None, h=0.09, depth=0.05, out=0.035,
     return out_objs
 
 
-def grille_bars(body, spec, mats, z0, z1, count, half=0.5, inset=0.012, thick=0.012, depth=0.02, mat='Chrome', lods=(0, 1)):
-    """Horizontal bars across the grille opening, following the nose."""
+def rear_vent_slats(body, spec, mats, count=3, thick=0.012, depth=0.014, inset=0.014, mat='Gloss', lods=(0, 1)):
+    """Horizontal slats across the two rear vents (look 'rear_vents' in features.py), so they read as vents, not holes."""
+    s = body.s
+    hw = s.width / 2
+    zc = s.tail_z - 0.32
+    out = []
+    for lod in lods:
+        Vs, Fs = [], []
+        off = 0
+        for side in (-1, 1):
+            vc = side * (hw - 0.30)
+            for k in range(count):
+                zb = zc - 0.045 + 0.09 * (k + 0.5) / count
+                vs = np.linspace(vc - 0.15, vc + 0.15, 9)
+                P0 = _bl(body, np.full(9, s.u_rear - 0.6), vs, np.full(9, zb))
+                hit, N, ok = _hit(body, P0, np.array([0.0, -1.0, 0.0]), tmax=1.5, steps=60)
+                if ok.sum() < 3:
+                    continue
+                pts = _smooth(hit[ok] - N[ok] * inset, 1)
+                V, F = sweep(pts, rounded_rect_profile(depth, thick, thick / 2 - 0.001, 1))
+                Vs.append(V)
+                Fs.append(F + off)
+                off += len(V)
+        if Vs:
+            out.append(_obj(f'RearVentSlats_LOD{lod}', np.concatenate(Vs), np.concatenate(Fs), [mats[mat]], lod=lod))
+    return out
+
+
+def grille_bars(body, spec, mats, z0, z1, count, half=0.5, inset=0.012, thick=0.012, depth=0.02, mat='Chrome', lods=(0, 1), vertical=0):
+    """Horizontal bars across the grille opening, following the nose (plus `vertical` upright bars: a lattice)."""
     s = body.s
     out = []
     for lod in lods:
         Vs, Fs = [], []
         off = 0
+        for k in range(vertical):
+            vb = -half + 2 * half * (k + 0.5) / vertical
+            zs = np.linspace(z0, z1, 9)
+            P0 = _bl(body, np.full(9, s.u_front + 0.6), np.full(9, vb), zs)
+            hit, N, ok = _hit(body, P0, np.array([0.0, 1.0, 0.0]), tmax=1.5, steps=60)
+            if ok.sum() < 3:
+                continue
+            pts = _smooth(hit[ok] - N[ok] * (inset + 0.004), 1)
+            V, F = sweep(pts, rounded_rect_profile(depth * 0.8, thick * 0.8, thick * 0.4 - 0.001, 1), ups=np.tile([0.0, -1.0, 0.0], (len(pts), 1)))
+            Vs.append(V)
+            Fs.append(F + off)
+            off += len(V)
         for k in range(count):
             zb = z0 + (z1 - z0) * (k + 0.5) / count
             vs = np.linspace(-half, half, 17)
@@ -375,10 +444,7 @@ def wing(body, spec, mats, u_from_tail=0.20, height=0.25, span=None, chord=0.26,
     out = []
     for lod in (0, 1, 2):
         Vs, Fs = [], []
-        off = 0
-        # Main plane: sweep along v.
-        path = np.stack([np.linspace(-span / 2, span / 2, 2), np.zeros(2), np.zeros(2)], axis=1)
-        prof_bl = [(pz, -pu) for pu, pz in pts2]  # sweep's (across, up) with path along X: across = -Y? build directly instead
+        # Main plane: the profile extruded across the car.
         nv = len(pts2)
         V = []
         for x in (-span / 2, span / 2):
@@ -395,7 +461,6 @@ def wing(body, spec, mats, u_from_tail=0.20, height=0.25, span=None, chord=0.26,
         V, F = np.array(V), np.array(F, dtype=np.int64)
         Vs.append(V)
         Fs.append(F)
-        off = len(V)
         if plates:
             for side in (-1, 1):
                 x = side * (span / 2 + 0.004)
@@ -410,8 +475,7 @@ def wing(body, spec, mats, u_from_tail=0.20, height=0.25, span=None, chord=0.26,
                 bpy.data.meshes.remove(me)
                 tf = np.concatenate([pf[:, [0, 1, 2]], pf[:, [0, 2, 3]]])
                 Vs.append(pv)
-                Fs.append(tf + off)
-                off += len(pv)
+                Fs.append(tf)
         if uprights != 'none':
             for side in (-1, 1):
                 x = side * post_v
@@ -427,9 +491,9 @@ def wing(body, spec, mats, u_from_tail=0.20, height=0.25, span=None, chord=0.26,
                 bpy.data.meshes.remove(me)
                 tf = np.concatenate([pf[:, [0, 1, 2]], pf[:, [0, 2, 3]]])
                 Vs.append(pv)
-                Fs.append(tf + off)
-                off += len(pv)
+                Fs.append(tf)
         V, F, _ = mo.merge(list(zip(Vs, Fs)))
+        assert F.max() < len(V)
         out.append(_obj(f'Wing_LOD{lod}', V, F, [mats[mat]], smooth=False, lod=lod))
     return out
 
@@ -469,7 +533,6 @@ def roof_rails(body, spec, mats, inset=0.10, lift=0.045, mat='Gloss'):
     us = np.linspace(u0, u1, 16)
     out = []
     Vs, Fs = [], []
-    off = 0
     for side in (-1, 1):
         cw = body.cabin_half_width(us, np.full(16, s.height - 0.04))
         P0 = _bl(body, us, side * (cw - inset), np.full(16, s.height + 0.5))
@@ -480,8 +543,7 @@ def roof_rails(body, spec, mats, inset=0.10, lift=0.045, mat='Gloss'):
         pts = _smooth(pts, 2)
         V, F = sweep(pts, rounded_rect_profile(0.03, 0.024, 0.01, 2))
         Vs.append(V)
-        Fs.append(F + off)
-        off += len(V)
+        Fs.append(F)
         # Feet at both ends.
         for p in (pts[0], pts[-1]):
             bm = bmesh.new()
@@ -493,10 +555,9 @@ def roof_rails(body, spec, mats, inset=0.10, lift=0.045, mat='Gloss'):
             pf = np.array([list(q.vertices) for q in me.polygons])
             bpy.data.meshes.remove(me)
             Vs.append(pv)
-            Fs.append(np.concatenate([pf[:, [0, 1, 2]], pf[:, [0, 2, 3]]]) + off)
-            off += len(pv)
+            Fs.append(np.concatenate([pf[:, [0, 1, 2]], pf[:, [0, 2, 3]]]))
     if Vs:
-        V, F, _ = mo.merge(list(zip(Vs, [f - sum(len(v) for v in Vs[:i]) for i, f in enumerate(Fs)])))
+        V, F, _ = mo.merge(list(zip(Vs, Fs)))
         out.append(_obj('RoofRails_LOD0', V, F, [mats[mat]], lod=0))
         out.append(_obj('RoofRails_LOD1', V, F, [mats[mat]], lod=1))
     return out

@@ -1,0 +1,14 @@
+{
+  "id": "aurelle-pico",
+  "name": "Aurelle Pico",
+  "paint": "#2F8FD8",
+  "accent": "#F2F2F2",
+  "rim": "#C9CCD0",
+  "caliper": "#55585C",
+  "interior": "#2A2C30",
+  "metallic": 0.35,
+  "paintRoughness": 0.32,
+  "accentMetallic": 0.0,
+  "rimMetallic": 1.0,
+  "rimRoughness": 0.24
+}

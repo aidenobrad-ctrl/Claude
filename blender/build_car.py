@@ -69,6 +69,8 @@ def reset_scene():
 
 # --- Mesh helpers ------------------------------------------------------------------------------
 def new_object(name, V, F, mats, mat_index=None, smooth=True, normals=None, uv=True):
+    if len(F) and (np.asarray(F).max() >= len(V) or np.asarray(F).min() < 0):
+        raise ValueError(f'{name}: face index out of range ({np.asarray(F).max()} >= {len(V)})')
     me = bpy.data.meshes.new(name)
     me.from_pydata(np.asarray(V, dtype=np.float64).tolist(), [], np.asarray(F, dtype=np.int64).tolist())
     me.update()
@@ -113,6 +115,30 @@ def decimate_to(ob, target):
     mod.use_collapse_triangulate = True
     with bpy.context.temp_override(object=ob, active_object=ob, selected_objects=[ob]):
         bpy.ops.object.modifier_apply(modifier=mod.name)
+
+
+def fix_winding(ob, field, eps=0.0015):
+    """Flip faces whose winding disagrees with the field's outward normal (engines cull back faces)."""
+    import bmesh
+    me = ob.data
+    if not len(me.polygons):
+        return 0
+    ctr = np.empty(len(me.polygons) * 3)
+    me.polygons.foreach_get('center', ctr)
+    ctr = ctr.reshape(-1, 3)
+    pn = np.empty(len(me.polygons) * 3)
+    me.polygons.foreach_get('normal', pn)
+    pn = pn.reshape(-1, 3)
+    g = mo.gradient(field, ctr, eps)
+    bad = np.nonzero((pn * g).sum(1) < 0)[0]
+    if len(bad):
+        bm = bmesh.new()
+        bm.from_mesh(me)
+        bm.faces.ensure_lookup_table()
+        bmesh.ops.reverse_faces(bm, faces=[bm.faces[i] for i in bad])
+        bm.to_mesh(me)
+        bm.free()
+    return len(bad)
 
 
 def set_field_normals(ob, field, eps=0.0015):
@@ -229,6 +255,7 @@ class BodyBuilder:
         V, F, N = self.cut_holes(holes)
         body = new_object(f'Body_LOD{lod}', V, F, [mats['Paint']])
         decimate_to(body, BODY_TRIS[lod])
+        fix_winding(body, self.field)
         set_field_normals(body, self.field)
         objs = [body]
         # Walls into every hole, classified by the hole each boundary vertex lies on.
@@ -266,6 +293,7 @@ class BodyBuilder:
             ob = new_object(f'{mat}_LOD{lod}', v, f, [mats[mat]])
             area = mo.area(v, f).sum()
             decimate_to(ob, int(max(60, area / (0.433 * INSERT_EDGE[lod] ** 2))))
+            fix_winding(ob, self.field)
             set_field_normals(ob, self.field)
             objs.append(ob)
         # Crisp patches (lenses) with their material splits.
@@ -279,6 +307,7 @@ class BodyBuilder:
             if not p.splits:
                 area = mo.area(v, f).sum()
                 decimate_to(ob, int(max(40, area / (0.433 * PATCH_EDGE[lod] ** 2))))
+            fix_winding(ob, self.field)
             set_field_normals(ob, self.field)
             objs.append(ob)
         for ob in objs:
@@ -432,10 +461,12 @@ def setup_render(res, samples, engine):
             break
         except TypeError:
             continue
-    try:
-        sc.view_settings.look = 'AgX - Medium High Contrast'
-    except TypeError:
-        pass
+    for look in ('AgX - Punchy', 'AgX - Medium High Contrast'):
+        try:
+            sc.view_settings.look = look
+            break
+        except TypeError:
+            continue
 
 
 def render_views(prefix, body, views):

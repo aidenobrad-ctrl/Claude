@@ -1,0 +1,14 @@
+{
+  "id": "halden-aster-gt",
+  "name": "Halden Aster GT",
+  "paint": "#C7262E",
+  "accent": "#111111",
+  "rim": "#6E737A",
+  "caliper": "#F2B01E",
+  "interior": "#1A1A1C",
+  "metallic": 0.55,
+  "paintRoughness": 0.32,
+  "accentMetallic": 0.3,
+  "rimMetallic": 1.0,
+  "rimRoughness": 0.24
+}

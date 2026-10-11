@@ -1,0 +1,14 @@
+{
+  "id": "hoshida-kiri-rs",
+  "name": "Hoshida Kiri RS",
+  "paint": "#1F4FA8",
+  "accent": "#D82020",
+  "rim": "#C8A24A",
+  "caliper": "#D01F1F",
+  "interior": "#1A1A1C",
+  "metallic": 0.6,
+  "paintRoughness": 0.32,
+  "accentMetallic": 0.3,
+  "rimMetallic": 1.0,
+  "rimRoughness": 0.3
+}

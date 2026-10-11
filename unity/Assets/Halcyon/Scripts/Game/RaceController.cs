@@ -1,9 +1,12 @@
 // Races in Unity: the event menu (T / Y), the grid of AI cars with their
 // Blender models, the countdown, the race HUD (position, lap, times, gaps)
-// and the results. The race itself is Halcyon.Core.RaceSession, the same
-// code the headless AI tournaments run.
+// and the results with the payout. The race itself is
+// Halcyon.Core.RaceSession, the same code the headless AI tournaments run.
+// Events have class limits; rivals are matched to the player's PI with parts
+// (Halcyon.Core.Rivals), measured on worker threads while the grid lines up.
 using System.Collections;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Halcyon.Core;
 using UnityEngine;
 
@@ -21,6 +24,9 @@ namespace Halcyon
         public bool Busy { get; private set; }
         int pick, difficulty = (int)Difficulty.Pro;
         int seed = 1;
+        int playerPi;
+        bool paid;
+        int paidCredits, paidXp;
         GUIStyle title, item, small, big, row;
 
         static readonly Color[] Liveries =
@@ -59,10 +65,33 @@ namespace Halcyon
             if (m.back) MenuOpen = false;
             if (m.select)
             {
+                var ev = events[pick];
+                if (!Eligible(ev, out string why))
+                {
+                    game.Career.Say(why);
+                    return;
+                }
                 MenuOpen = false;
-                StartCoroutine(Begin(events[pick]));
+                StartCoroutine(Begin(ev));
             }
         }
+
+        int MyPi => game.Career.Profile.CurrentCar.Pi;
+
+        /// <summary>Whether the player's current car may enter (its PI within the event's class).</summary>
+        bool Eligible(RaceEvent ev, out string why)
+        {
+            why = null;
+            if (!ev.ClassLimit.HasValue) return true;
+            int pi = MyPi;
+            if (pi <= 0) { why = "Your car is still being measured. Try again in a moment."; return false; }
+            int max = Performance.ClassMax(ev.ClassLimit.Value);
+            if (pi <= max) return true;
+            why = $"This event is for class {ev.ClassLimit.Value} and below (PI {max}). Your car is {Performance.ClassOf(pi)} {pi}: pick another car in the garage (G).";
+            return false;
+        }
+
+        static string ClassText(RaceEvent ev) => ev.ClassLimit.HasValue ? $"Class {ev.ClassLimit.Value} (PI {Performance.ClassMax(ev.ClassLimit.Value)} max)" : "Open to every car";
 
         IEnumerator Begin(RaceEvent ev)
         {
@@ -70,11 +99,38 @@ namespace Halcyon
             yield return null; // let the "preparing" message draw
             if (!lines.TryGetValue(ev.Id, out var line)) lines[ev.Id] = line = RacingLine.Build(ev.Route);
             string mine = game.Sim.Player.specId;
-            var field = RaceSession.Field(mine, ev.GridSize - 1, (Difficulty)difficulty, (uint)(seed * 7 + 1));
-            foreach (var (carId, _) in field) abilities.Get(carId);
-            yield return null;
+            var me = game.Career.Profile.CurrentCar;
+            var pis = game.Career.Pis;
+            var d = (Difficulty)difficulty;
+            uint fieldSeed = (uint)(seed * 7 + 1);
+            int count = ev.GridSize - 1;
+            var spec = me.Spec;
+            var tune = me.TuneOrDefault.Clone();
+            var up = me.Upgrades;
+            int known = me.Pi;
+            // Rivals matched to the player's PI, and every rival setup measured, off the main thread.
+            var prepare = Task.Run(() =>
+            {
+                int pi = known > 0 ? known : Performance.Measure(spec, tune, up).Pi;
+                var field = Rivals.Field(pi, ev.ClassLimit, count, d, fieldSeed, pis);
+                Parallel.ForEach(field, r => abilities.Get(r.CarId, r.Tune, Rivals.PartsKey(r.Parts) == "stock" ? null : r.Upgrades, r.Key));
+                return (pi, field);
+            });
+            while (!prepare.IsCompleted) yield return null;
+            if (prepare.IsFaulted)
+            {
+                Debug.LogError("Halcyon: could not line up the grid: " + prepare.Exception);
+                game.Career.Say("The race could not start: " + prepare.Exception?.GetBaseException().Message);
+                Busy = false;
+                yield break;
+            }
+            var (playerPiNow, rivals) = prepare.Result;
+            playerPi = playerPiNow;
+            paid = false;
+            paidCredits = paidXp = 0;
             // The player starts at the back of the grid's front half.
-            Session = new RaceSession(game.Sim, ev, field, abilities, (uint)seed++, includePlayer: true, playerGrid: ev.GridSize / 2, line: line);
+            Session = new RaceSession(game.Sim, ev, rivals, abilities, (uint)seed++, includePlayer: true, playerGrid: ev.GridSize / 2, line: line);
+            Session.PlayerEntrant.Pi = playerPi;
             int k = 0;
             foreach (var e in Session.Entrants)
             {
@@ -95,6 +151,20 @@ namespace Halcyon
         {
             Session.Step(c);
             foreach (var r in rigs) r.Capture();
+            if (!paid && Session.PlayerEntrant != null && Session.PlayerEntrant.Finished) Pay();
+        }
+
+        /// <summary>Credits and XP for the player's finish, once, into the career (saved at once).</summary>
+        void Pay()
+        {
+            paid = true;
+            var ev = Session.Event;
+            int pos = Session.PlayerEntrant.Position;
+            var cls = Performance.ClassOf(playerPi);
+            paidCredits = Economy.Payout(ev.Distance, pos, cls, (Difficulty)difficulty);
+            paidXp = Economy.RaceXp(ev.Distance, pos);
+            game.Career.Profile.AddRace(paidCredits, paidXp, pos == 1);
+            game.Career.SaveNow();
         }
 
         public void ResetPlayer() => Session?.ResetPlayer();
@@ -178,7 +248,7 @@ namespace Halcyon
 
         void DrawMenu()
         {
-            float w = 620, h = 120 + events.Count * 58;
+            float w = 760, h = 150 + events.Count * 58;
             var r = new Rect(Screen.width / 2 - w / 2, Screen.height / 2 - h / 2, w, h);
             Panel(r, 0.7f);
             GUI.Label(new Rect(r.x + 24, r.y + 16, w, 40), "Festival events", title);
@@ -192,9 +262,17 @@ namespace Halcyon
                     GUI.DrawTexture(new Rect(r.x + 12, y - 4, w - 24, 54), Texture2D.whiteTexture);
                     GUI.color = Color.white;
                 }
+                bool ok = Eligible(e, out _);
+                GUI.color = ok ? Color.white : new Color(1, 1, 1, 0.5f);
                 GUI.Label(new Rect(r.x + 24, y, w - 48, 26), e.Name, item);
-                GUI.Label(new Rect(r.x + 24, y + 24, w - 48, 22), $"{(e.Kind == RaceKind.Circuit ? "Circuit" : "Sprint")} · {e.Description}", small);
+                GUI.Label(new Rect(r.x + 24, y + 24, w - 48, 22), $"{(e.Kind == RaceKind.Circuit ? "Circuit" : "Sprint")} · {ClassText(e)} · {e.Description}", small);
+                GUI.color = Color.white;
             }
+            var sel = events[pick];
+            int pi = MyPi;
+            string car = $"Your car: {CarVisual.LoadStyle(game.Sim.Player.specId).name} {(pi > 0 ? $"{Performance.ClassOf(pi)} {pi}" : "(measuring)")}";
+            string prize = pi > 0 ? $" · a win pays {Economy.Payout(sel.Distance, 1, Performance.ClassOf(pi), (Difficulty)difficulty):N0} cr and {Economy.RaceXp(sel.Distance, 1):N0} XP" : "";
+            GUI.Label(new Rect(r.x + 24, r.yMax - 66, w - 48, 24), car + prize, small);
             GUI.Label(new Rect(r.x + 24, r.yMax - 40, w - 48, 24), $"↑/↓ event   ←/→ rivals: {(Difficulty)difficulty}   Enter race   Esc back", small);
         }
 
@@ -251,16 +329,17 @@ namespace Halcyon
         void DrawResults()
         {
             var s = Session;
-            float w = 640, h = 110 + s.Entrants.Count * 28;
+            float w = 760, h = 110 + s.Entrants.Count * 28;
             var r = new Rect(Screen.width / 2 - w / 2, Screen.height / 2 - h / 2, w, h);
             Panel(r, 0.75f);
             GUI.Label(new Rect(r.x + 24, r.y + 14, w, 40), $"{s.Event.Name}: P{s.PlayerEntrant.Position}", title);
+            if (paid) GUI.Label(new Rect(r.x + 340, r.y + 22, w - 360, 30), $"+{paidCredits:N0} cr   +{paidXp:N0} XP", item);
             float y = r.y + 64;
             var winner = s.Order[0];
             foreach (var e in s.Order)
             {
                 string time = e.Finished ? (e == winner ? Time(e.FinishTime) : $"+{e.FinishTime - winner.FinishTime:0.00} s") : "running";
-                string car = CarVisual.LoadStyle(e.Car.specId).name;
+                string car = CarVisual.LoadStyle(e.Car.specId).name + (e.Pi > 0 ? $" {Performance.ClassOf(e.Pi)} {e.Pi}" : "");
                 GUI.color = e.Player ? new Color(1f, 0.6f, 0.25f) : Color.white;
                 GUI.Label(new Rect(r.x + 24, y, w - 48, 26), $"{e.Position,2}.  {e.Name,-14}  {car,-26}  {time,-12}  best {Time(e.BestLap)}", row);
                 GUI.color = Color.white;

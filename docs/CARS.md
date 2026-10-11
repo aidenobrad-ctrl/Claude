@@ -14,18 +14,18 @@ Each car is checked against published figures for a comparable real car of its c
 
 | Car | Class | Drive | Power | Mass | 0–100 | 0–200 | ¼ mile | Top speed | 100–0 | Skidpad |
 |---|---|---|---|---|---|---|---|---|---|---|
-| Halden Aster GT | Sports | RWD | 286 kW | 1490 kg | 4.74 s | 14.76 s | 12.87 s @ 186 km/h | 297.6 km/h | 31.0 m | 0.948 g |
-| Aurelle Pico | Compact | FWD | 85 kW | 1090 kg | 9.49 s | — | 16.97 s @ 135 km/h | 195.4 km/h | 37.4 m | 0.887 g |
-| Aurelle Vif R | Hot hatch | FWD | 235 kW | 1400 kg | 5.66 s | 18.34 s | 13.90 s @ 176 km/h | 275.1 km/h | 31.5 m | 1.003 g |
-| Hoshida Kiri RS | Rally | AWD | 221 kW | 1540 kg | 5.17 s | 20.37 s | 13.59 s @ 169 km/h | 261.5 km/h | 38.8 m | 0.842 g |
-| Halden 280 Sprint | Classic | RWD | 127 kW | 1150 kg | 8.17 s | — | 15.96 s @ 146 km/h | 201.6 km/h | 42.4 m | 0.775 g |
-| Stallworth Ironside 454 | Muscle | RWD | 282 kW | 1800 kg | 6.32 s | — | 14.48 s @ 168 km/h | 203.1 km/h | 44.7 m | 0.765 g |
-| Nordvik Kyst Sport | GT | AWD | 440 kW | 2110 kg | 3.75 s | 12.65 s | 11.85 s @ 194 km/h | 313.1 km/h | 33.0 m | 0.906 g |
-| Orsini Saetta | Super | RWD | 530 kW | 1450 kg | 3.10 s | 7.88 s | 10.41 s @ 233 km/h | 349.1 km/h | 28.0 m | 1.080 g |
+| Halden Aster GT | Sports | RWD | 286 kW | 1490 kg | 4.73 s | 14.75 s | 12.86 s @ 186 km/h | 297.6 km/h | 31.0 m | 0.948 g |
+| Aurelle Pico | Compact | FWD | 85 kW | 1090 kg | 9.42 s | — | 16.91 s @ 135 km/h | 195.4 km/h | 37.4 m | 0.887 g |
+| Aurelle Vif R | Hot hatch | FWD | 235 kW | 1400 kg | 5.57 s | 18.25 s | 13.82 s @ 176 km/h | 275.1 km/h | 31.5 m | 1.003 g |
+| Hoshida Kiri RS | Rally | AWD | 221 kW | 1540 kg | 5.16 s | 20.36 s | 13.58 s @ 169 km/h | 261.5 km/h | 38.8 m | 0.842 g |
+| Halden 280 Sprint | Classic | RWD | 127 kW | 1150 kg | 8.14 s | — | 15.94 s @ 146 km/h | 201.6 km/h | 42.4 m | 0.775 g |
+| Stallworth Ironside 454 | Muscle | RWD | 282 kW | 1800 kg | 6.14 s | — | 14.30 s @ 168 km/h | 203.1 km/h | 44.7 m | 0.765 g |
+| Nordvik Kyst Sport | GT | AWD | 440 kW | 2110 kg | 3.70 s | 12.60 s | 11.80 s @ 194 km/h | 313.1 km/h | 33.0 m | 0.906 g |
+| Orsini Saetta | Super | RWD | 530 kW | 1450 kg | 3.06 s | 7.85 s | 10.38 s @ 233 km/h | 349.1 km/h | 28.0 m | 1.080 g |
 | Arcline Vanta | Hyper | AWD | 1418 kW | 2150 kg | 2.17 s | 4.63 s | 8.49 s @ 290 km/h | 408.3 km/h | 29.7 m | 1.076 g |
 | Ironbark Ridgeback | Off-road | AWD | 213 kW | 2230 kg | 8.74 s | — | 16.45 s @ 141 km/h | 187.2 km/h | 45.8 m | 0.714 g |
 | Stallworth Prairie | Truck | AWD | 313 kW | 2480 kg | 6.36 s | — | 14.59 s @ 153 km/h | 206.2 km/h | 45.3 m | 0.765 g |
-| Nordvik Varg | SUV | AWD | 470 kW | 2230 kg | 3.73 s | 12.65 s | 11.84 s @ 194 km/h | 310.6 km/h | 33.5 m | 0.942 g |
+| Nordvik Varg | SUV | AWD | 470 kW | 2230 kg | 3.69 s | 12.61 s | 11.80 s @ 194 km/h | 310.6 km/h | 33.5 m | 0.942 g |
 
 ## Reference values
 
@@ -35,8 +35,8 @@ Deviations are measured minus reference, rounded. Every value is within 10%.
 
 | | Reference | Measured | Deviation |
 |---|---|---|---|
-| 0–100 | 4.4 s | 4.74 s | +8% |
-| 0–200 | 15 s | 14.76 s | −2% |
+| 0–100 | 4.4 s | 4.73 s | +8% |
+| 0–200 | 15 s | 14.75 s | −2% |
 | 100–0 | 33 m | 31.0 m | −6% |
 | Skidpad | 1.0 g | 0.948 g | −5% |
 | Top speed | 290 km/h | 297.6 km/h | +3% |
@@ -45,7 +45,7 @@ Deviations are measured minus reference, rounded. Every value is within 10%.
 
 | | Reference | Measured | Deviation |
 |---|---|---|---|
-| 0–100 | 9.3 s | 9.49 s | +2% |
+| 0–100 | 9.3 s | 9.42 s | +1% |
 | 100–0 | 38 m | 37.4 m | −2% |
 | Skidpad | 0.85 g | 0.887 g | +4% |
 | Top speed | 195 km/h | 195.4 km/h | 0% |
@@ -54,8 +54,8 @@ Deviations are measured minus reference, rounded. Every value is within 10%.
 
 | | Reference | Measured | Deviation |
 |---|---|---|---|
-| 0–100 | 5.7 s | 5.66 s | −1% |
-| 0–200 | 18 s | 18.34 s | +2% |
+| 0–100 | 5.7 s | 5.57 s | −2% |
+| 0–200 | 18 s | 18.25 s | +1% |
 | 100–0 | 33 m | 31.5 m | −4% |
 | Skidpad | 1.0 g | 1.003 g | 0% |
 | Top speed | 275 km/h | 275.1 km/h | 0% |
@@ -64,8 +64,8 @@ Deviations are measured minus reference, rounded. Every value is within 10%.
 
 | | Reference | Measured | Deviation |
 |---|---|---|---|
-| 0–100 | 5.0 s | 5.17 s | +3% |
-| 0–200 | 20 s | 20.37 s | +2% |
+| 0–100 | 5.0 s | 5.16 s | +3% |
+| 0–200 | 20 s | 20.36 s | +2% |
 | 100–0 | 38 m | 38.8 m | +2% |
 | Skidpad | 0.85 g | 0.842 g | −1% |
 | Top speed | 250 km/h | 261.5 km/h | +5% |
@@ -74,7 +74,7 @@ Deviations are measured minus reference, rounded. Every value is within 10%.
 
 | | Reference | Measured | Deviation |
 |---|---|---|---|
-| 0–100 | 8 s | 8.17 s | +2% |
+| 0–100 | 8 s | 8.14 s | +2% |
 | 100–0 | 42 m | 42.4 m | +1% |
 | Skidpad | 0.8 g | 0.775 g | −3% |
 | Top speed | 200 km/h | 201.6 km/h | +1% |
@@ -83,7 +83,7 @@ Deviations are measured minus reference, rounded. Every value is within 10%.
 
 | | Reference | Measured | Deviation |
 |---|---|---|---|
-| 0–100 | 6.2 s | 6.32 s | +2% |
+| 0–100 | 6.2 s | 6.14 s | −1% |
 | 100–0 | 45 m | 44.7 m | −1% |
 | Skidpad | 0.75 g | 0.765 g | +2% |
 | Top speed | 205 km/h | 203.1 km/h | −1% |
@@ -92,8 +92,8 @@ Deviations are measured minus reference, rounded. Every value is within 10%.
 
 | | Reference | Measured | Deviation |
 |---|---|---|---|
-| 0–100 | 3.6 s | 3.75 s | +4% |
-| 0–200 | 12 s | 12.65 s | +5% |
+| 0–100 | 3.6 s | 3.70 s | +3% |
+| 0–200 | 12 s | 12.60 s | +5% |
 | 100–0 | 34 m | 33.0 m | −3% |
 | Skidpad | 0.95 g | 0.906 g | −5% |
 | Top speed | 305 km/h | 313.1 km/h | +3% |
@@ -102,8 +102,8 @@ Deviations are measured minus reference, rounded. Every value is within 10%.
 
 | | Reference | Measured | Deviation |
 |---|---|---|---|
-| 0–100 | 2.9 s | 3.10 s | +7% |
-| 0–200 | 7.8 s | 7.88 s | +1% |
+| 0–100 | 2.9 s | 3.06 s | +5% |
+| 0–200 | 7.8 s | 7.85 s | +1% |
 | 100–0 | 30 m | 28.0 m | −7% |
 | Skidpad | 1.1 g | 1.080 g | −2% |
 | Top speed | 340 km/h | 349.1 km/h | +3% |
@@ -140,8 +140,8 @@ Deviations are measured minus reference, rounded. Every value is within 10%.
 
 | | Reference | Measured | Deviation |
 |---|---|---|---|
-| 0–100 | 3.6 s | 3.73 s | +4% |
-| 0–200 | 12.5 s | 12.65 s | +1% |
+| 0–100 | 3.6 s | 3.69 s | +3% |
+| 0–200 | 12.5 s | 12.61 s | +1% |
 | 100–0 | 34 m | 33.5 m | −2% |
 | Skidpad | 0.98 g | 0.942 g | −4% |
 | Top speed | 300 km/h | 310.6 km/h | +4% |

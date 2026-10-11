@@ -122,6 +122,8 @@ export class Vehicle {
   timeSinceShift = 10;
   /** True while the clutch is slipping to launch the car. */
   launching = false;
+  /** Launch control's trim on the traction cap, steered by the driven wheels' slip. */
+  launchTrim = 1;
   /** Gear being shifted into, for torque cut and rev matching. */
   private shiftUp = false;
 
@@ -178,6 +180,7 @@ export class Vehicle {
     this.engineOmega = (p.engine.idle * Math.PI) / 30;
     this.boost = 0;
     this.tcsCut = this.escCut = 0;
+    this.launchTrim = 1;
     this.steerAngle = 0;
     this.airTime = 0;
     this.updateAxes();
@@ -733,7 +736,12 @@ export class Vehicle {
       const w = this.wheels[i];
       const t = wp.tire;
       const surf = SURFACES[w.surface];
-      const mu = t.info.mu * t.info.muLong * t.widthGrip * t.tuneGrip * t.info.surface[surf.grip] * surf.gripScale;
+      // The tire's own peak, as in tireForce: load sensitivity (a squatting
+      // car's rear tires grip less per newton) and standing water.
+      const sens = Math.max(0.6, Math.min(1.25, 1 - t.info.loadSens * (w.load / t.nominalLoad - 1)));
+      let grip = t.info.surface[surf.grip] * surf.gripScale;
+      if (w.water > 0.02) grip *= Math.max(0.35, 1 - w.water * 1.5);
+      const mu = t.info.mu * sens * t.info.muLong * t.widthGrip * t.tuneGrip * grip;
       // Limited by the driven wheel with the least grip relative to its torque share.
       const perWheel = (mu * w.load * wp.radius) / wp.driveWeight;
       wheelTorque = wheelTorque === 0 ? perWheel : Math.min(wheelTorque, perWheel);
@@ -824,16 +832,53 @@ export class Vehicle {
           this.launching = true;
           const boostMult = e.turbo ? 1 - e.turbo.share + e.turbo.share * this.boost : 1;
           let cap = curveTorque(e, g.launchRpm) * boostMult * pedal + 0.5 * (rpm - g.launchRpm);
-          if (this.aids.tcs) cap = Math.min(cap, this.tractionTorque() * 0.98);
+          if (this.aids.tcs) {
+            // The trim holds the driven wheels' slip at 80% of the tires'
+            // peak: it corrects the cap for what the cap cannot see (wheel and
+            // driveline inertia, load swings). Slip under the target raises it
+            // slowly; slip past it lowers it fast, far enough that sliding
+            // tires grip again. It only moves while the tires, not the
+            // engine, are the limit.
+            const traction = this.tractionTorque() * 0.98;
+            if (traction * this.launchTrim < cap) {
+              const err = this.launchSlipError();
+              this.launchTrim = clamp(this.launchTrim + dt * (err > 0 ? 1 : 8) * err, 0.5, 1.06);
+            }
+            cap = Math.min(cap, traction * this.launchTrim);
+          }
           engage = clamp(cap / g.clutchMaxTorque, 0, 1);
         }
       } else {
         engage = Math.min(engage, clamp((rpm - (e.idle + 40)) / 450, 0, 1));
       }
     }
+    if (!this.launching) this.launchTrim = 1;
     if (inp.handbrake > 0.5 && Math.abs(this.vLong) < 7) engage = 0;
     engage *= 1 - clamp(inp.clutch, 0, 1);
     this.clutchEngage = engage;
+  }
+
+  /**
+   * (80% of peak slip - the driven axles' highest slip) / peak slip: + below
+   * the launch target, - above it. An axle's slip is that of its less-slipping
+   * wheel: in a turn the loaded outer wheel does the work while a locked or
+   * limited-slip differential spins the light inner one. The cap itself is
+   * still set by the weaker wheel, so this cannot overdrive a straight launch.
+   */
+  private launchSlipError(): number {
+    const p = this.params;
+    let kMax = 0;
+    let kPeak = 0.12;
+    for (let a = 0; a < 4; a += 2) {
+      let kAxle = Infinity;
+      for (let i = a; i < a + 2; i++) {
+        if (p.wheels[i].driveWeight <= 0 || !this.wheels[i].grounded) continue;
+        kAxle = Math.min(kAxle, this.gear === -1 ? -this.wheels[i].slipRatio : this.wheels[i].slipRatio);
+        kPeak = p.wheels[i].tire.kappaPeak;
+      }
+      if (kAxle !== Infinity) kMax = Math.max(kMax, kAxle);
+    }
+    return (0.8 * kPeak - kMax) / kPeak;
   }
 
   private updateSteering(dt: number): void {

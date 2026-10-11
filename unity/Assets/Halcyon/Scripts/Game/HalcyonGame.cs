@@ -22,6 +22,8 @@ namespace Halcyon
         public bool BuildBuildings = true;
 
         public Simulation Sim { get; private set; }
+        /// <summary>The player's career: credits, XP and the garage, saved as they change.</summary>
+        public Career Career { get; private set; }
         public CarRig PlayerRig { get; private set; }
         public ChaseCamera CameraRig { get; private set; }
         public bool Ready { get; private set; }
@@ -57,6 +59,7 @@ namespace Halcyon
         IEnumerator Start()
         {
             loadStart = Time.realtimeSinceStartup;
+            Career = new Career();
             var world = new GameObject("World").transform;
             world.SetParent(transform, false);
             loading = "Lighting the sky";
@@ -111,9 +114,14 @@ namespace Halcyon
 
             loading = "Fuelling the car";
             yield return null;
-            Sim = new Simulation(data, SpawnAt.Island, CarId);
+            // The career's current car, with its parts and tune.
+            var mine = Career.Profile.CurrentCar;
+            Sim = new Simulation(data, SpawnAt.Island, mine.Id);
+            Sim.PlayerTune = mine.Tune?.Clone();
+            Sim.PlayerUpgrades = mine.Upgrades;
+            Sim.Reset();
             input = new DriverInput();
-            PlayerRig = CarRig.Create(Sim.Player.vehicle, Sim.Player.specId, OverridePaint ? Paint : (Color?)null);
+            PlayerRig = CarRig.Create(Sim.Player.vehicle, Sim.Player.specId, PaintOf(mine) ?? (OverridePaint ? Paint : (Color?)null));
             CameraRig = new ChaseCamera(cam);
             CameraRig.Snap();
             UpdateCamera(0.016f);
@@ -177,10 +185,19 @@ namespace Halcyon
             yield return null;
         }
 
-        /// <summary>Put the player in another car (from the garage) where they stand.</summary>
-        public void SwitchCar(string specId, Color? paint)
+        static Color? PaintOf(OwnedCar car) => car.Paint == null ? (Color?)null : new Color((float)car.Paint[0], (float)car.Paint[1], (float)car.Paint[2]);
+
+        /// <summary>Put the player in the career's current car (with its parts, tune and paint) where they stand.</summary>
+        public void DriveCurrentCar()
         {
-            Sim.ChangePlayerCar(specId);
+            var car = Career.Profile.CurrentCar;
+            SwitchCar(car.Id, PaintOf(car), car.Tune, car.Upgrades);
+        }
+
+        /// <summary>Put the player in another car where they stand.</summary>
+        public void SwitchCar(string specId, Color? paint, Tune tune = null, Upgrades up = null)
+        {
+            Sim.ChangePlayerCar(specId, tune, up);
             Sim.Events.Clear();
             if (PlayerRig != null) Destroy(PlayerRig.gameObject);
             PlayerRig = CarRig.Create(Sim.Player.vehicle, specId, paint ?? (OverridePaint ? Paint : (Color?)null));
@@ -188,9 +205,15 @@ namespace Halcyon
             accumulator = 0;
         }
 
+        void OnApplicationQuit()
+        {
+            Career?.SaveNow();
+        }
+
         void Update()
         {
             if (!Ready) return;
+            Career.Tick();
             if (scripted == null && garage != null)
             {
                 input.Poll();
@@ -208,7 +231,7 @@ namespace Halcyon
                 if (races.Racing) races.TickRace();
                 else if (input.Menu.garage)
                 {
-                    garage.Open(Sim.Player.specId);
+                    garage.Open();
                     return;
                 }
                 else if (input.Menu.events)
@@ -309,7 +332,14 @@ namespace Halcyon
             GUI.color = Color.white;
             var help = new GUIStyle(small) { alignment = TextAnchor.UpperLeft, fontSize = 13 };
             GUI.Label(new Rect(14, 10, 900, 22), "W/S throttle & brake · A/D steer · Space handbrake · E/Q shift · R reset · C camera · B look back · L lights · G garage · T events · Esc pause", help);
-            GUI.Label(new Rect(14, 30, 600, 22), PlayerRig.Visual.Look.name, help);
+            var car = Career.Profile.CurrentCar;
+            var (level, _, _) = Economy.Level(Career.Profile.Xp);
+            string pi = car.Pi > 0 ? $" · {Performance.ClassOf(car.Pi)} {car.Pi}" : "";
+            GUI.Label(new Rect(14, 30, 900, 22), $"{PlayerRig.Visual.Look.name}{pi} · {Career.Profile.Credits:N0} cr · level {level}", help);
+            if (Career.Notice != null && Time.unscaledTime - Career.NoticeAt < 5f)
+            {
+                GUI.Label(new Rect(14, 50, 900, 22), Career.Notice, help);
+            }
             if (Paused)
             {
                 var p = new GUIStyle(big) { alignment = TextAnchor.MiddleCenter };

@@ -85,6 +85,33 @@ namespace Halcyon.Core
             return o;
         }
 
+        /// <summary>
+        /// The tune a car with these parts can run: every slider its parts lock
+        /// goes back to the car's default (and the gear ratios, without a race
+        /// transmission). Used after a part is removed and when a code is pasted.
+        /// </summary>
+        public static Tune ForParts(CarSpec spec, Tune t, TuneGroup unlocked, out int locked)
+        {
+            locked = 0;
+            var o = t.Clone();
+            var d = Tune.Default(spec);
+            foreach (var f in Fields)
+            {
+                if ((unlocked & f.Group) != 0) continue;
+                if (f.getter(o) != f.getter(d)) locked++;
+                f.setter(o, f.getter(d));
+            }
+            if ((unlocked & TuneGroup.GearRatios) == 0 && o.gearScale != null)
+            {
+                for (int i = 0; i < o.gearScale.Length; i++)
+                {
+                    if (o.gearScale[i] != 1) locked++;
+                    o.gearScale[i] = 1;
+                }
+            }
+            return o;
+        }
+
         // --- Share codes ----------------------------------------------------------------------------
         public static string Encode(CarSpec spec, Tune tune)
         {

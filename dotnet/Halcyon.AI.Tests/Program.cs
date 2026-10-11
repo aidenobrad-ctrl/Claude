@@ -51,6 +51,13 @@ static class Program
         if (only == "" || only == "tournament") Tournament(events);
         if (only == "" || only == "grids") Grids(events);
         if (only == "" || only == "field") MixedField(events);
+        if (only == "" || only == "pifield") PiFields(events);
+        if (only == "" || only == "tuned") TunedCars(events);
+        if (only == "matrix") Matrix(events, args.Length > 1 ? int.Parse(args[1]) : -1);
+        if (only == "pistats") PiStats(events, args.Length > 1 ? int.Parse(args[1]) : 4);
+        if (only == "crests") Crests(events.First(e => e.Id == args[1]), args.Length > 2 ? args[2] : "arcline-vanta", args.Length > 3 ? int.Parse(args[3]) : 8);
+        if (only == "rejoin") Rejoin(events.First(e => e.Id == args[1]), double.Parse(args[2]), double.Parse(args[3]), double.Parse(args[4]));
+        if (only == "pirace") PiRace(events.First(e => e.Id == args[1]), int.Parse(args[2]), args[3] == "open" ? (PiClass?)null : Enum.Parse<PiClass>(args[3]), uint.Parse(args[4]));
         if (only == "skillsolo") SkillSolo(events);
         if (only == "duel") DuelTrace(events.First(e => e.Id == args[1]), double.Parse(args[2]), double.Parse(args[3]), uint.Parse(args[4]), args.Length > 5 ? double.Parse(args[5]) : 1.0);
         if (only == "compare") Compare(events.First(e => e.Id == args[1]), double.Parse(args[2]), double.Parse(args[3]), args.Length > 4 ? uint.Parse(args[4]) : 1);
@@ -249,10 +256,15 @@ static class Program
         public double ms;
     }
 
-    static Run RunRace(RaceEvent ev, List<(string carId, Personality p)> field, uint seed, double timeout, RacingLine line = null)
+    static Run RunRace(RaceEvent ev, List<(string carId, Personality p)> field, uint seed, double timeout, RacingLine line = null) =>
+        RunRace(ev, Rivals.Stock(field), seed, timeout, line);
+
+    static Run RunRace(RaceEvent ev, List<Rival> field, uint seed, double timeout, RacingLine line = null)
     {
         var sim = new Simulation(W, SpawnAt.Island);
         var sw = Stopwatch.StartNew();
+        // Measure the field's abilities in parallel first (upgraded and tuned cars are measured per setup).
+        System.Threading.Tasks.Parallel.ForEach(field, r => Abilities.Get(r.CarId, r.Tune, Rivals.PartsKey(r.Parts) == "stock" ? null : r.Upgrades, r.Key));
         var race = new RaceSession(sim, ev, field, Abilities, seed, includePlayer: false, line: line);
         if (Environment.GetEnvironmentVariable("AI_ESC") == "0") foreach (var e in race.Entrants) e.Car.vehicle.aids.esc = false;
         if (Verbose) race.ContactAt = (a, b, imp) => Console.WriteLine($"      contact t {race.Clock:0.0} s {a.S:0}: {a.Name} lat {a.Lateral:0.0} v {a.Car.vehicle.vLong:0.0} pass {a.Ai.DebugPassSide} / {b.Name} lat {b.Lateral:0.0} v {b.Car.vehicle.vLong:0.0} pass {b.Ai.DebugPassSide}, impulse {imp:0}");
@@ -272,7 +284,7 @@ static class Program
             {
                 var v = traced.Car.vehicle;
                 var near = race.Entrants.Where(e => e != traced).OrderBy(e => Math.Abs(ev.Route.Delta(traced.S, e.S))).First();
-                Console.WriteLine($"    t {race.Clock,6:0.0} s {traced.S,6:0.0} lat {traced.Lateral,5:0.0} v {v.vLong,5:0.0} th {v.input.throttle:0.00} br {v.input.brake:0.00} st {v.input.steer,5:0.00} g {v.gear} upY {v.up.y:0.00} wheels {string.Join("", v.wheels.Select(q => q.grounded ? q.surface.ToString() : "-"))} pos ({v.pos.x:0.0},{v.pos.y:0.0},{v.pos.z:0.0}) | nearest {near.Name} ds {ev.Route.Delta(traced.S, near.S):0.0} lat {near.Lateral:0.0} v {near.Car.vehicle.vLong:0.0}");
+                Console.WriteLine($"    t {race.Clock,6:0.0} s {traced.S,6:0.0} lat {traced.Lateral,5:0.0} v {v.vLong,5:0.0} th {v.input.throttle:0.00} br {v.input.brake:0.00} st {v.input.steer,5:0.00} g {v.gear} upY {v.up.y:0.00} wheels {string.Join("", v.wheels.Select(q => q.grounded ? q.surface.ToString() : "-"))} pos ({v.pos.x:0.0},{v.pos.y:0.0},{v.pos.z:0.0}) lane {traced.Ai.Lane:0.0} line {traced.Ai.Line.OffsetAt(traced.S):0.0} pass {traced.Ai.DebugPassSide} vT {traced.Ai.TargetSpeed:0.0} | nearest {near.Name} ds {ev.Route.Delta(traced.S, near.S):0.0} lat {near.Lateral:0.0} v {near.Car.vehicle.vLong:0.0}");
             }
         }
         return new Run { Session = race, Seconds = race.Clock, ms = sw.Elapsed.TotalMilliseconds };
@@ -526,6 +538,236 @@ static class Program
             double maxStuck = s.Entrants.Max(e => e.Ai.MaxStuck);
             Console.WriteLine($"  {ev.Id}: contacts {s.Contacts}, max stuck {maxStuck:0.0} s, {run.ms:0} ms for {run.Seconds:0} s of racing");
             Check(s.AllFinished && maxStuck < 5, $"{ev.Id}: every car finishes, none stuck over 5 s");
+        }
+    }
+
+    static readonly PiTable Pis = new PiTable();
+
+    /// <summary>
+    /// Fields matched to a player's PI, as the game builds them: cars from the
+    /// whole roster, each with the ladder step of parts that comes closest to
+    /// the player's PI within the event's class. Upgraded cars (slicks, aero)
+    /// must race as cleanly as stock ones.
+    /// </summary>
+    static void PiFields(List<RaceEvent> events)
+    {
+        Console.WriteLine("\nPI-matched fields: eight cars with parts, as the game picks them");
+        var cases = new (string ev, int pi, PiClass? limit)[]
+        {
+            ("proving-gp", 703, PiClass.A),
+            ("sprint-saltmarsh", 459, PiClass.D),
+            ("sprint-harbor", 864, PiClass.S1),
+            ("sprint-port-calder", 984, null),
+            ("sprint-ashby", 690, PiClass.B),
+        };
+        foreach (var (id, pi, limit) in cases)
+        {
+            var ev0 = events.First(e => e.Id == id);
+            var ev = ev0.Kind == RaceKind.Circuit ? EventCatalog.ProvingGP(W, 2) : ev0;
+            var field = Rivals.Field(pi, limit, 8, Difficulty.Pro, 3, Pis);
+            var run = RunRace(ev, field, 3, 1500);
+            var s = run.Session;
+            foreach (var e in s.Order) Console.WriteLine($"    P{e.Position} {e.Name,-14} {e.Car.specId,-24} PI {e.Pi}  skill {e.Ai.P.Skill:0.00}  {Fmt(e.FinishTime)}  resets {e.Ai.Resets}  max stuck {e.Ai.MaxStuck:0.0} s");
+            double maxStuck = s.Entrants.Max(e => e.Ai.MaxStuck);
+            int resets = s.Entrants.Sum(e => e.Ai.Resets);
+            Console.WriteLine($"  {ev.Id} at PI {pi}: contacts {s.Contacts}, wall hits {s.WallHits}, resets {resets}, max stuck {maxStuck:0.0} s, {run.ms:0} ms for {run.Seconds:0} s of racing");
+            // Eight maxed-out hypercars (PI 950+) on island roads still go off at 300+ km/h
+            // in traffic: an open item (docs/PLAYTEST.md, M5), so their resets are reported only.
+            bool extreme = pi >= 950;
+            Check(s.AllFinished && maxStuck < 5 && (extreme || resets <= 1), $"{ev.Id} at PI {pi}: every car finishes, {(extreme ? $"resets reported ({resets}, open item)" : "at most one reset")}, none stuck over 5 s");
+        }
+    }
+
+    /// <summary>
+    /// The best driver in every car with random tunes (each slider anywhere in
+    /// its range) and random parts, alone, two laps of the proving circuit:
+    /// the AI measures each setup and must still drive it cleanly, and the
+    /// physics must stay finite over kerbs and bumps.
+    /// </summary>
+    static void TunedCars(List<RaceEvent> events)
+    {
+        Console.WriteLine("\nRandom tunes and parts: every car, two laps of the proving circuit, best driver");
+        var ev = EventCatalog.ProvingGP(W, 2);
+        var line = RacingLine.Build(ev.Route);
+        var cases = new List<(string id, Rival r, string what)>();
+        foreach (var c in Cars.All)
+        {
+            var rng = new Rng(Hash.HashString("tuned " + c.id));
+            for (int k = 0; k < 2; k++)
+            {
+                var t = Tune.Default(c);
+                foreach (var f in TuneSpec.Fields) f.Set(t, 0, f.Snap(f.Min + rng.Next() * (f.Max - f.Min)));
+                for (int i = 0; i < t.gearScale.Length; i++) t.gearScale[i] = TuneSpec.GearMin + rng.Next() * (TuneSpec.GearMax - TuneSpec.GearMin);
+                if (t.toeR < 0) t.toeR = 0; // rear toe-out is a setup nobody can drive; the auto-tune never uses it either
+                t = TuneSpec.Snap(t);
+                var parts = new Dictionary<PartCategory, int>(Rivals.Ladder[rng.Int(0, Rivals.Ladder.Length)]);
+                cases.Add((c.id, new Rival { CarId = c.id, Driver = Ace(), Parts = parts, Tune = t }, $"tune {k}, parts \"{Rivals.PartsKey(parts)}\""));
+            }
+        }
+        var results = new (string line, bool ok, bool finite)[cases.Count];
+        System.Threading.Tasks.Parallel.For(0, cases.Count, i =>
+        {
+            var (id, r, what) = cases[i];
+            var run = RunRace(ev, new List<Rival> { r }, 1, 600, line);
+            var e = run.Session.Entrants[0];
+            var v = e.Car.vehicle;
+            bool finite = double.IsFinite(v.pos.x) && double.IsFinite(v.pos.y) && double.IsFinite(v.pos.z) && double.IsFinite(v.vLong);
+            bool ok = e.Finished && e.Ai.Resets <= 1 && e.Ai.MaxStuck < 5 && finite;
+            results[i] = ($"  {id,-26} {what,-40} best {Fmt(e.BestLap)}  resets {e.Ai.Resets}  max stuck {e.Ai.MaxStuck:0.0} s{(finite ? "" : "  NON-FINITE")}", ok, finite);
+        });
+        foreach (var r in results) Console.WriteLine(r.line);
+        Check(results.All(r => r.finite), "the physics stays finite in every tuned car");
+        int clean = results.Count(r => r.ok);
+        Check(clean == results.Length, $"the AI drives every tuned car two laps with at most one reset ({clean}/{results.Length})");
+    }
+
+    /// <summary>Every car alone with the best driver, stock and with every part, on every event: where does the AI fail?</summary>
+    static void Matrix(List<RaceEvent> events, int onlyStep)
+    {
+        Console.WriteLine("\nEvery car alone, stock and with every part, on every event (best driver)");
+        var evs = events.Select(e => e.Kind == RaceKind.Circuit ? EventCatalog.ProvingGP(W, 1) : e).ToList();
+        var lines = evs.ToDictionary(e => e.Id, e => RacingLine.Build(e.Route));
+        var steps = onlyStep >= 0 ? new[] { onlyStep } : new[] { 0, Rivals.Ladder.Length - 1 };
+        var cases = new List<(string car, int step, RaceEvent ev)>();
+        foreach (var c in Cars.All) foreach (int st in steps) foreach (var ev in evs) cases.Add((c.id, st, ev));
+        var results = new string[cases.Count];
+        var bad = new System.Collections.Concurrent.ConcurrentBag<string>();
+        System.Threading.Tasks.Parallel.For(0, cases.Count, i =>
+        {
+            var (car, st, ev) = cases[i];
+            var log = new List<string>();
+            var r = new Rival { CarId = car, Driver = Ace(), Parts = new Dictionary<PartCategory, int>(Rivals.Ladder[st]) };
+            var run = RunRaceLogged(ev, r, log);
+            var e = run.Session.Entrants[0];
+            string t = e.Finished ? Fmt(e.FinishTime) : "DNF";
+            results[i] = $"{car,-24} step {st} {ev.Id,-20} {t,8}  resets {e.Ai.Resets}  {string.Join("; ", log)}";
+            if (!e.Finished || e.Ai.Resets > 0) bad.Add(results[i]);
+        });
+        foreach (var l in results) Console.WriteLine("  " + l);
+        Console.WriteLine($"\n  {bad.Count} of {cases.Count} runs reset or failed to finish");
+    }
+
+    static Run RunRaceLogged(RaceEvent ev, Rival r, List<string> log)
+    {
+        var sim = new Simulation(W, SpawnAt.Island);
+        var up = Rivals.PartsKey(r.Parts) == "stock" ? null : r.Upgrades;
+        Abilities.Get(r.CarId, r.Tune, up, r.Key);
+        var race = new RaceSession(sim, ev, new List<Rival> { r }, Abilities, 1, includePlayer: false);
+        foreach (var e in race.Entrants) e.Ai.OnEvent = m => { if (m.StartsWith("reset")) log.Add(m); };
+        var c = Controls.Neutral();
+        var sw = Stopwatch.StartNew();
+        while (!race.AllFinished && race.Clock < 900) race.Step(c);
+        return new Run { Session = race, Seconds = race.Clock, ms = sw.Elapsed.TotalMilliseconds };
+    }
+
+    /// <summary>One PI-matched race, verbose (with AI_VERBOSE=1 and AI_TRACE=skill for a driver's trace).</summary>
+    static void PiRace(RaceEvent ev0, int pi, PiClass? limit, uint seed)
+    {
+        var ev = ev0.Kind == RaceKind.Circuit ? EventCatalog.ProvingGP(W, 2) : ev0;
+        var field = Rivals.Field(pi, limit, 8, Difficulty.Pro, seed, Pis);
+        var run = RunRace(ev, field, seed, 1500);
+        foreach (var e in run.Session.Order) Console.WriteLine($"    P{e.Position} {e.Name,-14} {e.Car.specId,-24} PI {e.Pi}  skill {e.Ai.P.Skill:0.00}  {Fmt(e.FinishTime)}  resets {e.Ai.Resets}");
+    }
+
+    /// <summary>PI-matched fields over several seeds: every reset with its place, car, driver and recent contact.</summary>
+    static void PiStats(List<RaceEvent> events, int seeds)
+    {
+        var cases = new (string ev, int pi, PiClass? limit)[]
+        {
+            ("proving-gp", 703, PiClass.A), ("sprint-saltmarsh", 459, PiClass.D), ("sprint-harbor", 864, PiClass.S1),
+            ("sprint-port-calder", 984, null), ("sprint-ashby", 690, PiClass.B), ("sprint-port-calder", 703, null), ("sprint-harbor", 600, null),
+        };
+        var runs = new List<(string ev, int pi, PiClass? limit, uint seed)>();
+        foreach (var c in cases) for (uint sd = 1; sd <= seeds; sd++) runs.Add((c.ev, c.pi, c.limit, sd));
+        var outLines = new string[runs.Count];
+        var resets = new System.Collections.Concurrent.ConcurrentBag<string>();
+        int totalResets = 0, totalContacts = 0, totalWalls = 0;
+        System.Threading.Tasks.Parallel.For(0, runs.Count, i =>
+        {
+            var (id, pi, limit, seed) = runs[i];
+            var ev0 = events.First(e => e.Id == id);
+            var ev = ev0.Kind == RaceKind.Circuit ? EventCatalog.ProvingGP(W, 2) : ev0;
+            var field = Rivals.Field(pi, limit, 8, Difficulty.Pro, seed, Pis);
+            var sim = new Simulation(W, SpawnAt.Island);
+            foreach (var r in field) Abilities.Get(r.CarId, r.Tune, Rivals.PartsKey(r.Parts) == "stock" ? null : r.Upgrades, r.Key);
+            var race = new RaceSession(sim, ev, field, Abilities, seed, includePlayer: false);
+            var lastContact = new Dictionary<string, double>();
+            race.ContactAt = (a, b, imp) => { lastContact[a.Name] = race.Clock; lastContact[b.Name] = race.Clock; };
+            foreach (var e in race.Entrants)
+            {
+                var ent = e;
+                e.Ai.OnEvent = m =>
+                {
+                    if (!m.StartsWith("reset")) return;
+                    bool hit = lastContact.TryGetValue(ent.Name, out double tc) && race.Clock - tc < 4;
+                    resets.Add($"{id,-19} PI {pi,3} seed {seed}: {ent.Car.specId,-24} PI {ent.Pi,3} skill {ent.Ai.P.Skill:0.00} {m}{(hit ? "  [contact within 4 s]" : "")}");
+                };
+            }
+            var c = Controls.Neutral();
+            while (!race.AllFinished && race.Clock < 1500) race.Step(c);
+            int rs = race.Entrants.Sum(e => e.Ai.Resets);
+            System.Threading.Interlocked.Add(ref totalResets, rs);
+            System.Threading.Interlocked.Add(ref totalContacts, race.Contacts);
+            System.Threading.Interlocked.Add(ref totalWalls, race.WallHits);
+            outLines[i] = $"  {id,-19} PI {pi,3} seed {seed}: resets {rs}, contacts {race.Contacts}, wall hits {race.WallHits}, finished {race.AllFinished}";
+        });
+        foreach (var l in outLines) Console.WriteLine(l);
+        Console.WriteLine();
+        foreach (var r in resets.OrderBy(x => x)) Console.WriteLine("    " + r);
+        Console.WriteLine($"\n  {runs.Count} races: {totalResets} resets ({(double)totalResets / runs.Count:0.00} a race), {totalContacts} contacts, {totalWalls} wall hits");
+    }
+
+    /// <summary>Crests along a route: where a car at its planned speed would go light (v^2 * curvature > g).</summary>
+    static void Crests(RaceEvent ev, string carId, int step)
+    {
+        var sim = new Simulation(W, SpawnAt.Island);
+        var r = ev.Route;
+        var line = RacingLine.Build(r);
+        var spec = Cars.ById(carId);
+        var up = Parts.Build(spec, Rivals.Ladder[step]);
+        var ab = Abilities.Get(carId, null, up, Rivals.PartsKey(Rivals.Ladder[step]));
+        var prof = SpeedProfile.Build(line, ab, 1, 1, 1);
+        int n = r.N;
+        var h = new double[n];
+        for (int i = 0; i < n; i++)
+        {
+            r.At(i * r.Length / n, out double x, out _, out double z, out _, out _);
+            h[i] = sim.Ground.GroundHeight(x, z);
+        }
+        double ds = r.Length / n;
+        int k = 4; // +-12 m
+        Console.WriteLine($"Crests on {ev.Id} for {carId} step {step} (top {ab.TopSpeed * 3.6:0} km/h): s, vertical curvature, planned speed, the speed at which the car goes light");
+        for (int i = k; i < n - k; i++)
+        {
+            double kv = (h[i + k] - 2 * h[i] + h[i - k]) / (k * ds * k * ds);
+            if (kv >= -1e-4) continue;
+            double vLight = Math.Sqrt(9.81 / -kv);
+            double vPlan = prof.V[i];
+            if (vPlan > 0.8 * vLight) Console.WriteLine($"  s {i * ds,6:0}  curvature {kv:0.00000}/m  crest radius {-1 / kv,6:0} m  planned {vPlan * 3.6,5:0} km/h  light at {vLight * 3.6,5:0} km/h{(vPlan > vLight ? "  AIRBORNE" : "")}");
+        }
+    }
+
+    /// <summary>A car placed off the road (lateral m, speed m/s), heading along it: does the AI bring it back?</summary>
+    static void Rejoin(RaceEvent ev, double s0, double lat, double speed)
+    {
+        var sim = new Simulation(W, SpawnAt.Island);
+        var r = new Rival { CarId = "arcline-vanta", Driver = Ace() };
+        Abilities.Get(r.CarId);
+        var race = new RaceSession(sim, ev, new List<Rival> { r }, Abilities, 1, includePlayer: false);
+        var e = race.Entrants[0];
+        var c = Controls.Neutral();
+        while (race.Clock < 0.1) race.Step(c);
+        ev.Route.At(s0, out double x, out _, out double z, out double tx, out double tz);
+        x -= tz * lat;
+        z += tx * lat;
+        var v = e.Car.vehicle;
+        v.Place(x, sim.Ground.GroundHeight(x, z), z, Simulation.YawOf(tx, tz));
+        v.SetSpeed(speed);
+        e.Ai.OnEvent = m => Console.WriteLine("    " + m);
+        for (int i = 0; i < 240 * 12; i++)
+        {
+            race.Step(c);
+            if (i % 60 == 0) Console.WriteLine($"  t {i / 240.0,5:0.00} s {e.Ai.S,6:0.0} lat {e.Ai.Lateral,6:0.0} v {v.vLong,5:0.0} st {v.input.steer,5:0.00} th {v.input.throttle:0.00} br {v.input.brake:0.00} right {e.Ai.DebugRight,6:0.0} beta {e.Ai.DebugBeta,6:0.00} yaw {v.yawRate,6:0.00} wheels {string.Join("", v.wheels.Select(q => q.grounded ? q.surface.ToString() : "-"))}");
         }
     }
 }

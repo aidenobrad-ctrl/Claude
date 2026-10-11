@@ -4,7 +4,8 @@
 //
 //   0-100 km/h (s)        scored on a log scale, 11 s -> 0, 1.9 s -> 1
 //   top speed (km/h)      150 -> 0, 430 -> 1
-//   grip at 180 km/h (g)  skidpad grip plus downforce at 50 m/s, 0.62 -> 0, 1.30 -> 1
+//   grip at 180 km/h (g)  skidpad grip plus downforce at 50 m/s, capped at what
+//                         the car can use without tipping over, 0.62 -> 0, 1.30 -> 1
 //   100-0 km/h (m)        48 m -> 0, 25 m -> 1
 //
 // S = 0.42 accel + 0.20 top speed + 0.26 grip + 0.12 braking, clamped to
@@ -33,8 +34,11 @@ namespace Halcyon.Core
         public int Pi;
         public PiClass Class;
 
-        /// <summary>Lateral grip at 180 km/h, g: the skidpad figure plus downforce.</summary>
-        public double GripAtSpeed => Skidpad * (1 + AeroK * 50 * 50);
+        /// <summary>Lateral acceleration the car can use before it risks tipping over, g (CarAbility.RollLimit).</summary>
+        public double RollG = double.PositiveInfinity;
+
+        /// <summary>Lateral grip at 180 km/h, g: the skidpad figure plus downforce, but no more than the car can use without tipping over.</summary>
+        public double GripAtSpeed => Math.Min(Skidpad * (1 + AeroK * 50 * 50), RollG);
     }
 
     public static class Performance
@@ -53,6 +57,7 @@ namespace Halcyon.Core
                 Skidpad = pad.g,
                 Braking = brake.distance,
                 AeroK = 0.5 * VehicleParams.AIR_DENSITY * p.aero.clA / (p.mass * VehicleParams.GRAVITY),
+                RollG = CarAbility.RollLimit(p),
             };
             s.Pi = Index(s);
             s.Class = ClassOf(s.Pi);

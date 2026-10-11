@@ -223,6 +223,8 @@ namespace Halcyon.Core
         public double timeSinceShift = 10;
         /// <summary>True while the clutch is slipping to launch the car.</summary>
         public bool launching;
+        /// <summary>Launch control's trim on the traction cap, steered by the driven wheels' slip.</summary>
+        public double launchTrim = 1;
         /// <summary>Gear being shifted into, for torque cut and rev matching.</summary>
         bool shiftUp;
 
@@ -313,6 +315,7 @@ namespace Halcyon.Core
             engineOmega = (p.engine.idle * Math.PI) / 30;
             boost = 0;
             tcsCut = escCut = 0;
+            launchTrim = 1;
             steerAngle = 0;
             airTime = 0;
             UpdateAxes();
@@ -949,7 +952,12 @@ namespace Halcyon.Core
                 WheelState w = wheels[i];
                 TireSetup t = wp.tire;
                 SurfaceInfo surf = Surfaces.All[w.surface];
-                double mu = t.info.mu * t.info.muLong * t.widthGrip * t.tuneGrip * t.info.surface[surf.grip] * surf.gripScale;
+                // The tire's own peak, as in TireForce: load sensitivity (a squatting
+                // car's rear tires grip less per newton) and standing water.
+                double sens = JsMath.Max(0.6, JsMath.Min(1.25, 1 - t.info.loadSens * (w.load / t.nominalLoad - 1)));
+                double grip = t.info.surface[surf.grip] * surf.gripScale;
+                if (w.water > 0.02) grip *= JsMath.Max(0.35, 1 - w.water * 1.5);
+                double mu = t.info.mu * sens * t.info.muLong * t.widthGrip * t.tuneGrip * grip;
                 // Limited by the driven wheel with the least grip relative to its torque share.
                 double perWheel = (mu * w.load * wp.radius) / wp.driveWeight;
                 wheelTorque = wheelTorque == 0 ? perWheel : JsMath.Min(wheelTorque, perWheel);
@@ -1063,7 +1071,22 @@ namespace Halcyon.Core
                         launching = true;
                         double boostMult = e.turbo != null ? 1 - e.turbo.share + e.turbo.share * boost : 1;
                         double cap = EngineParams.CurveTorque(e, g.launchRpm) * boostMult * pedal + 0.5 * (rpm - g.launchRpm);
-                        if (aids.tcs) cap = JsMath.Min(cap, TractionTorque() * 0.98);
+                        if (aids.tcs)
+                        {
+                            // The trim holds the driven wheels' slip at 80% of the tires'
+                            // peak: it corrects the cap for what the cap cannot see (wheel and
+                            // driveline inertia, load swings). Slip under the target raises it
+                            // slowly; slip past it lowers it fast, far enough that sliding
+                            // tires grip again. It only moves while the tires, not the
+                            // engine, are the limit.
+                            double traction = TractionTorque() * 0.98;
+                            if (traction * launchTrim < cap)
+                            {
+                                double err = LaunchSlipError();
+                                launchTrim = M.Clamp(launchTrim + dt * (err > 0 ? 1 : 8) * err, 0.5, 1.06);
+                            }
+                            cap = JsMath.Min(cap, traction * launchTrim);
+                        }
                         engage = M.Clamp(cap / g.clutchMaxTorque, 0, 1);
                     }
                 }
@@ -1072,9 +1095,36 @@ namespace Halcyon.Core
                     engage = JsMath.Min(engage, M.Clamp((rpm - (e.idle + 40)) / 450, 0, 1));
                 }
             }
+            if (!launching) launchTrim = 1;
             if (inp.handbrake > 0.5 && Math.Abs(vLong) < 7) engage = 0;
             engage *= 1 - M.Clamp(inp.clutch, 0, 1);
             clutchEngage = engage;
+        }
+
+        /// <summary>
+        /// (80% of peak slip - the driven axles' highest slip) / peak slip: + below
+        /// the launch target, - above it. An axle's slip is that of its less-slipping
+        /// wheel: in a turn the loaded outer wheel does the work while a locked or
+        /// limited-slip differential spins the light inner one. The cap itself is
+        /// still set by the weaker wheel, so this cannot overdrive a straight launch.
+        /// </summary>
+        double LaunchSlipError()
+        {
+            VehicleParams p = Params;
+            double kMax = 0;
+            double kPeak = 0.12;
+            for (int a = 0; a < 4; a += 2)
+            {
+                double kAxle = double.PositiveInfinity;
+                for (int i = a; i < a + 2; i++)
+                {
+                    if (p.wheels[i].driveWeight <= 0 || !wheels[i].grounded) continue;
+                    kAxle = JsMath.Min(kAxle, gear == -1 ? -wheels[i].slipRatio : wheels[i].slipRatio);
+                    kPeak = p.wheels[i].tire.kappaPeak;
+                }
+                if (!double.IsPositiveInfinity(kAxle)) kMax = JsMath.Max(kMax, kAxle);
+            }
+            return (0.8 * kPeak - kMax) / kPeak;
         }
 
         void UpdateSteering(double dt)

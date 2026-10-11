@@ -13,7 +13,7 @@ Unity (with Blender-made cars) is the main target since M2. The web version is t
 | M2 World v1 | **Done** in the web version: the island, roads, GPS and minimap, and a bot that drives from the festival to the city. Exported to Unity, which builds the island at Play (compile-checked). No M2 section in `PLAYTEST.md` yet. |
 | M3 Cars v1 | **Done** headless: 12 cars validated within 10%, Blender models with 3 LODs and six-view review sheets, Unity car visuals and the garage (compile-checked). |
 | M4 AI v1 and first events | **Done** headless: racing lines, controller, personalities, racecraft, five events, tournament 98% (`dotnet/Halcyon.AI.Tests`). The Unity race menu and HUD are compile-checked only. |
-| M5 Tuning and upgrades | **In progress.** The core is done headless: the measured PI and classes, parts, prices and payouts, saves, share codes, the understeer test and the measured auto-tune (`dotnet/Halcyon.Career.Tests`). Caster now acts on the physics. The Unity screens are next. |
+| M5 Tuning and upgrades | **Done headless; Unity compile-checked.** Measured PI and classes, parts, prices, payouts and XP, saves, share codes, the understeer test, the measured auto-tune, rivals matched by PI and class-limited events (`dotnet/Halcyon.Career.Tests`, `dotnet/Halcyon.AI.Tests`). Slip-steered launch control and caster in the shared physics. In Unity: the garage with dealer, upgrades, tuning with graphs, test track and career data, and race payouts. |
 | M6 World v2 | Not started |
 | M7 Everything else | Not started |
 | M8 Polish and optimization | Not started |
@@ -79,15 +79,16 @@ Load `dist/index.html?test=1` for manual stepping, with no animation loop.
 - **Unity:**
   - the island builders, the car rig and chase camera, input and HUD;
   - Blender car models with LODs;
-  - a garage on a turntable (G or LB);
+  - a garage on a turntable (G or LB): your cars, the dealer, upgrades, tuning with graphs and auto-tune, the test track, and career export and import;
   - festival events with AI rivals (T or D-pad up), with a countdown, positions, laps, gaps, wrong-way warning and results.
 - **AI (C# Core):**
   - per-route racing lines and per-car abilities with stable braking;
   - per-driver speed profiles, a pure-pursuit controller and personalities with four difficulty presets;
   - racecraft (follow, pass, defend, give room), recovery and drafting;
   - five events: the Proving Ground GP and four island sprints.
-- **Career (C# Core):**
+- **Career (C# Core, with screens in Unity):**
   - a performance index measured on the test track, with classes D to X;
+  - rivals matched to the player's PI with parts, and class limits on events;
   - nine part categories that change the physics and unlock tuning sliders;
   - car prices from PI, payouts, XP and levels;
   - JSON saves, tune share codes, the understeer gradient and an auto-tune that measures.
@@ -97,6 +98,6 @@ Load `dist/index.html?test=1` for manual stepping, with no animation loop.
 
 - **PC session** (`docs/UNITY-PC-BRIEF.md`): open the project in Unity 6. Then fix what only the Editor reports, play the garage and a race, and capture screenshots.
 - **Physics:** brake-force distribution (EBD) with ESC off, in TypeScript and C# together with regenerated references (playtest M4, finding 12).
-- **M5 in Unity:** upgrade and tuning screens with live PI and graphs, the test track, the shop, saves, payouts and XP after races, and class-limited events with fields chosen by PI.
+- **M5 follow-ups:** a simulated lap in the PI (equal PI is not yet equal pace), an inventory of owned parts, auto-tuned rivals, and the AI in maxed-out hypercar packs (PLAYTEST M5, self-critique).
 - **M6 world v2:** fix the Highcrest switchbacks, then add traffic, day and night, and weather.
 - **Art:** the close-range items from the M3 review (saw-toothed arch lips, the Vanta's stepped side window), number plates, terrain textures, a water shader, Blender trees, and audio.

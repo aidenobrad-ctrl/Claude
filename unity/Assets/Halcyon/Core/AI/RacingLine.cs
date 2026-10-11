@@ -258,8 +258,19 @@ namespace Halcyon.Core
             return Accel[i] + (Accel[i + 1] - Accel[i]) * t;
         }
 
-        /// <summary>Lateral acceleration limit at speed v.</summary>
-        public double LatMax(double v) => Mu * G * (1 + AeroK * v * v);
+        /// <summary>Lateral acceleration (g) the car can use before it risks tipping over (RollLimit).</summary>
+        public double RollG = double.PositiveInfinity;
+
+        /// <summary>
+        /// A tall car on sticky tyres tips before it slides. Half the track over
+        /// the CG height (the static stability factor) is where the inside
+        /// wheels lift in a steady turn; body roll, kerbs and turn-in overshoot
+        /// take some of that, so 85% of it is the usable limit, in g.
+        /// </summary>
+        public static double RollLimit(VehicleParams p) => 0.85 * (p.spec.trackFront + p.spec.trackRear) / 4 / p.cgHeight;
+
+        /// <summary>Lateral acceleration limit at speed v: grip with downforce, but never past the rollover limit.</summary>
+        public double LatMax(double v) => Math.Min(Mu * G * (1 + AeroK * v * v), RollG * G);
 
         /// <summary>Braking deceleration limit at speed v (grip with downforce, plus drag).</summary>
         public double BrakeMax(double v) => BrakeG * G * (1 + AeroK * v * v) + DragK * v * v;
@@ -300,9 +311,9 @@ namespace Halcyon.Core
             return BrakeG + (stable - BrakeG) * t;
         }
 
-        public static CarAbility Measure(CarSpec spec)
+        public static CarAbility Measure(CarSpec spec, Tune tune = null, Upgrades up = null)
         {
-            var p = VehicleParams.Build(spec);
+            var p = VehicleParams.Build(spec, tune, up);
             var c = new CarAbility
             {
                 Id = spec.id,
@@ -317,6 +328,7 @@ namespace Halcyon.Core
                 RearMuY = p.wheels[2].tire.info.mu,
             };
             c.Mu = Telemetry.SkidpadTest(p, 40).g;
+            c.RollG = RollLimit(p);
             var br = Telemetry.BrakeTest(p, 100);
             double v0 = 100 / 3.6;
             c.BrakeG = v0 * v0 / (2 * Math.Max(1, br.distance)) / G;
@@ -406,6 +418,7 @@ namespace Halcyon.Core
                 double mu = car.Mu * grip;
                 double den = k - mu * car.AeroK * g;
                 v[i] = den <= 1e-6 ? vmax : Math.Min(vmax, Math.Sqrt(mu * g / den));
+                if (k > 1e-9) v[i] = Math.Min(v[i], Math.Sqrt(car.RollG * grip * g / k));
             }
             int laps = r.Closed ? 2 : 1;
             // Forward: acceleration-limited, sharing grip with cornering.

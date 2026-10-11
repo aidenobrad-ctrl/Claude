@@ -22,9 +22,12 @@ layout and how everything was verified.
     buildings and the festival.
   - It spawns the Halden Aster GT on the festival road, driven by a C# port of the web
     version's 240 Hz physics. That port is bit-exact with the TypeScript.
-  - **G** opens the garage (12 cars on a turntable, paint, stats). **T** opens festival
-    events: the Proving Ground GP and four island sprints against AI rivals. The AI passes
-    a 300-race head-to-head tournament headless (`dotnet/Halcyon.AI.Tests`).
+  - **G** opens the garage on a turntable: your cars, the dealer, upgrades, tuning (graphs,
+    auto-tune, share codes), the test track and career data. **T** opens festival events
+    with class limits: the Proving Ground GP and four island sprints against AI rivals
+    matched to your car's PI. Results pay credits and XP into a career saved as JSON. The
+    AI passes a 300-race head-to-head tournament headless (`dotnet/Halcyon.AI.Tests`), and
+    the career layer has its own suite (`dotnet/Halcyon.Career.Tests`).
   - Every script compiles against Unity reference assemblies, but **it has never run in a
     real Unity Editor**. That is your first job.
 - `blender/build_car.py`: generates the cars in Blender 5.1 (`--car all`). It has been
@@ -86,6 +89,15 @@ system settings or close the user's apps.
    switching and the wheel positions. Then press **T** and race the Proving Ground GP and
    one sprint. Watch the grid, the countdown, the AI's lines and passes, and the HUD and
    results. Note anything that differs from `docs/PLAYTEST.md` (M3, M4).
+5. The M5 career, all compile-checked only so far. In the garage:
+   - buy a cheap D car at the dealer, fit a few upgrades, and watch the PI change;
+   - open Tuning, move sliders (locked ones should say which part they need), check that
+     the power and gear graphs redraw, press 2 to auto-tune for a circuit, then Enter for
+     the test track;
+   - copy a tune code (C), paste it back (V), and copy the career to the clipboard.
+   Then race an event your car is too fast for (it should refuse with the reason), one it
+   may enter, and check the payout on the results screen. Quit and restart: the career
+   should come back as you left it (`%USERPROFILE%\AppData\LocalLow\<company>\<product>\halcyon-career.json`).
 
 ## Step 3 — make it look insane
 

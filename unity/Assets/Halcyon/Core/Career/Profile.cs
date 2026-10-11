@@ -73,6 +73,8 @@ namespace Halcyon.Core
             if (index < 0 || index >= Garage.Count) { why = "no such car"; return false; }
             Garage.RemoveAt(index);
             Credits += price;
+            // Keep pointing at the same car when one before it goes.
+            if (index < Current) Current--;
             if (Current >= Garage.Count) Current = Garage.Count - 1;
             return true;
         }

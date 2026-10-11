@@ -226,7 +226,9 @@ namespace Halcyon.Core
             {
                 Racecraft(dt, field, speed, half, wl, wr, ref vT);
             }
-            Lane += (laneTarget - Lane) * Math.Min(1, dt * 1.6);
+            // Lane changes ease in, and never faster than 2.5 m/s sideways, so a
+            // pass at 250 km/h is as gentle as one at 100.
+            Lane += Clamp((laneTarget - Lane) * Math.Min(1, dt * 1.6), -2.5 * dt, 2.5 * dt);
             // Keep the lane inside the room the cars alongside leave.
             double lineHere = Line.OffsetAt(S);
             if (sideMin <= sideMax) Lane = Clamp(Lane, sideMin - lineHere, sideMax - lineHere);
@@ -241,6 +243,10 @@ namespace Halcyon.Core
 
             // --- Steering: pure pursuit on the line plus the lane offset ------------------------
             double ld = Clamp(5.5 + 0.38 * Math.Max(0, speed), 7.5, 42);
+            // Far from where it should be (off the road, after a spin), aim further
+            // ahead: rejoin at a shallow angle instead of turning back at full lock.
+            double latErr = Math.Abs(Lateral - (Line.OffsetAt(S) + Lane));
+            if (latErr > 3) ld = Math.Max(ld, 2.5 * latErr);
             double sT = S + ld;
             Route.At(sT, out double cx, out _, out double cz, out double tx, out double tz);
             wobble += dt * wobbleRate;
@@ -249,7 +255,11 @@ namespace Halcyon.Core
             double wlT = Route.Sample(Route.WLeft, sT), wrT = Route.Sample(Route.WRight, sT);
             if (sideMin <= sideMax) off = Clamp(off, sideMin, sideMax);
             else off = (sideMin + sideMax) / 2;
-            off = Clamp(off, -wlT + half + 0.25, wrT - half - 0.25);
+            // Keep the target off the edges, further at speed: a car tracking a
+            // target that hugs the edge runs past it.
+            double margin = 0.25 + 0.025 * Math.Max(0, speed - 20);
+            double offLo = -wlT + half + margin, offHi = wrT - half - margin;
+            off = offLo <= offHi ? Clamp(off, offLo, offHi) : (offLo + offHi) / 2;
             double px = cx - tz * off, pz = cz + tx * off;
             var p = v.Params;
             double rx = v.pos.x - v.fwd.x * p.b, rz = v.pos.z - v.fwd.z * p.b;
@@ -266,6 +276,8 @@ namespace Halcyon.Core
             double beta = DMath.Atan2(v.vLat, Math.Max(2, Math.Abs(v.vLong)));
             if (Math.Abs(beta) > 0.035) steer += (beta - 0.035 * Math.Sign(beta)) * 2.6;
             inp.steer = Clamp(steer, -1, 1);
+            DebugRight = right;
+            DebugBeta = beta;
             // The rear stepping out shows as yaw running ahead of the arc's: a
             // driver feels it at once and eases the pedals before it is a slide.
             double yawOver = Math.Abs(v.yawRate - rDes) - 0.035;
@@ -312,10 +324,15 @@ namespace Halcyon.Core
             // Braking shares the tyres with cornering, and the rear must keep enough grip to stay behind.
             brake *= Math.Sqrt(Math.Max(0.15, 1 - useLat * useLat));
             brake = Math.Min(brake, Math.Max(0.12, Ability.StableBrake(vv * vv * kHere / CarAbility.G) / Ability.BrakeG));
-            // Off the road: slow down and rejoin.
+            // Off the road: slow to what grass and gravel allow, then rejoin.
             if (Math.Abs(Lateral) > edge + 1.5)
             {
                 throttle = Math.Min(throttle, speed < 14 ? 0.7 : 0.25);
+                if (speed > 22)
+                {
+                    throttle = 0;
+                    brake = Math.Max(brake, Math.Abs(beta) > 0.10 ? 0.25 : 0.6);
+                }
             }
             inp.throttle = throttle;
             inp.brake = brake;
@@ -440,10 +457,12 @@ namespace Halcyon.Core
             if (haveAhead)
             {
                 double gap = best - (Ability.Length + ahead.length) * 0.5;
-                double closing = speed - ahead.speed;
+                // A car spinning or rolling backwards counts as stopped: follow it, never chase its speed below zero.
+                double aheadV = Math.Max(0, ahead.speed);
+                double closing = speed - aheadV;
                 double follow = 2.5 + Math.Max(0, speed) * (0.17 - 0.08 * P.Aggression);
                 double profileHere = Profile.At(S + best);
-                bool faster = profileHere > ahead.speed + 0.5 || closing > 1.0;
+                bool faster = profileHere > aheadV + 0.5 || closing > 1.0;
                 // Stay on the line until close (about half a second), then go for the gap; on a
                 // straight the slipstream pulls the car in, so the move can start further back.
                 double bend = 0;
@@ -474,7 +493,7 @@ namespace Halcyon.Core
                 if (passId != ahead.id)
                 {
                     // Follow: match speed at the following distance.
-                    double vf = ahead.speed + 0.6 * (gap - follow);
+                    double vf = aheadV + 0.6 * (gap - follow);
                     if (gap < follow * 2.5) vT = Math.Min(vT, Math.Max(0, vf));
                 }
                 // Never drive into it: brake if the overlap remains and we are closing fast.
@@ -482,7 +501,7 @@ namespace Halcyon.Core
                 if (Math.Abs(ahead.lateral - myLatThere) < half + ahead.halfWidth + 0.2 && closing > 0)
                 {
                     double tts = gap / Math.Max(0.1, closing);
-                    if (tts < 1.2) vT = Math.Min(vT, ahead.speed - 1);
+                    if (tts < 1.2) vT = Math.Min(vT, aheadV - 1);
                 }
             }
             if (passT > 0) passT -= dt;
@@ -568,6 +587,8 @@ namespace Halcyon.Core
 
         public double DebugA, DebugFF;
         public int DebugPassSide => passSide;
+        /// <summary>Diagnostics: the steering target's offset to the right of the car, m, and the sideslip, rad.</summary>
+        public double DebugRight, DebugBeta;
         public double DebugPassT => passT;
         public double DebugLaneTarget => laneTarget;
 

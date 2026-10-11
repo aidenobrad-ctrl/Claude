@@ -90,9 +90,10 @@ Each car is a 6-DOF rigid body on four raycast suspension struts, stepped at 240
 - **Launch.** Like launch control or a torque converter's stall speed:
   - a throttle governor holds the launch rpm (45% of redline, clamped);
   - the slipping clutch passes the engine's torque at that rpm;
-  - with traction control on, the clutch is also capped at what the driven tires can put down (their current load × peak μ_long).
+  - with traction control on, the clutch is also capped at what the driven tires can put down: their current load × peak μ_long, with the tire's load sensitivity and any standing water, × 0.98;
+  - a trim on that cap steers the driven axles' slip to 80% of κ_peak. It corrects for what the cap cannot see (wheel and driveline inertia, load swings). It rises at 1/s while the slip is under target and falls at 8/s past it, between 0.5 and 1.06, and it only moves while the tires, not the engine, are the limit. An axle's slip is that of its less-slipping wheel: in a turn the loaded outer wheel does the work, while a limited-slip differential spins the light inner one faster than its patch of road.
 
-  M1 found two failure modes of simpler designs. An rpm-proportional clutch bogged a turbo engine at 1180 rpm off boost, and TCS fighting the clutch caused a 5 Hz oscillation.
+  M1 found two failure modes of simpler designs. An rpm-proportional clutch bogged a turbo engine at 1180 rpm off boost, and TCS fighting the clutch caused a 5 Hz oscillation. M5 found four more (see PLAYTEST M5). A cap without load sensitivity let a squatting car's wheels spin up, so 6% more power made the Ironside slower. An open-loop cap left 5–8% of the grip unused. A trim that kept rising while the engine was the limit wound up and spun the tires on slicks. A trim that read the inner wheel's slip in a turn as wheelspin made the car crawl away with the wheel turned.
 - **Aerodynamics.** Drag ½ρ·CdA·v² at the COM, scaled by a drafting factor (set by the race layer in M4). Downforce ½ρ·ClA·v² is split front and rear at the axles by aero balance.
 - **Driver aids.**
   - ABS releases pressure per wheel when the lock slip exceeds κ_peak.
@@ -190,8 +191,8 @@ The AI drives the same `Vehicle` and physics as the player. Only its inputs diff
   - The proving circuit uses its asphalt plus part of the kerbs.
   - Island sprints come from an A* search over the road graph, and use the paved width only, narrowed near guardrails and on bridges.
 - **Racing line.** Minimum curvature: Gauss–Seidel sweeps of the biharmonic update, projected onto each sample's normal and clamped to the track, run coarse to fine. The line keeps 0.7 m from the edges plus the car's half-width. Its radius never drops below 7.5 m, otherwise hairpins bunch the line on the inside.
-- **Car ability.** Each car is measured on the test track:
-  - skidpad grip;
+- **Car ability.** Each car (with its parts and tune) is measured on the test track:
+  - skidpad grip, never more than its rollover limit: 85% of half its track over its CG height (a truck on slicks would grip harder than it can corner without tipping);
   - braking from 100 km/h;
   - a full-throttle acceleration curve;
   - drag and downforce;
@@ -201,6 +202,9 @@ The AI drives the same `Vehicle` and physics as the player. Only its inputs diff
 - **Speed profile.** Per driver and line: the cornering limit, then a forward pass with acceleration, then a backward pass with braking. Both passes share a friction circle and respect stable braking.
 - **Controller.**
   - Steering is pure pursuit on the line (look-ahead 7.5–42 m with speed), plus yaw damping towards the arc being steered and countersteer in slides.
+  - The steering target keeps 0.25 m from the road edges, plus 0.025 m for every m/s over 20 m/s: a car tracking a target that hugs the edge at speed runs past it.
+  - Lane changes (passing, defending, mistakes) ease in, never faster than 2.5 m/s sideways.
+  - Off the road above 80 km/h the driver brakes, harder unless sliding, and aims 2.5 times its lateral error ahead, so it rejoins at about 22° instead of turning back at full lock.
   - Pedals use feedforward from the profile's slope plus feedback, converted to throttle and brake through the car's measured curves.
   - The driver eases the pedals when the yaw runs ahead of the arc. The stability control is off, with ABS and TCS on.
 - **Skill.** Skill is what separates drivers. From 0.3 to 1.0 it spans about 15–20% of pace, about 3% per 0.14 step. It sets:
@@ -220,6 +224,7 @@ The AI drives the same `Vehicle` and physics as the player. Only its inputs diff
   - A driver follows on the line until close.
   - Passing is a state machine on one car. It starts within about half a second, or from the slipstream on a straight, and takes the inside of the next corner when there is room. It holds beside that car until it is behind, or gives up if it never gets alongside. It backs out rather than be squeezed off the road, and slows for a tighter inside line.
   - A car alongside sets a hard limit on where the steering target may go.
+  - A car ahead that is spinning or rolling backwards counts as stopped: its speed is never followed below zero.
   - Aggressive drivers defend the inside.
 - **Recovery.** One reverse attempt when stuck; otherwise a reset to the route (flipped, far off the road, stuck, or facing the wrong way). Cars that have finished park.
 - **Races.** `RaceSession` runs a race on the fixed step, the same in Unity and in the tests. It handles:
@@ -246,7 +251,7 @@ M5 is pure C# in Core, like the AI, so it is tested headless (`dotnet/Halcyon.Ca
   - grip at 180 km/h (skidpad grip plus downforce at 50 m/s): 0.62 g scores 0 and 1.30 g scores 1;
   - 100–0 km/h: 48 m scores 0 and 25 m scores 1.
 
-  S = 0.42·accel + 0.20·top + 0.26·grip + 0.12·braking, and PI = 100 + 899·S^0.62. The exponent spreads the crowded middle. Classes are D ≤ 500, C ≤ 600, B ≤ 700, A ≤ 800, S1 ≤ 900, S2 ≤ 998 and X. The stock roster runs from the Ridgeback (D 353) through the Aster GT (A 703) to the Vanta (S2 928). One measurement takes 70–100 ms, so menus measure on a worker thread.
+  The grip counts only up to the car's rollover limit (85% of half its track over its CG height), so a truck on slicks is rated on the grip it can use. S = 0.42·accel + 0.20·top + 0.26·grip + 0.12·braking, and PI = 100 + 899·S^0.62. The exponent spreads the crowded middle. Classes are D ≤ 500, C ≤ 600, B ≤ 700, A ≤ 800, S1 ≤ 900, S2 ≤ 998 and X. The stock roster runs from the Ridgeback (D 353) through the Aster GT (A 703) to the Vanta (S2 928). One measurement takes 70–100 ms, so menus measure on a worker thread.
 - **Parts.** Nine categories, each with levels. Every part folds into the physics' `Upgrades` layer (power, mass, tyre compound and width, brake torque, aero kit), so its effect goes through the same formulas as everything else.
 
   | Category | Levels |
@@ -276,6 +281,8 @@ M5 is pure C# in Core, like the AI, so it is tested headless (`dotnet/Halcyon.Ca
     - class: from 1.0 for D up to 2.6 for X;
     - rivals' difficulty: Novice 0.7, Average 1.0, Pro 1.3, Legend 1.7.
   - XP is 100 per km plus 300, 200 or 100 for a podium. Level n needs 1000·n^1.3 XP.
+- **Rivals by PI.** Every car has the same upgrade ladder of nine steps, from stock to every part, each step a superset of the last; the career tests check that the PI never falls along it. For a player at PI p, a rival's car is the highest step whose measured PI is at most p + 15, and never above the event's class. Cars within 40 PI of the player make the pool. A seeded shuffle of the pool fills the grid, so a model repeats only when the pool is smaller than the field. If no car comes within 40, the closest one that fits the class races alone, because a one-make race is fairer than a mismatched one. PIs are measured in parallel and cached per car and step (108 measurements take 2.6 s on 4 cores).
+- **Events and classes.** The Proving Ground GP is for class A and below, the Harbour Dash for S1, the Ashby Sprint for B and the Saltmarsh Bay Run for D. The Port Calder run is open. The starter car (A 703) can enter three events. A D car (from 13,500 credits) opens Saltmarsh, and a B car opens Ashby.
 - **Saves.** The profile holds credits, XP, races, wins, and the garage: each car with its parts, tune and paint. It is versioned JSON, written by a small writer and read with MiniJson. A save that names a car the game no longer has still loads, without that car.
 - **Sliders and share codes.** `TuneSpec` lists the 24 sliders with range, step, unit, the parts that unlock them and the formula the menu shows. A share code is `HT1.` plus base64url of the car, one byte per slider (its step index), one byte per gear ratio and a checksum. Every slider has at most 255 steps, so a snapped tune survives the round trip exactly. Damaged codes are refused.
 - **Test track.** The understeer gradient is the extra steering per g on a 60 m circle, measured at 0.3 and 0.6 of the car's grip. On a constant radius the kinematic steer angle cancels. The stock roster runs from +0.29 deg/g (Vanta) to +0.98 deg/g (Kiri RS).
@@ -309,6 +316,7 @@ M5 is pure C# in Core, like the AI, so it is tested headless (`dotnet/Halcyon.Ca
   - Guardrails are skipped on the inside of bends tighter than their offset.
   - The Highcrest pass is not an event until world v2 fixes its switchbacks.
 - **M5 (core):** the measured performance index and classes, the parts catalogue, prices, payouts and XP, profile saves, tune share codes, the understeer test and the measured auto-tune. Caster now acts on the physics.
+- **M5 (rivals and robustness):** rivals matched to the player's PI with parts, class limits on events, the slip-steered launch control (TypeScript and C#), rollover-aware AI and PI, and AI lane changes, edge margins and off-road recovery that hold up at 250+ km/h.
 - **M5 decisions:**
   - PI comes only from measurement, so a part or a tune changes it exactly as much as it changes the car.
   - The auto-tune measures instead of following rules, and it may not make a car more tail-happy than its stock understeer allows.

@@ -13,10 +13,12 @@ exactly, and adds Unity rendering and Blender-made cars on top.
    - creates and assigns a URP asset (HDR, 4 shadow cascades over 450 m, SSAO);
    - creates `Assets/Scenes/Halcyon.unity`.
 3. Open that scene, or any scene, and press **Play**. The island builds itself in a few
-   seconds and you start on the festival road in the Halden Aster GT.
-4. Press **G** for the garage: the 12 cars on a turntable at the festival stage, with
-   paint presets and measured stats. Press **T** for festival events: pick an event and
-   your rivals' difficulty, then race the AI.
+   seconds and you start on the festival road. A new career starts with 50,000 credits
+   and the Halden Aster GT, and saves itself as you play.
+4. Press **G** for the garage on the festival stage: drive, upgrade, tune, test and paint
+   your cars, buy and sell at the dealer, and copy your career to the clipboard. Press
+   **T** for festival events: each has a class limit, your rivals are matched to your
+   car's PI, and results pay credits and XP.
 
 **Controls**
 
@@ -31,7 +33,7 @@ exactly, and adds Unity rendering and Blender-made cars on top.
 | B | Look back |
 | L | Lights |
 | Esc | Pause |
-| G | Garage (←/→ car, ↑/↓ paint, Enter drive it, Esc back) |
+| G | Garage (←/→ car, ↑/↓ choose, Enter select, Esc back; in tuning, ←/→ adjust, 1-4 auto-tune, C/V copy/paste a tune code, R reset, Enter test track) |
 | T | Events (↑/↓ event, ←/→ rivals' difficulty, Enter race, Esc back); during a race hold T for a second to leave |
 
 A gamepad works through the Input System: stick, triggers, A for handbrake, B/X to
@@ -59,8 +61,10 @@ village.
 | `unity/Assets/Halcyon/Scripts/World/` | Runtime builders, listed below |
 | `unity/Assets/Halcyon/Scripts/Driving/` | The car rig, chase camera and input, listed below |
 | `unity/Assets/Halcyon/Scripts/Game/HalcyonGame.cs` | Boots everything when Play is pressed, runs the 240 Hz loop, draws the HUD, capture mode |
-| `unity/Assets/Halcyon/Scripts/Game/Garage.cs` | The garage: turntable, paint, stats, car switch |
-| `unity/Assets/Halcyon/Scripts/Game/RaceController.cs` | The events menu, AI car rigs, race HUD (countdown, position, laps, gaps, wrong way) and results |
+| `unity/Assets/Halcyon/Scripts/Game/Garage.cs`, `Workshop.cs` | The garage: your cars, the dealer, upgrades, tuning (graphs, auto-tune, share codes), the test track, career data |
+| `unity/Assets/Halcyon/Scripts/Game/Career.cs` | The career save in `Application.persistentDataPath`: autosave, backup, recovery, clipboard export and import |
+| `unity/Assets/Halcyon/Scripts/Game/Ui.cs` | Shared IMGUI styles, panels, rows and plots, scaled to the screen |
+| `unity/Assets/Halcyon/Scripts/Game/RaceController.cs` | The events menu with class limits, PI-matched AI grids, race HUD (countdown, position, laps, gaps, wrong way), results and payouts |
 | `unity/Assets/Halcyon/Scripts/Editor/` | Project setup (URP, scene, build settings) and command-line builds |
 | `unity/Assets/Halcyon/Art/Resources/Cars/` | Car models from Blender (`blender/build_car.py`) |
 | `blender/` | The Blender car generator, run headless or in Blender 5.1 |
@@ -99,7 +103,12 @@ village.
     `-- tournament`);
   - full grids (`-- grids`);
   - mixed fields (`-- field`);
-  - debugging traces (`-- duel`, `-- compare`, `-- trace2`, `-- skillsolo`).
+  - fields matched to a player's PI, with parts (`-- pifield`), and their reset statistics
+    over seeds (`-- pistats`);
+  - every car with random tunes and parts (`-- tuned`), and every car alone, stock and with
+    every part, on every event (`-- matrix`);
+  - debugging traces (`-- duel`, `-- compare`, `-- trace2`, `-- skillsolo`, `-- pirace`,
+    `-- crests`, `-- rejoin`).
 
   Results are in `docs/PLAYTEST.md` (M4).
 - `Halcyon.Career.Tests`: the PI of every car, parts and prices, payouts, a career saved

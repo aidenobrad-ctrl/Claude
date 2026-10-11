@@ -233,50 +233,82 @@ Costs:
 
 Also open: the Highcrest switchbacks (about 6 m radius) are left for world v2 (M6). Only two event types exist so far (circuit and sprint); the rest come in M7.
 
-## M5: Tuning and upgrades (core)
+## M5: Tuning and upgrades
 
-**Tried (headless in .NET, `dotnet/Halcyon.Career.Tests`):**
-- The PI of every stock car, measured twice.
-- Each kind of upgrade on the Aster GT, and more brake torque on the Ironside 454.
-- Every part ladder priced on the Aster GT, and payouts for every position, class and difficulty.
-- A career: start, buy, fit parts, save, load, sell; and a save that names a car the game doesn't have.
+**Tried (headless in .NET: `dotnet/Halcyon.Career.Tests` and `dotnet/Halcyon.AI.Tests`):**
+- The PI of every stock car, measured twice; each kind of upgrade on the Aster GT; more brake torque on the Ironside 454.
+- Every part ladder priced on the Aster GT; payouts for every position, class and difficulty.
+- A career: start, buy, fit parts, save, load, sell; a save that names a car the game doesn't have.
 - Each of the 24 sliders and the gear ratios, moved alone, against the default car's path.
-- Share codes for all 12 cars, and damaged codes and non-codes.
-- Auto-tunes for circuit and dirt on a Kyst Sport with race suspension, a sport transmission, a sport differential and race brakes.
-- The understeer gradient of every car, and of the Kyst with single changes.
+- Share codes for all 12 cars; damaged codes and non-codes.
+- Auto-tunes for circuit and dirt on a Kyst Sport with race suspension, a sport transmission, a sport differential and race brakes; the understeer gradient of every car.
+- The rivals' upgrade ladder: the PI of all 12 cars at all 9 steps.
+- Every slider at its minimum and maximum on every car, and 72 random combinations of extremes with every part (672 tunes).
+- Power from +0% to +25% in 1% steps on four tyre compounds, for every car (1,200 acceleration runs), and launches with the wheel turned.
+- PI-matched eight-car races, as the game builds them, on all five events: 28 races over 4 seeds, plus every car alone, stock and with every part, on every event (120 runs).
+- Every car with random tunes and parts, two laps with the best driver (24 runs).
+- The full M4 suite again: lines, solo laps, sprints, the 300-race tournament, grids and mixed fields.
 
 | # | Finding | Sev | Root cause | Fix | Retest |
 |---|---|---|---|---|---|
-| 1 | The caster slider did nothing. | S2 | The tune had a caster value, but no formula read it. The test that moves each slider alone found it. | Caster now leans the steered wheels as they turn (dynamic camber), in the TypeScript and the C# together. At the stock 5.5° nothing changes. | 24/24 sliders and the gear ratios change the car's path; still bit-exact (91 checks, 339,299 numbers) |
+| 1 | The caster slider did nothing. | S2 | The tune had a caster value, but no formula read it. The test that moves each slider alone found it. | Caster now leans the steered wheels as they turn (dynamic camber), in the TypeScript and the C# together. At the stock 5.5° nothing changes. | 24/24 sliders and the gear ratios change the car's path; still bit-exact |
 | 2 | Loading a save that named an unknown car crashed. | S1 | `Cars.ById` throws for an unknown id, so renaming or removing a car would have made every save with it unloadable. | Unknown cars are skipped on load. | Pass |
-| 3 | The first auto-tune made cars worse. | S2 | It followed rules of thumb: circuit tunes low and stiff, dirt tunes high and soft. On gravel the dirt tune gripped less than the circuit tune (0.467 g against 0.494 g). On asphalt the circuit tune gripped no better than stock (0.904 g against 0.906 g). | The auto-tune measures. A coordinate search over the unlocked sliders keeps a change only if it improves a score measured on the event's surface. | Kyst Sport: circuit score 0.6251 → 0.6619; dirt score on gravel 0.1317 → 0.1543 |
+| 3 | The first auto-tune made cars worse. | S2 | It followed rules of thumb: circuit tunes low and stiff, dirt tunes high and soft. On gravel the dirt tune gripped less than the circuit tune (0.467 g against 0.494 g). On asphalt the circuit tune gripped no better than stock (0.904 g against 0.906 g). | The auto-tune measures. A coordinate search over the unlocked sliders keeps a change only if it improves a score measured on the event's surface. | Kyst Sport: circuit score 0.6271 → 0.6640; dirt score on gravel 0.1367 → 0.1556 |
 | 4 | The measured auto-tune made cars tail-happy. | S2 | Steady test-track runs reward rotation. The search chose rear toe-out, and the Kyst's understeer fell from +0.60 to +0.21 deg/g; rear toe-out of −0.35° alone takes it to +0.28. | A new understeer-gradient test. A change is kept only if the car still understeers by at least max(0.25, min(stock − 0.15, 0.6)) deg/g, and rear toe-out is never used. | +0.64 deg/g after the circuit tune |
+| 5 | An engine upgrade lowered the Ironside 454's PI (518 → 512 on sport tyres). | S2 | Launch control capped the clutch at the tyres' grip without their load sensitivity. As the car squatted, the real grip fell below the cap, the rear wheels spun up (slip ratio 3), and the clutch locked early with no cap at all. Traction control, idle during the launch, then cut so hard that the engine bogged. With 3–25% more power, 0–100 got up to 0.36 s slower. | The cap includes the tyres' load sensitivity and standing water (TypeScript and C#). | No runaway wheelspin; the Ironside's PI rises at every ladder step |
+| 6 | With that fix, launches left grip unused: the Aster GT's 0–100 fell to 4.83 s, 9.8% over its reference. | S2 | An open-loop cap cannot see the torque that wheel and driveline inertia take. During the launch the tyres delivered only 92–95% of their grip, against 100% once traction control took over. | Slip-steered launch control: a trim on the cap holds the driven wheels' slip at 80% of the tyres' peak. | 99–100% of peak grip in the launch; every stock 0–100 is as fast or faster than before (Aster GT 4.73 s, Ironside 6.14 s, Saetta 3.06 s); all 12 cars within 10% of their references (`docs/CARS.md`) |
+| 7 | The first slip trim spun the tyres in 26 of 1,200 power and tyre combinations (Saetta on slicks, Ironside, Prairie). | S2 | The trim kept rising while the engine, not the tyres, was the limit, then a load swing put the cap 6% over the grip. On slicks, which slide at 74% of their peak, its 0.8 floor could not bring a spinning wheel back. | The trim only moves while the tyres are the limit. It rises at 1/s and falls at 8/s, between 0.5 and 1.06. | 0 of 1,200 runs above slip 0.5; the C# port is still bit-exact (91 checks, 339,299 numbers) |
+| 8 | Pulling away with the wheel turned, the car crawled: 28 km/h after 3 s at half lock, against 42 km/h before M5. The browser test of the phone's touch pedals and slide steering caught it. | S2 | Launch control steered on the highest wheel slip. In a turn a limited-slip differential spins the light inner wheel faster than its patch of road; that read as wheelspin, and the trim cut the clutch to 20%. A slower car then got more steering angle from the steering assist and turned tighter still. | An axle's slip is that of its less-slipping wheel, since the loaded outer wheel does the work; the cap is still set by the weaker wheel. Straight launches are unchanged, bit for bit. | 43 km/h at half lock; the touch test passes; still 0 of 1,200 straight runs spin |
+| 9 | In rival fields, trucks and off-roaders with every part rolled over: 14 of 37 resets in 28 races. | S2 | Slicks gave the Prairie 1.02 g and the Ridgeback 0.99 g of grip, against static rollover limits (half the track over the CG height) of 1.10 g and 1.03 g. The AI planned with tyre grip alone. | The AI corners within 85% of the rollover limit, and the PI counts grip only up to it. | One rollover in 28 races (a fully upgraded Ridgeback) |
+| 10 | Passes at 220+ km/h ran cars off the road. | S2 | A pass put the steering target 0.25 m from the edge, and a lane change took about 0.6 s at any speed. At 220 km/h, pure pursuit then asked for 3–4 g to reach a target 4 m aside, and the car ran 3 m past the edge. | Lane changes are capped at 2.5 m/s sideways. The target keeps 0.25 m from the edges, plus 0.025 m per m/s over 20 m/s. | See 14 |
+| 11 | Off the road at speed, the AI held a quarter throttle and steered for the line 42 m ahead: full lock on grass, then a spin. | S2 | Off the road, the only rule was a throttle cap. | Off the road above 80 km/h the AI brakes (less in a slide) and aims 2.5 times its lateral error ahead, so it rejoins at about 22°. | Placed 30 m off the road at 144 km/h, it is back on the road within 6 s |
+| 12 | A driver behind a car spinning backwards braked at full lock from 220 km/h. | S2 | Following and the "never drive into it" rule copied the car ahead's speed, which went down to −58 m/s. | A car ahead going backwards counts as stopped. | See 14 |
+| 13 | Selling a car listed before your current one would have put you in a different car. | S2 | `SellCar` removed the car but kept the current index, which then pointed at the next car. Found by reading the new garage code against the profile. | The index moves with the car. | A new test, which fails on the old code |
+| 14 | Resets in PI-matched races, all fixes together. | — | — | — | Resets fell from 37 to 12 in 28 races (1.32 → 0.43 a race). Without the PI 984 case, from 24 to 1 in 24 races (1.00 → 0.04). In the tournament the stronger driver now wins 299 of 300 races (was 294), with 13 light contacts (was 15), no resets and no wall hits. Grids are 98% in skill order (was 96%), with 1.4 contacts a race (was 2.5). |
 
 **Verified, no bug found:**
-- Brake upgrades help only cars whose stops are limited by brake torque. With 25% more torque the Ironside 454 (rear drums) stops in 39.2 m instead of 44.7 m, and its PI rises from 474 to 501. The Aster GT's stop is limited by its tyres, so its PI doesn't change. That is right.
-- Every kind of upgrade raises the Aster GT's PI: +20% power 720, −10% mass 717, semi-slicks 746, the race aero kit 721 (from 703).
-- Measuring a car twice gives identical results.
+- Brake upgrades help only cars whose stops are limited by brake torque. With 25% more torque the Ironside 454 (rear drums) stops in 39.2 m instead of 44.7 m, and its PI rises. The Aster GT's stop is limited by its tyres, so its PI doesn't change. That is right.
+- Every kind of upgrade raises the Aster GT's PI: +20% power 721, −10% mass 718, semi-slicks 746, the race aero kit 722 (from 703).
+- Measuring a car twice gives identical results. The PI never falls along the rivals' upgrade ladder, for any car.
 - Prices rise with PI. Payouts fall down the order and rise with class and difficulty. Each part ladder costs more at every level.
-- A save reads back identically (616 bytes), with parts, tune and stats.
+- A save reads back identically (635 bytes), with parts, tune and stats. Removing a part returns the sliders it unlocked to their defaults.
 - Share codes survive the round trip for all 12 cars. Damaged codes and non-codes are refused with a reason.
 - Without parts, the auto-tune only touches tyre pressures.
+- Every one of the 672 extreme tunes stays finite and physical. 12 of the 72 random combinations of extremes spin on the 60 m circle (the test track then says "spins"); no single slider at its limit does.
+- All 120 solo runs (every car, stock and with every part, on every event) finish without a reset, and all 24 randomly tuned cars drive two laps without one.
 
 **Measured:**
 
-| Car | PI | Price (credits) | Understeer (deg/g) |
-|---|---|---|---|
-| Ironbark Ridgeback | D 353 | 13,500 | +0.85 |
-| Halden 280 Sprint | D 428 | 21,500 | +0.53 |
-| Aurelle Pico | D 457 | 25,500 | +0.62 |
-| Stallworth Prairie | D 472 | 28,000 | +0.66 |
-| Stallworth Ironside 454 | D 474 | 28,000 | +0.87 |
-| Hoshida Kiri RS | B 606 | 62,000 | +0.98 |
-| Aurelle Vif R | B 674 | 93,500 | +0.73 |
-| Halden Aster GT | A 703 | 111,000 | +0.55 |
-| Nordvik Kyst Sport | A 730 | 130,500 | +0.61 |
-| Nordvik Varg | A 737 | 136,000 | +0.50 |
-| Orsini Saetta | S1 862 | 300,000 | +0.35 |
-| Arcline Vanta | S2 928 | 2,255,500 | +0.29 |
+| Car | PI | Price (credits) | Understeer (deg/g) | PI with every part |
+|---|---|---|---|---|
+| Ironbark Ridgeback | D 353 | 13,500 | +0.85 | 560 |
+| Halden 280 Sprint | D 428 | 21,500 | +0.53 | 714 |
+| Aurelle Pico | D 459 | 25,500 | +0.62 | 646 |
+| Stallworth Prairie | D 472 | 28,000 | +0.66 | 654 |
+| Stallworth Ironside 454 | D 480 | 29,000 | +0.87 | 721 |
+| Hoshida Kiri RS | B 607 | 62,500 | +0.98 | 807 |
+| Aurelle Vif R | B 677 | 95,000 | +0.73 | 808 |
+| Halden Aster GT | A 703 | 111,000 | +0.55 | 849 |
+| Nordvik Kyst Sport | A 732 | 132,000 | +0.61 | 871 |
+| Nordvik Varg | A 739 | 138,000 | +0.50 | 851 |
+| Orsini Saetta | S1 864 | 308,000 | +0.35 | 927 |
+| Arcline Vanta | S2 928 | 2,255,500 | +0.29 | 984 |
 
 - A Proving Ground GP in class A against Pro rivals pays 7,300 credits for a win, 5,100 for second and 1,100 for eighth. A win is worth 1,416 XP.
-- One PI measurement takes 70–120 ms once warmed up. An auto-tune with every slider unlocked takes about 3.5 s.
+- One PI measurement takes 70–120 ms once warmed up. The 108 ladder measurements take 2.6 s on 4 cores. An auto-tune with every slider unlocked takes about 3.6 s.
+- PI-matched GP at A 703 (2 laps, Pro): the field finished between 3:20.9 and 3:35.2 (7%). Equal PI is not equal pace: an upgraded Ironside 454 at PI 710 with a 0.84-skill driver won in 3:20.9, while a stock Aster GT at 703 with a 0.86-skill driver took 3:29.4.
+
+**In Unity (compile-checked against the UnityEngine reference assemblies; not yet run in a real Editor):**
+- The garage (G or LB) has six pages: your cars, the dealer, upgrades with measured PI before and after, tuning, the test track, and career data. Tuning has every unlocked slider with its formula, power, torque and gear graphs, balance bars, auto-tune for road, circuit, dirt and drag, share codes (C and V), and reset (R).
+- The career is saved as JSON in `Application.persistentDataPath`. It saves a moment after every change and when the game quits, keeps the previous save as `.bak`, sets a damaged save aside and restores the backup, and exports to or imports from the clipboard.
+- Events show their class and whether your car may enter. Rival grids are matched to your PI on a worker thread while the grid lines up, and the results add credits and XP to the career.
+
+**Self-critique: the five weakest things at the end of M5:**
+
+1. None of the M5 screens has run in Unity. **Open:** the PC session.
+2. Eight maxed-out hypercars (PI 984) on the Port Calder run still reset about 2.75 times a race, going off the road at 300+ km/h in traffic. The AI tests report these resets instead of failing on them. **Open.**
+3. Equal PI is not equal pace: at A 703 an upgraded Ironside 454 laps about 4% faster than a stock Aster GT. The PI weighs straight-line and steady-state figures and ignores how a car puts them together on a lap. **Open:** add a simulated lap (the AI's own racing line and speed profile) to the PI.
+4. Parts are bought each time they are fitted; a removed part is not kept. **Open:** an inventory of owned parts.
+5. Rivals run default tunes. **Open:** auto-tuned rivals (3.6 s each, so precomputed or cached).
+
+Also open: number plates, and the close-range model items from M3.

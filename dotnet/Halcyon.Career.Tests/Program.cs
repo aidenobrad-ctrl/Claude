@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading.Tasks;
 using Halcyon.Core;
 
 static class Program
@@ -26,6 +27,9 @@ static class Program
         if (only == "" || only == "parts") PartsAndPrices();
         if (only == "" || only == "save") Saves();
         if (only == "" || only == "tune") Tuning();
+        if (only == "" || only == "ladder") Ladder();
+        if (only == "" || only == "rivals") RivalFields();
+        if (only == "" || only == "extremes") Extremes();
         Console.WriteLine();
         Console.WriteLine(failures == 0 ? "CAREER: PASS" : $"CAREER: {failures} FAILED");
         return failures == 0 ? 0 : 1;
@@ -105,6 +109,13 @@ static class Program
         Check(q.ToJson() == json, $"a save reads back identically ({json.Length} bytes)");
         Check(q.CurrentCar.Level(PartCategory.Engine) == 2 && Math.Abs(q.CurrentCar.Tune.camberF - car.Tune.camberF) < 1e-12 && q.Wins == 1, "parts, tune and stats survive the round trip");
         Check(!p.SellCar(0, 1, out _) || p.Garage.Count == 1, "selling works and keeps at least one car");
+        var four = Profile.New();
+        four.BuyCar("aurelle-pico", 0, out _);
+        four.BuyCar("halden-280-sprint", 0, out _);
+        four.BuyCar("hoshida-kiri-rs", 0, out _);
+        four.Current = 2;
+        four.SellCar(0, 0, out _);
+        Check(four.CurrentCar.Id == "halden-280-sprint", "selling a car listed before the current one keeps the current car");
         var damaged = json.Replace("aurelle-pico", "no-such-car");
         var r = Profile.FromJson(damaged);
         Check(r.Garage.Count >= 1, "a save with an unknown car still loads");
@@ -148,6 +159,14 @@ static class Program
         g2.gearScale[1] = TuneSpec.GearMax;
         bool gears = Run(g1) != Run(g2);
         Check(changed == TuneSpec.Fields.Length && gears, $"{changed}/{TuneSpec.Fields.Length} sliders and the gear ratios change the car's path");
+
+        var custom = Tune.Default(spec);
+        custom.camberF = -3;
+        custom.springF = 1.4;
+        custom.pressureF = 0.2;
+        var allowed = TuneSpec.ForParts(spec, custom, TuneGroup.Pressure | TuneGroup.Springs, out int lockedN);
+        Check(allowed.camberF == Tune.Default(spec).camberF && allowed.springF == 1.4 && allowed.pressureF == 0.2 && lockedN == 1,
+            "settings a car's parts no longer unlock go back to default; unlocked ones keep their values");
 
         Console.WriteLine("\nShare codes");
         var rng = new Rng(7);
@@ -197,6 +216,149 @@ static class Program
         Check(sCircuitC > sStockC, "the circuit auto-tune measures better than stock on asphalt");
         Check(sDirtD > sStockD, "the dirt auto-tune measures better than stock on gravel");
         Check(sDirtD >= sCircuitD, "on gravel the dirt tune is at least as good as the circuit tune");
+    }
+
+    static readonly PiTable Table = new PiTable();
+
+    /// <summary>The rivals' upgrade ladder: PI must never fall from one step to the next (rivals binary-search it).</summary>
+    static void Ladder()
+    {
+        Console.WriteLine("\nUpgrade ladder: PI at every step, stock first");
+        var sw = Stopwatch.StartNew();
+        var all = Cars.All;
+        int n = Rivals.Ladder.Length;
+        var pis = new int[all.Length, n];
+        Parallel.For(0, all.Length * n, k => pis[k / n, k % n] = Table.Get(all[k / n].id, Rivals.Ladder[k % n]).Pi);
+        bool rising = true;
+        for (int i = 0; i < all.Length; i++)
+        {
+            var row = new List<string>();
+            for (int j = 0; j < n; j++)
+            {
+                row.Add($"{pis[i, j],4}");
+                if (j > 0 && pis[i, j] < pis[i, j - 1]) rising = false;
+            }
+            Console.WriteLine($"  {all[i].id,-26} {string.Join(" ", row)}");
+        }
+        Console.WriteLine($"  ({all.Length * n} measurements in {sw.ElapsedMilliseconds} ms on {Environment.ProcessorCount} cores)");
+        Check(rising, "the PI never falls from one ladder step to the next, for any car");
+        int top = 0;
+        for (int i = 0; i < all.Length; i++) top = Math.Max(top, pis[i, n - 1]);
+        Check(top <= 999, $"no car passes PI 999 with every part (highest {top})");
+    }
+
+    static void RivalFields()
+    {
+        Console.WriteLine("\nRivals matched to the player's PI (7 rivals, Pro)");
+        int Stock(string id) => Table.Get(id, Rivals.Ladder[0]).Pi;
+        int Full(string id) => Table.Get(id, Rivals.Ladder[Rivals.Ladder.Length - 1]).Pi;
+        var cases = new (string what, int pi, PiClass? limit)[]
+        {
+            ("Aster GT stock, open", Stock("halden-aster-gt"), null),
+            ("Aster GT stock, A class", Stock("halden-aster-gt"), PiClass.A),
+            ("Pico stock, D class", Stock("aurelle-pico"), PiClass.D),
+            ("Ridgeback stock, D class", Stock("ironbark-ridgeback"), PiClass.D),
+            ("Pico with every part, open", Full("aurelle-pico"), null),
+            ("Saetta stock, S1 class", Stock("orsini-saetta"), PiClass.S1),
+            ("Vanta stock, open", Stock("arcline-vanta"), null),
+            ("Vanta with every part, open", Full("arcline-vanta"), null),
+        };
+        bool inClass = true, close = true, capped = true;
+        foreach (var (what, pi, limit) in cases)
+        {
+            var sw = Stopwatch.StartNew();
+            var field = Rivals.Field(pi, limit, 7, Difficulty.Pro, 11, Table);
+            long ms = sw.ElapsedMilliseconds;
+            int cap = Rivals.Cap(pi, limit);
+            var groups = field.GroupBy(r => (r.CarId, r.Pi)).Select(g => $"{g.Key.CarId} {g.Key.Pi}{(g.Count() > 1 ? " x" + g.Count() : "")}");
+            Console.WriteLine($"  {what,-30} PI {pi,3} cap {cap,4}: {string.Join(", ", groups)}  ({ms} ms)");
+            if (limit.HasValue && field.Any(r => r.Pi > Performance.ClassMax(limit.Value))) inClass = false;
+            if (field.Any(r => Math.Abs(r.Pi - pi) > 40)) close = false;
+            if (field.Any(r => r.Pi > cap) && field.Select(r => r.CarId).Distinct().Count() > 1) capped = false;
+        }
+        Check(inClass, "no rival is above the event's class");
+        Check(close, "every rival is within 40 PI of the player");
+        Check(capped, "rivals stay at or below the player's PI + 15, unless one car is all there is");
+        var a = Rivals.Field(703, PiClass.A, 7, Difficulty.Pro, 5, Table);
+        var b = Rivals.Field(703, PiClass.A, 7, Difficulty.Pro, 5, Table);
+        Check(a.Select(r => r.CarId + r.Key + r.Driver.Name).SequenceEqual(b.Select(r => r.CarId + r.Key + r.Driver.Name)), "the same seed gives the same field");
+    }
+
+    /// <summary>
+    /// Every slider at its minimum and at its maximum, alone, on every car,
+    /// plus random combinations of extremes with every part: the test-track
+    /// numbers must stay finite and physical.
+    /// </summary>
+    static void Extremes()
+    {
+        Console.WriteLine("\nExtreme tunes on the test track");
+        var sw = Stopwatch.StartNew();
+        var cases = new List<(CarSpec spec, string what, Tune tune, Upgrades up)>();
+        foreach (var c in Cars.All)
+        {
+            foreach (var f in TuneSpec.Fields)
+            {
+                foreach (double v in new[] { f.Min, f.Max })
+                {
+                    var t = Tune.Default(c);
+                    f.Set(t, 0, v);
+                    cases.Add((c, $"{f.Key}={v}", t, null));
+                }
+            }
+            foreach (double g in new[] { TuneSpec.GearMin, TuneSpec.GearMax })
+            {
+                var t = Tune.Default(c);
+                for (int i = 0; i < t.gearScale.Length; i++) t.gearScale[i] = g;
+                cases.Add((c, $"gears={g}", t, null));
+            }
+            var rng = new Rng(Hash.HashString(c.id));
+            for (int k = 0; k < 6; k++)
+            {
+                var t = Tune.Default(c);
+                foreach (var f in TuneSpec.Fields)
+                {
+                    double r = rng.Next();
+                    if (r < 0.35) f.Set(t, 0, f.Min);
+                    else if (r < 0.7) f.Set(t, 0, f.Max);
+                }
+                for (int i = 0; i < t.gearScale.Length; i++) t.gearScale[i] = rng.Next() < 0.5 ? TuneSpec.GearMin : TuneSpec.GearMax;
+                cases.Add((c, $"random extremes {k} with every part", t, Parts.Build(c, Rivals.Ladder[Rivals.Ladder.Length - 1])));
+            }
+        }
+        var bad = new System.Collections.Concurrent.ConcurrentBag<string>();
+        var spins = new System.Collections.Concurrent.ConcurrentBag<string>();
+        var worst = new System.Collections.Concurrent.ConcurrentBag<(double g, double brake, double t100, string what)>();
+        Parallel.ForEach(cases, cs =>
+        {
+            var p = VehicleParams.Build(cs.spec, cs.tune, cs.up);
+            var acc = Telemetry.AccelTest(p);
+            var br = Telemetry.BrakeTest(p, 100);
+            var pad = Telemetry.SkidpadTest(p, 40);
+            double k = TestTrack.UndersteerGradient(p, pad.g);
+            string id = $"{cs.spec.id} {cs.what}";
+            bool finite = !double.IsNaN(acc.topKmh) && !double.IsInfinity(acc.topKmh) && !double.IsNaN(br.distance) && !double.IsNaN(pad.g);
+            if (!finite) bad.Add($"{id}: non-finite (top {acc.topKmh}, brake {br.distance}, grip {pad.g})");
+            else
+            {
+                if (pad.g > 2.2 || pad.g < 0.3) bad.Add($"{id}: skidpad {pad.g:0.000} g");
+                if (br.distance < 15 || br.distance > 90) bad.Add($"{id}: 100-0 in {br.distance:0.0} m");
+                if (double.IsNaN(acc.t100) || acc.t100 > 25) bad.Add($"{id}: 0-100 {acc.t100:0.00} s");
+                if (acc.topKmh < 120 || acc.topKmh > 560) bad.Add($"{id}: top speed {acc.topKmh:0} km/h");
+                // A combination of extremes may make a car that spins at 0.6 of
+                // its grip (the test track then shows "spins"); one slider alone
+                // must not.
+                if (double.IsNaN(k))
+                {
+                    if (cs.what.StartsWith("random")) spins.Add(id);
+                    else bad.Add($"{id}: spins on the 60 m circle with one slider at its limit");
+                }
+            }
+            worst.Add((pad.g, br.distance, acc.t100, id));
+        });
+        foreach (var b in bad.OrderBy(x => x).Take(40)) Console.WriteLine($"    {b}");
+        Console.WriteLine($"  {cases.Count} tunes in {sw.ElapsedMilliseconds} ms; most grip {worst.Max(w => w.g):0.000} g, shortest stop {worst.Min(w => w.brake):0.0} m, slowest 0-100 {worst.Max(w => double.IsNaN(w.t100) ? 99 : w.t100):0.00} s");
+        Console.WriteLine($"  {spins.Count} of 72 random combinations of extremes spin on the 60 m circle: {string.Join(", ", spins.OrderBy(x => x))}");
+        Check(bad.IsEmpty, $"every extreme tune stays finite and physical ({bad.Count} problems)");
     }
 
     static void UndersteerProbe()

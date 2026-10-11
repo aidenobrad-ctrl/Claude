@@ -56,6 +56,9 @@ namespace Halcyon.Core
         public LapState Lap = new LapState();
         /// <summary>The car the player drives (an id from Cars.All).</summary>
         public string PlayerCarId;
+        /// <summary>The player's tune and upgrades (null: default tune, stock parts); kept across Reset.</summary>
+        public Tune PlayerTune;
+        public Upgrades PlayerUpgrades;
         readonly NearestResult near = new NearestResult();
         readonly RoadHit roadScratch = new RoadHit();
         int nextId = 1;
@@ -82,7 +85,7 @@ namespace Halcyon.Core
             Events.Clear();
             Filter.Reset();
             Ground.BrokenTrees.Clear();
-            Player = AddCar(PlayerCarId, true);
+            Player = AddCar(PlayerCarId, true, PlayerTune, PlayerUpgrades);
             if (Spawn == SpawnAt.Proving)
             {
                 var p = World.Proving;
@@ -96,10 +99,10 @@ namespace Halcyon.Core
             Lap = new LapState();
         }
 
-        public SimCar AddCar(string specId, bool player = false)
+        public SimCar AddCar(string specId, bool player = false, Tune tune = null, Upgrades up = null)
         {
             CarSpec spec = Array.Find(Halcyon.Core.Cars.All, c => c.id == specId) ?? Halcyon.Core.Cars.All[0];
-            var v = new Vehicle(VehicleParams.Build(spec)) { aids = Aids.Default() };
+            var v = new Vehicle(VehicleParams.Build(spec, tune, up)) { aids = Aids.Default() };
             var car = new SimCar { id = nextId++, name = player ? "You" : spec.model, specId = spec.id, vehicle = v, player = player };
             Cars.Add(car);
             return car;
@@ -177,14 +180,19 @@ namespace Halcyon.Core
             }
         }
 
-        /// <summary>Swap the player's car for another model (an id from Cars.All) at the same place and heading.</summary>
-        public void ChangePlayerCar(string specId)
+        /// <summary>
+        /// Swap the player's car for another model (an id from Cars.All), or the
+        /// same one with a new tune or parts, at the same place and heading.
+        /// </summary>
+        public void ChangePlayerCar(string specId, Tune tune = null, Upgrades up = null)
         {
             var old = Player.vehicle;
             double x = old.pos.x, z = old.pos.z;
             double yaw = YawOf(old.fwd.x, old.fwd.z);
             CarSpec spec = Array.Find(Halcyon.Core.Cars.All, c => c.id == specId) ?? Halcyon.Core.Cars.All[0];
-            var v = new Vehicle(VehicleParams.Build(spec)) { aids = old.aids };
+            PlayerTune = tune?.Clone();
+            PlayerUpgrades = up?.Clone();
+            var v = new Vehicle(VehicleParams.Build(spec, PlayerTune, PlayerUpgrades)) { aids = old.aids };
             PlayerCarId = spec.id;
             Player.specId = spec.id;
             Player.vehicle = v;

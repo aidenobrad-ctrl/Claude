@@ -22,6 +22,8 @@ namespace Halcyon.Core
         /// <summary>Race distance from the start line, m.</summary>
         public double Distance;
         public int GridSize = 8;
+        /// <summary>The highest class allowed (null: open to every car). Rivals are matched to the player's PI within it.</summary>
+        public PiClass? ClassLimit;
     }
 
     public static class EventCatalog
@@ -69,19 +71,25 @@ namespace Halcyon.Core
         /// <summary>Every event on the island.</summary>
         public static List<RaceEvent> All(WorldData w, IslandGround g)
         {
-            var list = new List<RaceEvent> { ProvingGP(w) };
+            var gp = ProvingGP(w);
+            gp.ClassLimit = PiClass.A;
+            var list = new List<RaceEvent> { gp };
             var sp = w.Spawn;
-            void Add(string id, string name, string to)
+            void Add(string id, string name, string to, PiClass? limit)
             {
                 var p = FindPoi(w, to);
                 if (p == null) return;
                 var e = Sprint(w, g, id, name, sp.x, sp.z, p.x, p.z);
-                if (e != null) list.Add(e);
+                if (e == null) return;
+                e.ClassLimit = limit;
+                list.Add(e);
             }
-            Add("sprint-port-calder", "Festival to Port Calder", "Port Calder");
-            Add("sprint-harbor", "Harbour Dash", "Harbor");
-            Add("sprint-ashby", "Ashby Sprint", "Ashby");
-            Add("sprint-saltmarsh", "Saltmarsh Bay Run", "Saltmarsh Bay");
+            // Classes: the starter car (A) can enter three events; the cheap D
+            // cars open the Saltmarsh run and a B car the Ashby sprint.
+            Add("sprint-port-calder", "Festival to Port Calder", "Port Calder", null);
+            Add("sprint-harbor", "Harbour Dash", "Harbor", PiClass.S1);
+            Add("sprint-ashby", "Ashby Sprint", "Ashby", PiClass.B);
+            Add("sprint-saltmarsh", "Saltmarsh Bay Run", "Saltmarsh Bay", PiClass.D);
             return list;
         }
     }
@@ -102,6 +110,8 @@ namespace Halcyon.Core
         public bool Finished;
         public double FinishTime = double.NaN;
         public int Position;
+        /// <summary>The car's performance index, when known (0 otherwise).</summary>
+        public int Pi;
         public bool WrongWay;
         double backT;
 
@@ -153,10 +163,26 @@ namespace Halcyon.Core
         {
             readonly Dictionary<string, CarAbility> map = new Dictionary<string, CarAbility>();
 
-            public CarAbility Get(string id)
+            public CarAbility Get(string id) => Get(id, null, null, "stock");
+
+            /// <summary>
+            /// A car with a tune and parts. key names the setup (Rival.Key), so
+            /// equal setups share one measurement. Thread-safe: grids can be
+            /// measured in parallel.
+            /// </summary>
+            public CarAbility Get(string id, Tune tune, Upgrades up, string key)
             {
-                if (!map.TryGetValue(id, out var a)) map[id] = a = CarAbility.Measure(Cars.ById(id));
-                return a;
+                string k = id + "|" + key;
+                lock (map)
+                {
+                    if (map.TryGetValue(k, out var a)) return a;
+                }
+                var m = CarAbility.Measure(Cars.ById(id), tune, up);
+                lock (map)
+                {
+                    if (!map.ContainsKey(k)) map[k] = m;
+                    return map[k];
+                }
             }
         }
 
@@ -166,6 +192,12 @@ namespace Halcyon.Core
         /// AI only and the player's car is parked out of the way.
         /// </summary>
         public RaceSession(Simulation sim, RaceEvent ev, IList<(string carId, Personality p)> opponents, AbilityCache abilities, uint seed, bool includePlayer = true, int playerGrid = -1, RacingLine line = null)
+            : this(sim, ev, Rivals.Stock(opponents), abilities, seed, includePlayer, playerGrid, line)
+        {
+        }
+
+        /// <summary>The same, with rivals whose cars may carry parts (Rivals.Field).</summary>
+        public RaceSession(Simulation sim, RaceEvent ev, IList<Rival> opponents, AbilityCache abilities, uint seed, bool includePlayer = true, int playerGrid = -1, RacingLine line = null)
         {
             Sim = sim;
             Event = ev;
@@ -185,11 +217,12 @@ namespace Halcyon.Core
                 }
                 else
                 {
-                    var (carId, p) = opponents[k++];
-                    var car = sim.AddCar(carId);
-                    car.name = p.Name;
-                    var ai = new AiDriver(car, p, abilities.Get(car.specId), seed * 7919u + (uint)slot) { Placer = Place };
-                    e = new Entrant { Car = car, Ai = ai, Name = p.Name };
+                    var r = opponents[k++];
+                    var up = Rivals.PartsKey(r.Parts) == "stock" ? null : r.Upgrades;
+                    var car = sim.AddCar(r.CarId, false, r.Tune, up);
+                    car.name = r.Driver.Name;
+                    var ai = new AiDriver(car, r.Driver, abilities.Get(car.specId, r.Tune, up, r.Key), seed * 7919u + (uint)slot) { Placer = Place };
+                    e = new Entrant { Car = car, Ai = ai, Name = r.Driver.Name, Pi = r.Pi };
                 }
                 e.Grid = slot;
                 Entrants.Add(e);

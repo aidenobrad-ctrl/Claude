@@ -112,6 +112,12 @@ export interface VehicleParams {
   bodyPoints: V3[];
   /** Brake bias toward the front (0..1), already folded into maxBrake. */
   brakeBias: number;
+  /**
+   * Caster relative to the stock 5.5 degrees. Steering then leans each
+   * steered wheel: camber changes by +-casterDelta * sin(steer) degrees, the
+   * outer wheel into the turn (more negative), the inner one away from it.
+   */
+  casterDelta: number;
 }
 
 /** Tuning layer. Every field has a documented effect in buildParams(). */
@@ -436,6 +442,7 @@ export function buildParams(spec: CarSpec, tune: Tune = defaultTune(spec), up: U
     boxCenter,
     bodyPoints,
     brakeBias: tune.brakeBalance,
+    casterDelta: tune.caster - 5.5,
   };
 }
 

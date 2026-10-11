@@ -232,3 +232,51 @@ Costs:
 5. Braking stability is the physics' job too. A player with ESC off meets finding 12, and only the AI works around it. A brake-force distribution (EBD) model belongs in the shared physics, with the TypeScript and the references updated together. **Open.**
 
 Also open: the Highcrest switchbacks (about 6 m radius) are left for world v2 (M6). Only two event types exist so far (circuit and sprint); the rest come in M7.
+
+## M5: Tuning and upgrades (core)
+
+**Tried (headless in .NET, `dotnet/Halcyon.Career.Tests`):**
+- The PI of every stock car, measured twice.
+- Each kind of upgrade on the Aster GT, and more brake torque on the Ironside 454.
+- Every part ladder priced on the Aster GT, and payouts for every position, class and difficulty.
+- A career: start, buy, fit parts, save, load, sell; and a save that names a car the game doesn't have.
+- Each of the 24 sliders and the gear ratios, moved alone, against the default car's path.
+- Share codes for all 12 cars, and damaged codes and non-codes.
+- Auto-tunes for circuit and dirt on a Kyst Sport with race suspension, a sport transmission, a sport differential and race brakes.
+- The understeer gradient of every car, and of the Kyst with single changes.
+
+| # | Finding | Sev | Root cause | Fix | Retest |
+|---|---|---|---|---|---|
+| 1 | The caster slider did nothing. | S2 | The tune had a caster value, but no formula read it. The test that moves each slider alone found it. | Caster now leans the steered wheels as they turn (dynamic camber), in the TypeScript and the C# together. At the stock 5.5° nothing changes. | 24/24 sliders and the gear ratios change the car's path; still bit-exact (91 checks, 339,299 numbers) |
+| 2 | Loading a save that named an unknown car crashed. | S1 | `Cars.ById` throws for an unknown id, so renaming or removing a car would have made every save with it unloadable. | Unknown cars are skipped on load. | Pass |
+| 3 | The first auto-tune made cars worse. | S2 | It followed rules of thumb: circuit tunes low and stiff, dirt tunes high and soft. On gravel the dirt tune gripped less than the circuit tune (0.467 g against 0.494 g). On asphalt the circuit tune gripped no better than stock (0.904 g against 0.906 g). | The auto-tune measures. A coordinate search over the unlocked sliders keeps a change only if it improves a score measured on the event's surface. | Kyst Sport: circuit score 0.6251 → 0.6619; dirt score on gravel 0.1317 → 0.1543 |
+| 4 | The measured auto-tune made cars tail-happy. | S2 | Steady test-track runs reward rotation. The search chose rear toe-out, and the Kyst's understeer fell from +0.60 to +0.21 deg/g; rear toe-out of −0.35° alone takes it to +0.28. | A new understeer-gradient test. A change is kept only if the car still understeers by at least max(0.25, min(stock − 0.15, 0.6)) deg/g, and rear toe-out is never used. | +0.64 deg/g after the circuit tune |
+
+**Verified, no bug found:**
+- Brake upgrades help only cars whose stops are limited by brake torque. With 25% more torque the Ironside 454 (rear drums) stops in 39.2 m instead of 44.7 m, and its PI rises from 474 to 501. The Aster GT's stop is limited by its tyres, so its PI doesn't change. That is right.
+- Every kind of upgrade raises the Aster GT's PI: +20% power 720, −10% mass 717, semi-slicks 746, the race aero kit 721 (from 703).
+- Measuring a car twice gives identical results.
+- Prices rise with PI. Payouts fall down the order and rise with class and difficulty. Each part ladder costs more at every level.
+- A save reads back identically (616 bytes), with parts, tune and stats.
+- Share codes survive the round trip for all 12 cars. Damaged codes and non-codes are refused with a reason.
+- Without parts, the auto-tune only touches tyre pressures.
+
+**Measured:**
+
+| Car | PI | Price (credits) | Understeer (deg/g) |
+|---|---|---|---|
+| Ironbark Ridgeback | D 353 | 13,500 | +0.85 |
+| Halden 280 Sprint | D 428 | 21,500 | +0.53 |
+| Aurelle Pico | D 457 | 25,500 | +0.62 |
+| Stallworth Prairie | D 472 | 28,000 | +0.66 |
+| Stallworth Ironside 454 | D 474 | 28,000 | +0.87 |
+| Hoshida Kiri RS | B 606 | 62,000 | +0.98 |
+| Aurelle Vif R | B 674 | 93,500 | +0.73 |
+| Halden Aster GT | A 703 | 111,000 | +0.55 |
+| Nordvik Kyst Sport | A 730 | 130,500 | +0.61 |
+| Nordvik Varg | A 737 | 136,000 | +0.50 |
+| Orsini Saetta | S1 862 | 300,000 | +0.35 |
+| Arcline Vanta | S2 928 | 2,255,500 | +0.29 |
+
+- A Proving Ground GP in class A against Pro rivals pays 7,300 credits for a win, 5,100 for second and 1,100 for eighth. A win is worth 1,416 XP.
+- One PI measurement takes 70–120 ms once warmed up. An auto-tune with every slider unlocked takes about 3.5 s.

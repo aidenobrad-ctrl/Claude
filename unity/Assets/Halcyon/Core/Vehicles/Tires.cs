@@ -178,7 +178,7 @@ namespace Halcyon.Core
         /// wheelSpeed: omega * radius (m/s). Fz: load, N. surfaceGrip: multiplier.
         /// Writes into and returns <paramref name="result"/>; allocation-free.
         /// </summary>
-        public static TireResult TireForce(TireSetup t, double Fz, double vLong, double vLat, double wheelSpeed, double surfaceGrip, TireResult result)
+        public static TireResult TireForce(TireSetup t, double Fz, double vLong, double vLat, double wheelSpeed, double surfaceGrip, TireResult result, double lateral = double.NaN)
         {
             if (Fz <= 0)
             {
@@ -202,7 +202,7 @@ namespace Halcyon.Core
             double sens = JsMath.Max(0.6, JsMath.Min(1.25, 1 - t.info.loadSens * (loadRatio - 1)));
             double mu = t.info.mu * sens * surfaceGrip * t.widthGrip * t.tuneGrip;
             double muX = mu * t.info.muLong;
-            double muY = mu * t.tuneLateral;
+            double muY = mu * (double.IsNaN(lateral) ? t.tuneLateral : lateral);
             if (s < 1e-9)
             {
                 double slope0 = MfSlope(t.curve, 0);

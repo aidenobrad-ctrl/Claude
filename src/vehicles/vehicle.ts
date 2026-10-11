@@ -11,7 +11,7 @@ import { datan, datan2, dcos, dsin, dtan } from '../engine/dmath';
 import { newHit, type Ground, type GroundHit } from '../world/ground';
 import { SURFACES, SURFACE, type SurfaceId } from '../world/surfaces';
 import { tireForce, type TireResult } from './tires';
-import { AIR_DENSITY, GRAVITY, curveTorque, type VehicleParams } from './params';
+import { AIR_DENSITY, GRAVITY, camberLateralGrip, camberLongGrip, curveTorque, type VehicleParams } from './params';
 
 export interface DriverInput {
   steer: number;
@@ -440,7 +440,15 @@ export class Vehicle {
     const surf = SURFACES[w.surface];
     let grip = wp.tire.info.surface[surf.grip] * surf.gripScale;
     if (w.water > 0.02) grip *= Math.max(0.35, 1 - w.water * 1.5);
-    tireForce(wp.tire, w.load, vL, vS, wheelSpeed, grip, tireRes);
+    // Caster: a steered wheel leans as it turns, the outer one into the corner.
+    let lateral: number | undefined;
+    if (p.casterDelta !== 0 && wp.steerable) {
+      const deg = Math.PI / 180;
+      const camber = wp.camber / deg;
+      const lean = (wp.left ? 1 : -1) * p.casterDelta * dsin(w.steer);
+      lateral = camberLateralGrip(camber + lean) / camberLongGrip(camber);
+    }
+    tireForce(wp.tire, w.load, vL, vS, wheelSpeed, grip, tireRes, lateral);
     w.fx = tireRes.fx;
     w.fy = tireRes.fy;
     // Static friction at a standstill. A braked tire whose patch has all but

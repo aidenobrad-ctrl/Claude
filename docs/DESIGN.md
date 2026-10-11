@@ -116,8 +116,9 @@ Each car is a 6-DOF rigid body on four raycast suspension struts, stepped at 240
 | Brake balance and pressure | Front share of the total brake torque, and a total multiplier. |
 | Differential | Accel and decel ramps (locking per N·m of drive or engine-braking torque); AWD front split. |
 | Aero (front and rear multipliers) | Change the downforce balance; total ClA comes from the car and aero upgrades. |
+| Caster c (deg, stock 5.5) | Steering leans each steered wheel: its camber changes by (c − 5.5)·sin δ degrees, more negative on the outer wheel and less on the inner. Lateral grip then follows the camber formula wheel by wheel. At the stock 5.5° nothing changes, so every validated figure stands. |
 
-Tire width adds grip through load per mm of width: 1 + 0.18·(1 − (N/mm)/15), clamped to 0.9–1.12. M5 wires the sliders and upgrades through these formulas.
+Tire width adds grip through load per mm of width: 1 + 0.18·(1 − (N/mm)/15), clamped to 0.9–1.12. M5 wires the sliders and upgrades through these formulas, and a test proves that every one of the 24 sliders and the gear ratios changes the car's path.
 
 ## Controls, cameras, HUD
 
@@ -162,7 +163,7 @@ Lap timing requires passing all three sectors in order, so reversing over the li
 
 The user asked for the game in Unity with Blender-made cars, so from M2 on Unity is the main target. The web version stays as the reference implementation.
 
-- **Simulation in pure C#.** `unity/Assets/Halcyon/Core` is a line-by-line port of the TypeScript simulation (no UnityEngine). It uses doubles throughout, the same operation order, and fdlibm trig in `DMath`. The car physics is bit-exact with the TypeScript: `dotnet/Halcyon.Core.Tests` compares 339,270 numbers across 91 checks. The island loads from data exported by `tools/export-unity.ts`, and the world tests agree to about 1 cm.
+- **Simulation in pure C#.** `unity/Assets/Halcyon/Core` is a line-by-line port of the TypeScript simulation (no UnityEngine). It uses doubles throughout, the same operation order, and fdlibm trig in `DMath`. The car physics is bit-exact with the TypeScript: `dotnet/Halcyon.Core.Tests` compares 339,299 numbers across 91 checks. The island loads from data exported by `tools/export-unity.ts`, and the world tests agree to about 1 cm.
 - **Why port instead of rewriting.** The driving feel was tuned and validated in M1. A bit-exact port keeps every validated number and lets the web tests keep guarding the physics.
 - **The core is thread-safe.** There are no mutable statics. Collision scratch is per thread, so the garage can measure cars on a worker thread and the AI tournaments run in parallel.
 - **Testing outside Unity.** Unity can't run in the build container. Every Unity script is compile-checked against the UnityEngine reference assemblies (`dotnet/Halcyon.Unity`), and all behaviour that matters lives in Core, where .NET tests exercise it headless.
@@ -175,6 +176,7 @@ The user asked for the game in Unity with Blender-made cars, so from M2 on Unity
   - Holes get walls and an insert surface, offset by the feature's depth.
   - Patches become separate material groups.
   - Edges therefore stay sharp however far the body is decimated.
+- **Arch skin.** Over each wheel arch the body's top surface is lifted, with a smooth max, so at least 8 cm of skin is left above the arch cut. Surface nets at 3 cm voxels need about two voxels of material to close a shell; thinner skin tore.
 - **Normals and LODs.** Normals come from the field's gradient. `fix_winding` makes the faces agree with them after decimation. There are three LODs (about 24k, 6k and 1.6k body triangles).
 - **Parts.** Wheels, interior, wings, spoilers, bumpers, roof racks, bull bars, snorkels and similar parts come from a registry, so every car is data in `blender/halcyon/cars.py`.
 - **Export.** One FBX per car with `Wheel_XX` empties, plus a `<id>.style.json` with paint, rim and calliper colours. Unity remaps materials by name (`CarVisual`) and builds one LODGroup.
@@ -234,6 +236,59 @@ The AI drives the same `Vehicle` and physics as the player. Only its inputs diff
 
   Six-car grids and mixed fields add crowd statistics.
 
+## Career (`unity/Assets/Halcyon/Core/Career/`)
+
+M5 is pure C# in Core, like the AI, so it is tested headless (`dotnet/Halcyon.Career.Tests`).
+
+- **Performance index (PI).** It is measured, never typed in. The inputs are the four figures in `docs/CARS.md`, with downforce added to the grip:
+  - 0–100 km/h on a log scale: 11 s scores 0 and 1.9 s scores 1;
+  - top speed: 150 km/h scores 0 and 430 km/h scores 1;
+  - grip at 180 km/h (skidpad grip plus downforce at 50 m/s): 0.62 g scores 0 and 1.30 g scores 1;
+  - 100–0 km/h: 48 m scores 0 and 25 m scores 1.
+
+  S = 0.42·accel + 0.20·top + 0.26·grip + 0.12·braking, and PI = 100 + 899·S^0.62. The exponent spreads the crowded middle. Classes are D ≤ 500, C ≤ 600, B ≤ 700, A ≤ 800, S1 ≤ 900, S2 ≤ 998 and X. The stock roster runs from the Ridgeback (D 353) through the Aster GT (A 703) to the Vanta (S2 928). One measurement takes 70–100 ms, so menus measure on a worker thread.
+- **Parts.** Nine categories, each with levels. Every part folds into the physics' `Upgrades` layer (power, mass, tyre compound and width, brake torque, aero kit), so its effect goes through the same formulas as everything else.
+
+  | Category | Levels |
+  |---|---|
+  | Engine | +6%, +13%, +22% power |
+  | Weight | −3%, −6%, −10% mass |
+  | Tyres | one or two steps up the road ladder (eco, street, sport, semi-slick, slick), slicks, rally, off-road |
+  | Width | +15 mm, +30 mm |
+  | Brakes | +20%, +45% torque |
+  | Aero | sport kit (+0.25 m² ClA), race kit (+0.6 m²) |
+  | Transmission, differential, suspension | no physics change of their own; they unlock tuning |
+
+  As in Forza, parts unlock sliders:
+  - tyre pressures are always open;
+  - a sport transmission unlocks the final drive, and a race transmission every ratio;
+  - sport suspension unlocks springs, ride height and anti-roll bars, and race suspension adds dampers and alignment;
+  - race brakes unlock balance and pressure;
+  - aero kits unlock front and rear downforce;
+  - a sport differential unlocks locking and the AWD split.
+
+  A part costs a share of the car's price, with a minimum, rounded to 100 credits.
+- **Economy.**
+  - A car's price is exp(10.1 + 0.006·(PI − 450) + 0.000273·max(0, PI − 850)²), rounded to 500 credits. The Ridgeback costs 13,500, the Aster GT 111,000, the Saetta 300,000 and the Vanta 2,255,500. Selling returns 60%.
+  - A career starts with 50,000 credits and the Aster GT.
+  - A race pays 2500·√max(0.5, distance / 5 km), rounded to 50 credits, times three factors:
+    - finishing position: 1, 0.7, 0.5, 0.35 and 0.25 for the top five, then 0.15;
+    - class: from 1.0 for D up to 2.6 for X;
+    - rivals' difficulty: Novice 0.7, Average 1.0, Pro 1.3, Legend 1.7.
+  - XP is 100 per km plus 300, 200 or 100 for a podium. Level n needs 1000·n^1.3 XP.
+- **Saves.** The profile holds credits, XP, races, wins, and the garage: each car with its parts, tune and paint. It is versioned JSON, written by a small writer and read with MiniJson. A save that names a car the game no longer has still loads, without that car.
+- **Sliders and share codes.** `TuneSpec` lists the 24 sliders with range, step, unit, the parts that unlock them and the formula the menu shows. A share code is `HT1.` plus base64url of the car, one byte per slider (its step index), one byte per gear ratio and a checksum. Every slider has at most 255 steps, so a snapped tune survives the round trip exactly. Damaged codes are refused.
+- **Test track.** The understeer gradient is the extra steering per g on a 60 m circle, measured at 0.3 and 0.6 of the car's grip. On a constant radius the kinematic steer angle cancels. The stock roster runs from +0.29 deg/g (Vanta) to +0.98 deg/g (Kiri RS).
+- **Auto-tune by measurement.** Rules of thumb measured worse than stock, so the auto-tune measures instead.
+  - It runs a coordinate search over the unlocked sliders: steps of 6, then 3, then 1 slider step, within 48 measurements.
+  - A change is kept only if it improves a score measured on the event's surface:
+    - circuit: 0.25·accel + 0.5·grip + 0.25·braking;
+    - road: 0.4/0.35/0.25;
+    - dirt, on gravel: 0.3/0.45/0.25;
+    - drag: acceleration plus the quarter mile.
+  - Except for drag, the car must also keep an understeer gradient of at least max(0.25, min(stock − 0.15, 0.6)) deg/g. The steady tests reward rotation, so an unconstrained search found tail-happy setups.
+  - Rear toe-out is never used. Dampers are left alone, because the steady tests cannot judge them.
+
 ## Testing
 
 - `npm run verify` runs the typecheck, the build, the simulation tests (Node) and the browser tests (headless Chromium through Playwright with SwiftShader). `--quick` shortens the long suites.
@@ -253,3 +308,7 @@ The AI drives the same `Vehicle` and physics as the player. Only its inputs diff
   - Skill is worth about 3% of pace per step.
   - Guardrails are skipped on the inside of bends tighter than their offset.
   - The Highcrest pass is not an event until world v2 fixes its switchbacks.
+- **M5 (core):** the measured performance index and classes, the parts catalogue, prices, payouts and XP, profile saves, tune share codes, the understeer test and the measured auto-tune. Caster now acts on the physics.
+- **M5 decisions:**
+  - PI comes only from measurement, so a part or a tune changes it exactly as much as it changes the car.
+  - The auto-tune measures instead of following rules, and it may not make a car more tail-happy than its stock understeer allows.

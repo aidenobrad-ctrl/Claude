@@ -55,6 +55,7 @@ village.
 | `unity/Assets/Halcyon/Data/` | The island, exported from the web version (`tools/export-unity.ts`); formats in its README |
 | `unity/Assets/Halcyon/Core/` | Pure C# simulation (no UnityEngine): deterministic math, ground, colliders, island loader, the car physics, the island simulation |
 | `unity/Assets/Halcyon/Core/AI/` | Race routes, racing lines, car abilities, speed profiles, the AI driver, races and the event catalogue (design in `docs/DESIGN.md`) |
+| `unity/Assets/Halcyon/Core/Career/` | The performance index, parts, prices and payouts, the player's profile and saves, tuning sliders, share codes, the test track and the auto-tune |
 | `unity/Assets/Halcyon/Scripts/World/` | Runtime builders, listed below |
 | `unity/Assets/Halcyon/Scripts/Driving/` | The car rig, chase camera and input, listed below |
 | `unity/Assets/Halcyon/Scripts/Game/HalcyonGame.cs` | Boots everything when Play is pressed, runs the 240 Hz loop, draws the HUD, capture mode |
@@ -86,7 +87,7 @@ village.
 
 **Checks in `dotnet/`**:
 
-- `Halcyon.Core.Tests`: the car physics against the TypeScript. It compares 339,270
+- `Halcyon.Core.Tests`: the car physics against the TypeScript. It compares 339,299
   numbers across 91 checks (all 12 cars), and every one is bit-exact.
 - `Halcyon.World.Tests`: the island's ground, roads, trees, colliders, terrain tiles and a
   scripted drive against the TypeScript.
@@ -101,6 +102,9 @@ village.
   - debugging traces (`-- duel`, `-- compare`, `-- trace2`, `-- skillsolo`).
 
   Results are in `docs/PLAYTEST.md` (M4).
+- `Halcyon.Career.Tests`: the PI of every car, parts and prices, payouts, a career saved
+  and loaded, every slider against the physics, share codes and the auto-tune
+  (`-- pi`, `-- parts`, `-- save`, `-- tune`). Results are in `docs/PLAYTEST.md` (M5).
 - `Halcyon.Unity` and `Halcyon.UnityEditor`: compile every Unity script against UnityEngine
   and UnityEditor reference assemblies (`node tools/fetch-unity-ref.mjs`). The input-system
   code path compiles only in Unity.

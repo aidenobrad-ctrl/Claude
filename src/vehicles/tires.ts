@@ -148,7 +148,7 @@ export interface TireResult {
  * vLong, vLat: contact patch velocity along the wheel's forward and right axes.
  * wheelSpeed: omega * radius (m/s). Fz: load, N. surfaceGrip: multiplier.
  */
-export function tireForce(t: TireSetup, Fz: number, vLong: number, vLat: number, wheelSpeed: number, surfaceGrip: number, out: TireResult): TireResult {
+export function tireForce(t: TireSetup, Fz: number, vLong: number, vLat: number, wheelSpeed: number, surfaceGrip: number, out: TireResult, lateral?: number): TireResult {
   if (Fz <= 0) {
     out.fx = 0;
     out.fy = 0;
@@ -170,7 +170,7 @@ export function tireForce(t: TireSetup, Fz: number, vLong: number, vLat: number,
   const sens = Math.max(0.6, Math.min(1.25, 1 - t.info.loadSens * (loadRatio - 1)));
   const mu = t.info.mu * sens * surfaceGrip * t.widthGrip * t.tuneGrip;
   const muX = mu * t.info.muLong;
-  const muY = mu * t.tuneLateral;
+  const muY = mu * (lateral ?? t.tuneLateral);
   if (s < 1e-9) {
     const slope0 = mfSlope(t.curve, 0);
     out.fx = 0;

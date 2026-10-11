@@ -612,7 +612,16 @@ namespace Halcyon.Core
             SurfaceInfo surf = Surfaces.All[w.surface];
             double grip = wp.tire.info.surface[surf.grip] * surf.gripScale;
             if (w.water > 0.02) grip *= JsMath.Max(0.35, 1 - w.water * 1.5);
-            Tires.TireForce(wp.tire, w.load, vL, vS, wheelSpeed, grip, tireRes);
+            // Caster: a steered wheel leans as it turns, the outer one into the corner.
+            double lateral = double.NaN;
+            if (p.casterDelta != 0 && wp.steerable)
+            {
+                double deg = Math.PI / 180;
+                double camber = wp.camber / deg;
+                double lean = (wp.left ? 1 : -1) * p.casterDelta * DMath.Sin(w.steer);
+                lateral = VehicleParams.CamberLateralGrip(camber + lean) / VehicleParams.CamberLongGrip(camber);
+            }
+            Tires.TireForce(wp.tire, w.load, vL, vS, wheelSpeed, grip, tireRes, lateral);
             w.fx = tireRes.fx;
             w.fy = tireRes.fy;
             // Static friction at a standstill. A braked tire whose patch has all but

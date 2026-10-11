@@ -3,9 +3,10 @@
 // otherwise the legacy Input Manager.
 //   Keyboard: W/S or arrows (throttle/brake), A/D or arrows (steer), Space
 //   (handbrake), E/Q (shift up/down), R (reset to road), C (camera),
-//   B (look back), L (lights), Esc (pause), G (garage).
+//   B (look back), L (lights), Esc (pause), G (garage), T (events).
 //   Gamepad: left stick (steer), RT/LT (throttle/brake), A (handbrake),
-//   B/X (shift), Y (camera), Back (reset), Start (pause), LB (garage).
+//   B/X (shift), Y (camera), Back (reset), Start (pause), LB (garage),
+//   d-pad up (events).
 //   Menus (the garage): arrows / WASD / d-pad, Enter / Space / A to pick,
 //   Esc / Backspace / B to go back.
 using Halcyon.Core;
@@ -25,11 +26,14 @@ namespace Halcyon
         /// <summary>Menu keys (the garage): true on the frame they go down.</summary>
         public struct MenuKeys
         {
-            public bool left, right, up, down, select, back, garage;
+            public bool left, right, up, down, select, back, garage, events;
         }
 
         public MenuKeys Menu;
         MenuKeys menuHeld;
+
+        /// <summary>Menu keys held down right now (for hold-to-confirm actions).</summary>
+        public MenuKeys MenuHeld => menuHeld;
 
         /// <summary>Poll devices; call once per rendered frame.</summary>
         public Controls Poll()
@@ -61,6 +65,7 @@ namespace Halcyon
                 select = m.select && !menuHeld.select,
                 back = m.back && !menuHeld.back,
                 garage = m.garage && !menuHeld.garage,
+                events = m.events && !menuHeld.events,
             };
             menuHeld = m;
             // Edges: pressed this frame and not the last.
@@ -84,6 +89,7 @@ namespace Halcyon
             m.select |= Key(KeyCode.Return) || Key(KeyCode.KeypadEnter) || Key(KeyCode.Space);
             m.back |= Key(KeyCode.Escape) || Key(KeyCode.Backspace);
             m.garage |= Key(KeyCode.G);
+            m.events |= Key(KeyCode.T);
         }
 
         bool ReadLegacy(Controls c)
@@ -124,6 +130,7 @@ namespace Halcyon
                 m.select |= kb.enterKey.isPressed || kb.numpadEnterKey.isPressed || kb.spaceKey.isPressed;
                 m.back |= kb.escapeKey.isPressed || kb.backspaceKey.isPressed;
                 m.garage |= kb.gKey.isPressed;
+                m.events |= kb.tKey.isPressed;
             }
             var gp = Gamepad.current;
             if (gp != null)
@@ -136,6 +143,7 @@ namespace Halcyon
                 m.select |= gp.buttonSouth.isPressed;
                 m.back |= gp.buttonEast.isPressed;
                 m.garage |= gp.leftShoulder.isPressed;
+                m.events |= gp.dpad.up.isPressed && !gp.leftStick.IsActuated();
             }
         }
 

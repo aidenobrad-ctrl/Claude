@@ -33,6 +33,15 @@ function onOtherRoad(world: World, edge: number, i: number, x: number, z: number
   return hit.dist <= hit.halfWidth + 0.25;
 }
 
+/** True when the bend around sample i turns towards `side` with a radius under `radius` (+ curvature = right). */
+function insideTooTight(curv: Float64Array | number[], i: number, side: number, radius: number): boolean {
+  for (let k = Math.max(0, i - 3); k <= Math.min(curv.length - 1, i + 3); k++) {
+    const c = curv[k];
+    if (Math.sign(c) === side && Math.abs(c) * radius > 1) return true;
+  }
+  return false;
+}
+
 export function findRailRuns(world: World): RailRun[] {
   const runs: RailRun[] = [];
   const hit = newHitRoad();
@@ -61,6 +70,9 @@ export function findRailRuns(world: World): RailRun[] {
         // Pulled in to the asphalt edge where the shoulder is another road.
         const kind = blockedFull[i] ? 2 : 1;
         const off = kind === 2 ? tight : full;
+        // On the inside of a bend tighter than the rail's offset (plus room), a
+        // rail would fold back across the road itself: none there.
+        if (insideTooTight(r.curvature, i, side, off + 0.8)) continue;
         // Ground just beyond the rail and a few metres further out.
         const near = world.terrainHeight(r.x[i] + nx * (off + 0.8), r.z[i] + nz * (off + 0.8));
         const far = world.terrainHeight(r.x[i] + nx * (off + 5), r.z[i] + nz * (off + 5));

@@ -14,6 +14,9 @@ exactly, and adds Unity rendering and Blender-made cars on top.
    - creates `Assets/Scenes/Halcyon.unity`.
 3. Open that scene, or any scene, and press **Play**. The island builds itself in a few
    seconds and you start on the festival road in the Halden Aster GT.
+4. Press **G** for the garage: the 12 cars on a turntable at the festival stage, with
+   paint presets and measured stats. Press **T** for festival events: pick an event and
+   your rivals' difficulty, then race the AI.
 
 **Controls**
 
@@ -28,9 +31,12 @@ exactly, and adds Unity rendering and Blender-made cars on top.
 | B | Look back |
 | L | Lights |
 | Esc | Pause |
+| G | Garage (←/→ car, ↑/↓ paint, Enter drive it, Esc back) |
+| T | Events (↑/↓ event, ←/→ rivals' difficulty, Enter race, Esc back); during a race hold T for a second to leave |
 
 A gamepad works through the Input System: stick, triggers, A for handbrake, B/X to
-shift, Y for camera.
+shift, Y for camera, LB for the garage, d-pad up for events. In menus the d-pad or stick
+moves, A picks and B goes back.
 
 **Screenshots** (for the playtest loop):
 
@@ -48,9 +54,12 @@ village.
 |---|---|
 | `unity/Assets/Halcyon/Data/` | The island, exported from the web version (`tools/export-unity.ts`); formats in its README |
 | `unity/Assets/Halcyon/Core/` | Pure C# simulation (no UnityEngine): deterministic math, ground, colliders, island loader, the car physics, the island simulation |
+| `unity/Assets/Halcyon/Core/AI/` | Race routes, racing lines, car abilities, speed profiles, the AI driver, races and the event catalogue (design in `docs/DESIGN.md`) |
 | `unity/Assets/Halcyon/Scripts/World/` | Runtime builders, listed below |
 | `unity/Assets/Halcyon/Scripts/Driving/` | The car rig, chase camera and input, listed below |
 | `unity/Assets/Halcyon/Scripts/Game/HalcyonGame.cs` | Boots everything when Play is pressed, runs the 240 Hz loop, draws the HUD, capture mode |
+| `unity/Assets/Halcyon/Scripts/Game/Garage.cs` | The garage: turntable, paint, stats, car switch |
+| `unity/Assets/Halcyon/Scripts/Game/RaceController.cs` | The events menu, AI car rigs, race HUD (countdown, position, laps, gaps, wrong way) and results |
 | `unity/Assets/Halcyon/Scripts/Editor/` | Project setup (URP, scene, build settings) and command-line builds |
 | `unity/Assets/Halcyon/Art/Resources/Cars/` | Car models from Blender (`blender/build_car.py`) |
 | `blender/` | The Blender car generator, run headless or in Blender 5.1 |
@@ -69,15 +78,29 @@ village.
 **Car rig, camera and input** (`Scripts/Driving/`):
 
 - The car rig poses the body and wheels from the physics with interpolation.
+- `CarVisual` loads a car's FBX and style file, remaps its Blender materials to URP
+  (paint, glass, chrome, lights that glow with the headlights and brakes) and sets up one
+  LODGroup.
 - The chase camera is a port of the web rig.
 - Input comes from the keyboard and gamepad.
 
 **Checks in `dotnet/`**:
 
-- `Halcyon.Core.Tests`: the car physics against the TypeScript. It compares 274,070
-  numbers across 69 scenarios, and every one is bit-exact.
+- `Halcyon.Core.Tests`: the car physics against the TypeScript. It compares 339,270
+  numbers across 91 checks (all 12 cars), and every one is bit-exact.
 - `Halcyon.World.Tests`: the island's ground, roads, trees, colliders, terrain tiles and a
   scripted drive against the TypeScript.
+- `Halcyon.AI.Tests`: the AI on the island, headless, in these modes:
+  - racing lines;
+  - every car alone;
+  - sprints;
+  - the head-to-head tournament (every driver against every other, every route, 4 seeds;
+    `-- tournament`);
+  - full grids (`-- grids`);
+  - mixed fields (`-- field`);
+  - debugging traces (`-- duel`, `-- compare`, `-- trace2`, `-- skillsolo`).
+
+  Results are in `docs/PLAYTEST.md` (M4).
 - `Halcyon.Unity` and `Halcyon.UnityEditor`: compile every Unity script against UnityEngine
   and UnityEditor reference assemblies (`node tools/fetch-unity-ref.mjs`). The input-system
   code path compiles only in Unity.
@@ -130,14 +153,22 @@ cd ../Halcyon.Unity && dotnet build && cd ../Halcyon.UnityEditor && dotnet build
 blender -b -P blender/build_car.py -- --car halden-aster-gt --render blender/renders/halden-aster-gt.png
 ```
 
+`--car all` (or a comma-separated list) builds several cars. `--sheet 'blender/renders/{car}.png'` renders a six-view contact sheet per car.
+
 **Body.** The body is a smooth signed distance field, polygonized with surface nets
-(numpy only). Windows, lights and trim are recessed regions with their own insert meshes.
+(numpy only). Glass, lights, grilles, intakes, vents, panel gaps and stripes are regions
+cut along their exact contours in every LOD, so their edges stay crisp. Holes get walls and
+insert surfaces.
 
-**Detail.** LODs are decimated, and their normals come from the exact field. Wheels have
-lathed tyres, 10-spoke rims, lug nuts, discs and callipers.
+**Detail.** LODs are decimated, and their normals come from the exact field. Wheels come in
+seven rim styles, with lathed tyres, discs and callipers. Wings, spoilers, roof racks, bull
+bars, snorkels, spare wheels and interiors come from a parts registry.
 
-**Output.** The FBX lands in `Art/Resources/Cars/`. It faces +Z in Unity, with its origin
-on the ground at mid-wheelbase.
+**Cars.** All 12 cars are data in `blender/halcyon/cars.py`. Review sheets are in
+`blender/renders/<car>.png`.
+
+**Output.** The FBX and `<car>.style.json` land in `Art/Resources/Cars/`. The FBX faces +Z
+in Unity, with its origin on the ground at mid-wheelbase.
 
 ## .meta files
 
@@ -154,7 +185,9 @@ and texture metas are left to Unity, because their import settings live there.
 - [x] Blender: car generator; hero car exported with LODs
 - [x] Unity: runtime world builders, car rig, chase camera, input, HUD, boot, capture
   mode, project setup. Compile-checked here, not yet run in a real Editor.
-- [ ] First run in a real Unity Editor: fix whatever only Unity reports, then look at
-  screenshots
-- [ ] CC0 PBR textures, a real water shader, Blender trees, more cars (roster), AI,
-  events
+- [x] 12-car roster (bit-exact physics), Blender models with LODs, garage
+- [x] AI (racing lines, controller, personalities, racecraft), races, 5 events, race HUD;
+  tournament 98% headless
+- [ ] First run in a real Unity Editor: fix whatever only Unity reports, play the garage and
+  a race, then look at screenshots
+- [ ] CC0 PBR textures, a real water shader, Blender trees, audio, more event types

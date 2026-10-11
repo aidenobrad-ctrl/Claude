@@ -22,11 +22,15 @@ layout and how everything was verified.
     buildings and the festival.
   - It spawns the Halden Aster GT on the festival road, driven by a C# port of the web
     version's 240 Hz physics. That port is bit-exact with the TypeScript.
+  - **G** opens the garage (12 cars on a turntable, paint, stats). **T** opens festival
+    events: the Proving Ground GP and four island sprints against AI rivals. The AI passes
+    a 300-race head-to-head tournament headless (`dotnet/Halcyon.AI.Tests`).
   - Every script compiles against Unity reference assemblies, but **it has never run in a
     real Unity Editor**. That is your first job.
-- `blender/build_car.py`: generates the car in Blender 5.1. It has been tested with the
-  bpy 5.1.1 module.
-  - The car's FBX is in `unity/Assets/Halcyon/Art/Resources/Cars/`.
+- `blender/build_car.py`: generates the cars in Blender 5.1 (`--car all`). It has been
+  tested with the bpy 5.1.1 module.
+  - All 12 FBX files and style files are in `unity/Assets/Halcyon/Art/Resources/Cars/`, and
+    review sheets are in `blender/renders/`.
   - Blender 5.1.1 is installed here at
     `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe`.
 
@@ -78,6 +82,10 @@ system settings or close the user's apps.
    Batchmode can't open a project that is open in the Editor GUI, so close the GUI first.
 3. Open the project in the Editor GUI, open `Assets/Scenes/Halcyon.unity`, and press Play
    so the user sees the island and the car on their screen.
+4. Press **G** and page through all 12 cars. Check materials (paint, glass, lights), LOD
+   switching and the wheel positions. Then press **T** and race the Proving Ground GP and
+   one sprint. Watch the grid, the countdown, the AI's lines and passes, and the HUD and
+   results. Note anything that differs from `docs/PLAYTEST.md` (M3, M4).
 
 ## Step 3 — make it look insane
 

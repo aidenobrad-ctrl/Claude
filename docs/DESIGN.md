@@ -158,6 +158,82 @@ Lap timing requires passing all three sectors in order, so reversing over the li
   - **Materials:** clear-coat paint, and dielectric glass with a clearcoat layer. M1 found that metallic dark glass rendered black, because reflections are tinted by the base color.
 - **Effects:** skid marks are a ring buffer of quads with vertex alpha, darker on asphalt and light ruts on loose ground. Smoke, dust and spray are one point cloud with per-particle size and alpha.
 
+## Unity and Blender
+
+The user asked for the game in Unity with Blender-made cars, so from M2 on Unity is the main target. The web version stays as the reference implementation.
+
+- **Simulation in pure C#.** `unity/Assets/Halcyon/Core` is a line-by-line port of the TypeScript simulation (no UnityEngine). It uses doubles throughout, the same operation order, and fdlibm trig in `DMath`. The car physics is bit-exact with the TypeScript: `dotnet/Halcyon.Core.Tests` compares 339,270 numbers across 91 checks. The island loads from data exported by `tools/export-unity.ts`, and the world tests agree to about 1 cm.
+- **Why port instead of rewriting.** The driving feel was tuned and validated in M1. A bit-exact port keeps every validated number and lets the web tests keep guarding the physics.
+- **The core is thread-safe.** There are no mutable statics. Collision scratch is per thread, so the garage can measure cars on a worker thread and the AI tournaments run in parallel.
+- **Testing outside Unity.** Unity can't run in the build container. Every Unity script is compile-checked against the UnityEngine reference assemblies (`dotnet/Halcyon.Unity`), and all behaviour that matters lives in Core, where .NET tests exercise it headless.
+
+## Cars: the Blender generator (`blender/`)
+
+- **Body.** Each car is a `CarShape`: dimensions, a side profile (nose, bonnet, cowl, windscreen, roof, rear slope, deck, tail), section shapes (tumblehome, crowns, tapers) and arches. These define a smooth signed distance field. Surface nets polygonize it, and the vertices are then projected back onto the exact field.
+- **Crisp features.** Features such as glass, lights, grilles, intakes, vents, panel gaps and stripes are regions on the surface.
+  - Each LOD cuts the body along the regions' exact contours (`meshops.cut`).
+  - Holes get walls and an insert surface, offset by the feature's depth.
+  - Patches become separate material groups.
+  - Edges therefore stay sharp however far the body is decimated.
+- **Normals and LODs.** Normals come from the field's gradient. `fix_winding` makes the faces agree with them after decimation. There are three LODs (about 24k, 6k and 1.6k body triangles).
+- **Parts.** Wheels, interior, wings, spoilers, bumpers, roof racks, bull bars, snorkels and similar parts come from a registry, so every car is data in `blender/halcyon/cars.py`.
+- **Export.** One FBX per car with `Wheel_XX` empties, plus a `<id>.style.json` with paint, rim and calliper colours. Unity remaps materials by name (`CarVisual`) and builds one LODGroup.
+- **Review.** A six-view Cycles contact sheet per car goes to `blender/renders/`.
+
+## AI (`unity/Assets/Halcyon/Core/AI/`)
+
+The AI drives the same `Vehicle` and physics as the player. Only its inputs differ.
+
+- **Routes.** `RaceRoute` resamples a route every 3 m with widths to each side.
+  - The proving circuit uses its asphalt plus part of the kerbs.
+  - Island sprints come from an A* search over the road graph, and use the paved width only, narrowed near guardrails and on bridges.
+- **Racing line.** Minimum curvature: Gauss–Seidel sweeps of the biharmonic update, projected onto each sample's normal and clamped to the track, run coarse to fine. The line keeps 0.7 m from the edges plus the car's half-width. Its radius never drops below 7.5 m, otherwise hairpins bunch the line on the inside.
+- **Car ability.** Each car is measured on the test track:
+  - skidpad grip;
+  - braking from 100 km/h;
+  - a full-throttle acceleration curve;
+  - drag and downforce;
+  - a stable-braking limit.
+
+  The stable-braking limit is the braking a car can do at a given lateral acceleration while its unloaded rear still has grip. It comes from the brake split, CG height, wheelbase and weight split.
+- **Speed profile.** Per driver and line: the cornering limit, then a forward pass with acceleration, then a backward pass with braking. Both passes share a friction circle and respect stable braking.
+- **Controller.**
+  - Steering is pure pursuit on the line (look-ahead 7.5–42 m with speed), plus yaw damping towards the arc being steered and countersteer in slides.
+  - Pedals use feedforward from the profile's slope plus feedback, converted to throttle and brake through the car's measured curves.
+  - The driver eases the pedals when the yaw runs ahead of the arc. The stability control is off, with ABS and TCS on.
+- **Skill.** Skill is what separates drivers. From 0.3 to 1.0 it spans about 15–20% of pace, about 3% per 0.14 step. It sets:
+  - line accuracy: the line blended towards the centreline, 0.30 + 0.70·skill;
+  - grip used: 0.72 + 0.20·skill + 0.03·risk;
+  - braking used: 0.64 + 0.28·skill + 0.03·risk;
+  - throttle commitment: 0.80 + 0.20·skill;
+  - reaction: braking up to 0.35·(1 − skill) s early and the throttle twice that late;
+  - wander around the line.
+- **Other traits.**
+  - Consistency sets the mistake rate (late braking, lifting, running wide); a late-braking mistake never exceeds the car's real grip.
+  - Aggression sets following distance, when to pass and whether to defend.
+  - Risk adds a little grip and braking.
+  - Difficulty presets (Novice 0.35, Average 0.58, Pro 0.78, Legend 0.93) centre a spread of skills.
+  - There is no rubber-banding.
+- **Racecraft.**
+  - A driver follows on the line until close.
+  - Passing is a state machine on one car. It starts within about half a second, or from the slipstream on a straight, and takes the inside of the next corner when there is room. It holds beside that car until it is behind, or gives up if it never gets alongside. It backs out rather than be squeezed off the road, and slows for a tighter inside line.
+  - A car alongside sets a hard limit on where the steering target may go.
+  - Aggressive drivers defend the inside.
+- **Recovery.** One reverse attempt when stuck; otherwise a reset to the route (flipped, far off the road, stuck, or facing the wrong way). Cars that have finished park.
+- **Races.** `RaceSession` runs a race on the fixed step, the same in Unity and in the tests. It handles:
+  - a two-column grid and a countdown;
+  - laps or sprint distance, positions and lap times;
+  - drafting (up to 32% less drag 3–30 m behind);
+  - contacts counted as episodes, with wall hits kept apart.
+
+  The events are a 3-lap Proving Ground Grand Prix and four island sprints.
+- **Tournament.** The spec says "every AI against every other AI on every route, over many seeds", so the check is head to head:
+  - 6 skills, 15 pairs, 5 routes and 4 seeds make 300 races;
+  - the stronger driver starts from behind in half of them;
+  - it must win at least 80%, and no AI may be stuck for 5 s.
+
+  Six-car grids and mixed fields add crowd statistics.
+
 ## Testing
 
 - `npm run verify` runs the typecheck, the build, the simulation tests (Node) and the browser tests (headless Chromium through Playwright with SwiftShader). `--quick` shortens the long suites.
@@ -168,3 +244,12 @@ Lap timing requires passing all three sectors in order, so reversing over the li
 
 - **M0:** stack, build, test harness, deterministic math, conventions, pixel budget, robustness handling.
 - **M1:** vehicle model, tire and surface tables, launch control, driver aids, tuning formulas, controls, cameras, HUD, touch, proving ground, car loft generator.
+- **M2 (web):** the streamed island (terrain, roads, water, forests, settlements, the festival), minimap and GPS, and guardrails on retaining walls.
+- **Unity port:** the user asked for Unity and Blender. The island is exported as data, the simulation is ported to bit-exact C#, and Unity builds the island at Play.
+- **M3:** 12 cars, validated within 10% of real references. The Blender generator v2 has crisp feature edges, three LODs, all body styles and six-view review sheets. Unity has car visuals and a garage with a turntable.
+- **M4:** racing lines, car abilities, speed profiles, the driver controller, personalities and difficulty, racecraft, recovery, races, five events, a race menu and HUD in Unity, and the head-to-head tournament (98% skill order).
+- **M4 decisions:**
+  - The AI drives with ESC off and plans with each car's stable braking.
+  - Skill is worth about 3% of pace per step.
+  - Guardrails are skipped on the inside of bends tighter than their offset.
+  - The Highcrest pass is not an event until world v2 fixes its switchbacks.

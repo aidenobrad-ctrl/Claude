@@ -30,6 +30,7 @@ namespace Halcyon
         IslandRuntime island;
         DriverInput input;
         Garage garage;
+        RaceController races;
         /// <summary>The keyboard and gamepad (menus read their keys here).</summary>
         public DriverInput Driver => input;
         string captureDir;
@@ -117,6 +118,7 @@ namespace Halcyon
             CameraRig.Snap();
             UpdateCamera(0.016f);
             garage = Garage.Create(this, data, world);
+            races = RaceController.Create(this, world);
             Ready = true;
             Debug.Log($"Halcyon: ready in {Time.realtimeSinceStartup - loadStart:F1} s");
             captureDir = Arg("-halcyon-capture");
@@ -197,9 +199,21 @@ namespace Halcyon
                     garage.Tick(); // the garage reads the menu keys; the car waits
                     return;
                 }
-                if (input.Menu.garage)
+                if (races.Busy) return;
+                if (races.MenuOpen)
+                {
+                    races.TickMenu();
+                    return;
+                }
+                if (races.Racing) races.TickRace();
+                else if (input.Menu.garage)
                 {
                     garage.Open(Sim.Player.specId);
+                    return;
+                }
+                else if (input.Menu.events)
+                {
+                    races.OpenMenu();
                     return;
                 }
             }
@@ -210,7 +224,8 @@ namespace Halcyon
             CameraRig.LookBack = c.held[ControlAction.LookBack];
             if (c.pressed[ControlAction.Reset])
             {
-                Sim.ResetToRoad();
+                if (races.Racing) races.ResetPlayer();
+                else Sim.ResetToRoad();
                 PlayerRig.Snap();
                 CameraRig.Snap();
             }
@@ -221,7 +236,8 @@ namespace Halcyon
                 int steps = 0;
                 while (accumulator >= Loop.SIM_DT && steps < 32)
                 {
-                    Sim.Step(c);
+                    if (races.Racing) races.Step(c);
+                    else Sim.Step(c);
                     PlayerRig.Capture();
                     // Gear-shift edges apply to the first step of a frame only.
                     c.pressed[ControlAction.ShiftUp] = false;
@@ -230,11 +246,14 @@ namespace Halcyon
                     steps++;
                 }
                 if (steps == 32) accumulator = 0;
+                // Only the player's own hits shake the camera (the player is the first car, so a
+                // contact between the player and an AI car carries the player's id).
                 foreach (var e in Sim.Events)
-                    if (e.kind == SimEventKind.Impact) CameraRig.Impact((float)System.Math.Min(1, e.value / 20000));
+                    if (e.kind == SimEventKind.Impact && e.carId == Sim.Player.id) CameraRig.Impact((float)System.Math.Min(1, e.value / 20000));
                 Sim.Events.Clear();
             }
             PlayerRig.Apply((float)(accumulator / Loop.SIM_DT));
+            if (races.Racing) races.Apply((float)(accumulator / Loop.SIM_DT));
         }
 
         void LateUpdate()
@@ -289,7 +308,7 @@ namespace Halcyon
             GUI.DrawTexture(new Rect(Screen.width - 250, Screen.height - 18, 220 * frac, 6), Texture2D.whiteTexture);
             GUI.color = Color.white;
             var help = new GUIStyle(small) { alignment = TextAnchor.UpperLeft, fontSize = 13 };
-            GUI.Label(new Rect(14, 10, 900, 22), "W/S throttle & brake · A/D steer · Space handbrake · E/Q shift · R reset · C camera · B look back · L lights · G garage · Esc pause", help);
+            GUI.Label(new Rect(14, 10, 900, 22), "W/S throttle & brake · A/D steer · Space handbrake · E/Q shift · R reset · C camera · B look back · L lights · G garage · T events · Esc pause", help);
             GUI.Label(new Rect(14, 30, 600, 22), PlayerRig.Visual.Look.name, help);
             if (Paused)
             {

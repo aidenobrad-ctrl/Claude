@@ -10550,10 +10550,10 @@
   "nodes": 68,
   "edges": 103,
   "roadKm": 62.74,
-  "rails": 249,
+  "rails": 165,
   "trees": 184755,
   "buildings": 639,
-  "segments": 5891,
+  "segments": 5523,
   "circles": 49
  },
  "files": {
@@ -10561,7 +10561,7 @@
   "ground.bytes": 1032622,
   "splat.bytes": 1291959,
   "trees.bytes": 1804287,
-  "roads.bytes": 350350,
-  "colliders.bytes": 74489
+  "roads.bytes": 349881,
+  "colliders.bytes": 68269
  }
 }

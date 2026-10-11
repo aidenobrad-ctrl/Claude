@@ -14,6 +14,7 @@ namespace Halcyon
     {
         public Vehicle Vehicle { get; private set; }
         public CarVisual Visual { get; private set; }
+        public string SpecId { get; private set; }
         Transform model;
         readonly Transform[] wheels = new Transform[4];
         readonly Transform[] calipers = new Transform[4];
@@ -38,6 +39,7 @@ namespace Halcyon
             var go = new GameObject("Car_" + specId);
             var rig = go.AddComponent<CarRig>();
             rig.Vehicle = v;
+            rig.SpecId = specId;
             rig.Build(specId, paint);
             rig.Snap();
             return rig;
@@ -128,6 +130,14 @@ namespace Halcyon
             pivot.rotation = transform.rotation;
             part.SetParent(pivot, true);
             return pivot;
+        }
+
+        /// <summary>Reuse this rig for another vehicle of the same model (pooled traffic).</summary>
+        public void Rebind(Vehicle v, Color paint)
+        {
+            Vehicle = v;
+            Visual.SetPaint(paint);
+            LightsOverride = null;
         }
 
         /// <summary>Record the simulation state after a step (call once per fixed step).</summary>

@@ -1,4 +1,5 @@
-// npm run verify: typecheck, build, simulation tests, browser tests.
+// npm run verify: typecheck, build, simulation tests, browser tests, and the
+// Unity side (the scripts compile; the .NET suites pass).
 // Pass --quick to shorten the long-running suites.
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
@@ -11,6 +12,7 @@ const steps = [
   ['build', 'node', ['tools/build.mjs']],
   ['sim tests', 'node', ['tools/run-sim-tests.mjs', ...quick]],
   ['browser tests', 'node', ['tools/browser-tests.mjs', ...quick]],
+  ['.NET / Unity', 'node', ['tools/run-dotnet-tests.mjs', ...quick]],
 ];
 
 const summary = [];

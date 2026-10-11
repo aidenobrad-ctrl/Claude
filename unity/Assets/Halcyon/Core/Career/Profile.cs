@@ -34,6 +34,10 @@ namespace Halcyon.Core
         public int Current;
         public int Races, Wins;
         public readonly List<OwnedCar> Garage = new List<OwnedCar>();
+        /// <summary>The island (Discoveries): places and landmarks found, roads driven and the map uncovered (base64 bitsets), road milestones paid.</summary>
+        public readonly HashSet<string> Found = new HashSet<string>();
+        public string RoadsDriven = "", Fog = "";
+        public int RoadMilestones;
 
         public OwnedCar CurrentCar => Garage.Count == 0 ? null : Garage[Math.Max(0, Math.Min(Garage.Count - 1, Current))];
 
@@ -122,6 +126,10 @@ namespace Halcyon.Core
                 ["races"] = Races,
                 ["wins"] = Wins,
                 ["garage"] = cars,
+                ["found"] = new List<object>(new SortedSet<string>(Found)),
+                ["roads"] = RoadsDriven,
+                ["fog"] = Fog,
+                ["roadMilestones"] = RoadMilestones,
             };
             return JsonWriter.Write(root);
         }
@@ -157,6 +165,12 @@ namespace Halcyon.Core
                 }
                 p.Garage.Add(car);
             }
+            // The island: saves from before M6 have none of this.
+            if (root.TryGetValue("found", out var fo) && fo is List<object> fl)
+                foreach (var f in fl) if (f is string fs) p.Found.Add(fs);
+            if (root.TryGetValue("roads", out var ro) && ro is string rs) p.RoadsDriven = rs;
+            if (root.TryGetValue("fog", out var fg) && fg is string fgs) p.Fog = fgs;
+            p.RoadMilestones = (int)root.Num("roadMilestones", 0);
             if (p.Garage.Count == 0) p.Garage.Add(new OwnedCar { Id = "halden-aster-gt" });
             p.Current = Math.Max(0, Math.Min(p.Garage.Count - 1, p.Current));
             return p;

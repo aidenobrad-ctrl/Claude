@@ -202,6 +202,95 @@ function route(from: number, to: number, o: RouteOpts): number[] {
   return path;
 }
 
+/**
+ * A* with the heading in the state, on a lattice of stride cells: each step
+ * turns by at most maxTurn of the 16 directions (4: about 90 degrees), with
+ * a small cost per turn. A switchback then needs two turns with a full
+ * lattice step between them, so its legs end up stride * 12 m apart and
+ * the fillets can round it into a proper hairpin. Searched in a box around
+ * the two ends.
+ */
+const DIRS = NB.map(([di, dj]) => ({ di, dj, a: Math.atan2(dj, di) })).sort((p, q) => p.a - q.a);
+function routeHeading(from: number, to: number, o: RouteOpts, k: number, maxTurn: number, startDir = -1, margin = 900): { path: number[]; endDir: number; reached: number } {
+  const fx = cx(from), fz = cz(from), tx = cx(to), tz = cz(to);
+  const i0 = Math.max(1, Math.floor((Math.min(fx, tx) - margin + WORLD_HALF) / CELL));
+  const i1 = Math.min(N - 2, Math.ceil((Math.max(fx, tx) + margin + WORLD_HALF) / CELL));
+  const j0 = Math.max(1, Math.floor((Math.min(fz, tz) - margin + WORLD_HALF) / CELL));
+  const j1 = Math.min(N - 2, Math.ceil((Math.max(fz, tz) + margin + WORLD_HALF) / CELL));
+  const W = i1 - i0 + 1, D = DIRS.length;
+  const S = W * (j1 - j0 + 1) * D;
+  const g = new Float64Array(S).fill(Infinity);
+  const came = new Int32Array(S).fill(-1);
+  const closed = new Uint8Array(S);
+  const heap = new Heap();
+  const state = (c: number, d: number): number => ((Math.floor(c / N) - j0) * W + (c % N) - i0) * D + d;
+  const cellOfState = (st: number): number => {
+    const local = Math.floor(st / D);
+    return (Math.floor(local / W) + j0) * N + (local % W) + i0;
+  };
+  const h = (c: number): number => Math.hypot(cx(c) - tx, cz(c) - tz) * 0.98;
+  const ti = to % N, tj = Math.floor(to / N);
+  // Carrying on from a previous section: start in its last direction, and go straight on first.
+  for (let d = 0; d < D; d++) {
+    if (startDir >= 0 && d !== startDir) continue;
+    g[state(from, d)] = 0;
+    heap.push(h(from), state(from, d));
+  }
+  let found = -1;
+  while (heap.size) {
+    const st = heap.pop();
+    if (closed[st]) continue;
+    closed[st] = 1;
+    const c = cellOfState(st);
+    const ci = c % N, cj = Math.floor(c / N);
+    if (Math.abs(ci - ti) < k && Math.abs(cj - tj) < k) {
+      found = st;
+      break;
+    }
+    const d0 = st % D;
+    const turn = startDir >= 0 && c === from ? 0 : maxTurn;
+    for (let t = -turn; t <= turn; t++) {
+      const d1 = (d0 + t + D) % D;
+      const ni = ci + DIRS[d1].di * k, nj = cj + DIRS[d1].dj * k;
+      if (ni < i0 || nj < j0 || ni > i1 || nj > j1) continue;
+      const nc = nj * N + ni;
+      // No step across water or the proving ground on the way.
+      let blocked = false;
+      for (let q = 1; q < k && !blocked; q++) {
+        const mc = Math.round(cj + (DIRS[d1].dj * k * q) / k) * N + Math.round(ci + (DIRS[d1].di * k * q) / k);
+        if (WATER[mc] >= 2 || KEEPOUT[mc]) blocked = true;
+      }
+      if (blocked) continue;
+      const ns = state(nc, d1);
+      if (closed[ns]) continue;
+      const dist = Math.hypot(DIRS[d1].di, DIRS[d1].dj) * k * CELL;
+      const sc = stepCost(c, nc, dist, o);
+      if (!Number.isFinite(sc)) continue;
+      const ng = g[st] + sc + dist * 0.1 * Math.abs(t);
+      if (ng < g[ns]) {
+        g[ns] = ng;
+        came[ns] = st;
+        heap.push(ng + h(nc), ns);
+      }
+    }
+  }
+  if (found < 0) throw new Error(`no route (${o.cls}) from (${fx.toFixed(0)}, ${fz.toFixed(0)})`);
+  const path: number[] = [];
+  for (let st = found; st >= 0; st = came[st]) path.push(cellOfState(st));
+  path.reverse();
+  return { path, endDir: found % D, reached: cellOfState(found) };
+}
+
+/**
+ * The Highcrest pass: a 48 m lattice, turns of up to 90 degrees a step on
+ * the two lower sections and 67 on the last (tighter limits there make it
+ * loop back on itself), and corners rounded at 20 m. Every bend of the pass
+ * is then 19 m or wider (the 12 m grid's saw-tooth made 6 to 7 m hairpins).
+ */
+const PASS_STRIDE = 4;
+const PASS_TURNS = [4, 4];
+const PASS_RADIUS = 20;
+
 type XZ = [number, number];
 
 /** Douglas-Peucker simplification. */
@@ -252,6 +341,44 @@ function chaikin(pts: XZ[], iterations: number): XZ[] {
     p = out;
   }
   return p;
+}
+
+/**
+ * Rounds every corner with a circular arc of up to rMax metres (as large as
+ * half of each neighbouring segment allows), sampled every 4 m: real
+ * hairpins instead of corner cuts.
+ */
+function fillet(pts: XZ[], rMax: number): XZ[] {
+  if (pts.length < 3) return pts;
+  const out: XZ[] = [pts[0]];
+  for (let i = 1; i + 1 < pts.length; i++) {
+    const [px, pz] = pts[i - 1], [vx, vz] = pts[i], [nx, nz] = pts[i + 1];
+    let ux = vx - px, uz = vz - pz, wx = nx - vx, wz = nz - vz;
+    const l1 = Math.hypot(ux, uz), l2 = Math.hypot(wx, wz);
+    if (l1 < 1e-6 || l2 < 1e-6) continue;
+    ux /= l1; uz /= l1; wx /= l2; wz /= l2;
+    const theta = Math.acos(Math.max(-1, Math.min(1, ux * wx + uz * wz))); // turn angle
+    if (theta < 0.02) {
+      out.push([vx, vz]);
+      continue;
+    }
+    const tanHalf = Math.tan(theta / 2);
+    // Each neighbouring segment lends at most half its length (the other half rounds its other corner).
+    const r = Math.min(rMax, (Math.min(l1, l2) / 2) / tanHalf);
+    const t = r * tanHalf;
+    const t1: XZ = [vx - ux * t, vz - uz * t];
+    // Centre: from T1, a radius to the inside of the turn.
+    const side = ux * wz - uz * wx > 0 ? 1 : -1; // + left turn in (x, z)
+    const cxp = t1[0] - uz * r * side, czp = t1[1] + ux * r * side;
+    const a0 = Math.atan2(t1[1] - czp, t1[0] - cxp);
+    const steps = Math.max(2, Math.ceil((theta * r) / 4));
+    for (let k = 0; k <= steps; k++) {
+      const a = a0 + side * theta * (k / steps);
+      out.push([cxp + Math.cos(a) * r, czp + Math.sin(a) * r]);
+    }
+  }
+  out.push(pts[pts.length - 1]);
+  return out;
 }
 
 // --- Graph ---------------------------------------------------------------
@@ -351,7 +478,8 @@ let junctions = 0;
 function polyFromCells(path: number[], cls: RoadClassId): XZ[] {
   const raw: XZ[] = path.map((c) => [cx(c), cz(c)]);
   const tol = cls === 'highway' ? 9 : cls === 'dirt' ? 5 : 6;
-  return chaikin(simplify(raw, tol), 1).map(([x, z]) => [Math.round(x * 2) / 2, Math.round(z * 2) / 2]);
+  const smooth = cls === 'pass' ? fillet(simplify(raw, tol), PASS_RADIUS) : chaikin(simplify(raw, tol), 1);
+  return smooth.map(([x, z]) => [Math.round(x * 2) / 2, Math.round(z * 2) / 2]);
 }
 
 /**
@@ -369,6 +497,52 @@ function link(cls: RoadClassId, ids: string[]): void {
     p[p.length - 1] = [b.x, b.z];
     addEdge(cls, nid(ids[i]), nid(ids[i + 1]), p);
   }
+}
+
+/**
+ * The Highcrest pass, from the lake up to the village through the passSouth
+ * and passTop waypoints, as one continuous road: the climb to passSouth,
+ * then on from there in the direction it arrived to the village, with
+ * passTop moved onto the road at its straightest point near its place.
+ * Joints between the sections are then as smooth as the rest.
+ */
+function linkPass(ids: [string, string, string, string]): void {
+  const [lake, south, top, village] = ids.map((id) => nodes[nid(id)]);
+  const r1 = routeHeading(cellOf(lake.x, lake.z), cellOf(south.x, south.z), { cls: 'pass' }, PASS_STRIDE, PASS_TURNS[0]);
+  south.x = cx(r1.reached);
+  south.z = cz(r1.reached);
+  const r2 = routeHeading(r1.reached, cellOf(village.x, village.z), { cls: 'pass' }, PASS_STRIDE, PASS_TURNS[1], r1.endDir);
+  // The village is the end of the road: its node moves onto the lattice point the road reached
+  // (at most one step), rather than the road kinking to meet it.
+  village.x = cx(r2.reached);
+  village.z = cz(r2.reached);
+  const p1 = polyFromCells(r1.path, 'pass');
+  p1[0] = [lake.x, lake.z];
+  p1[p1.length - 1] = [south.x, south.z];
+  const p2 = polyFromCells(r2.path, 'pass');
+  p2[0] = [south.x, south.z];
+  p2[p2.length - 1] = [village.x, village.z];
+  // passTop: the straightest vertex within 300 m of where it was (the nearest among equals).
+  let best = -1, score = Infinity;
+  for (let k = 2; k + 2 < p2.length; k++) {
+    const d = Math.hypot(p2[k][0] - top.x, p2[k][1] - top.z);
+    if (d > 300) continue;
+    const a1 = Math.atan2(p2[k][1] - p2[k - 1][1], p2[k][0] - p2[k - 1][0]);
+    const a2 = Math.atan2(p2[k + 1][1] - p2[k][1], p2[k + 1][0] - p2[k][0]);
+    let turn = Math.abs(a2 - a1);
+    if (turn > Math.PI) turn = 2 * Math.PI - turn;
+    const sc = turn * 1000 + d * 0.01;
+    if (sc < score) {
+      score = sc;
+      best = k;
+    }
+  }
+  if (best < 0) throw new Error('no place for passTop on the pass');
+  top.x = p2[best][0];
+  top.z = p2[best][1];
+  addEdge('pass', nid(ids[0]), nid(ids[1]), p1);
+  addEdge('pass', nid(ids[1]), nid(ids[2]), p2.slice(0, best + 1));
+  addEdge('pass', nid(ids[2]), nid(ids[3]), p2.slice(best));
 }
 
 /** Route from a node to the nearest part of the existing network. */
@@ -434,7 +608,7 @@ link('main', ['lakeSouth', 'lakeEast']);
 link('main', ['lakeEast', 'lakeNorth']);
 link('main', ['lakeNorth', 'lakeWest']);
 link('main', ['lakeWest', 'lakeSouth']);
-link('pass', ['lakeNorth', 'passSouth', 'passTop', 'northVillage']);
+linkPass(['lakeNorth', 'passSouth', 'passTop', 'northVillage']);
 link('main', ['desertTown', 'farmVillage']);
 link('main', ['desertTown', 'westCoast']);
 link('main', ['canyonNorth', 'desertTown']);

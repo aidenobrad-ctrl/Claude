@@ -91,9 +91,13 @@ namespace Halcyon
             if (dirtyAt >= 0 && Time.unscaledTime - dirtyAt > 0.5f) SaveNow();
         }
 
+        /// <summary>Called just before every save (the game writes the island's discoveries into the profile).</summary>
+        public System.Action BeforeSave;
+
         public void SaveNow()
         {
             dirtyAt = -1;
+            BeforeSave?.Invoke();
             try
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(path));

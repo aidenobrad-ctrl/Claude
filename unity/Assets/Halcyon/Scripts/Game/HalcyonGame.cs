@@ -31,7 +31,17 @@ namespace Halcyon
 
         IslandRuntime island;
         SkyDirector sky;
+        TrafficView traffic;
+        MapScreen mapScreen;
+        float discoverAt, discoverSaveAt;
+        /// <summary>What the player has found on the island (places, landmarks, roads, the fog of war).</summary>
+        public Discoveries Discover { get; private set; }
+        /// <summary>The corner minimap while driving.</summary>
+        public bool ShowMinimap = true;
+        public bool Racing => races != null && races.Racing;
         Light sunLight;
+        /// <summary>Ambient traffic on the island's roads (off: an empty island).</summary>
+        public bool Traffic = true;
         DriverInput input;
         Garage garage;
         RaceController races;
@@ -129,6 +139,18 @@ namespace Halcyon
             CameraRig.Snap();
             UpdateCamera(0.016f);
             sky = SkyDirector.Create(world, Sim, cam, sunLight);
+            loading = "Raising the landmarks";
+            yield return null;
+            var marks = LandmarkBuilder.Build(Landmarks.Find(data, Sim.Ground), world);
+            marks.Sim = Sim;
+            Discover = new Discoveries(data, Sim.Ground, Career.Profile);
+            Career.BeforeSave = () => Discover?.Save();
+            mapScreen = MapScreen.Create(this, world);
+            if (Traffic)
+            {
+                Sim.EnableTraffic();
+                traffic = TrafficView.Create(world, Sim);
+            }
             garage = Garage.Create(this, data, world);
             races = RaceController.Create(this, world);
             Ready = true;
@@ -232,6 +254,16 @@ namespace Halcyon
                     races.TickMenu();
                     return;
                 }
+                if (mapScreen.Open)
+                {
+                    mapScreen.Tick(); // the world waits while the map is open
+                    return;
+                }
+                if (input.Menu.map)
+                {
+                    mapScreen.Show();
+                    return;
+                }
                 if (races.Racing) races.TickRace();
                 else if (input.Menu.garage)
                 {
@@ -271,6 +303,7 @@ namespace Halcyon
                     if (races.Racing) races.Step(c);
                     else Sim.Step(c);
                     PlayerRig.Capture();
+                    traffic?.Capture();
                     // Gear-shift edges apply to the first step of a frame only.
                     c.pressed[ControlAction.ShiftUp] = false;
                     c.pressed[ControlAction.ShiftDown] = false;
@@ -288,7 +321,41 @@ namespace Halcyon
                 Sim.Events.Clear();
             }
             PlayerRig.Apply((float)(accumulator / Loop.SIM_DT));
+            traffic?.Apply((float)(accumulator / Loop.SIM_DT));
+            if (!Paused) Explore();
             if (races.Racing) races.Apply((float)(accumulator / Loop.SIM_DT));
+        }
+
+        /// <summary>Discoveries four times a second: the fog, the roads driven, places and landmarks found (with their rewards).</summary>
+        void Explore()
+        {
+            if (Discover == null || Time.unscaledTime - discoverAt < 0.25f) return;
+            discoverAt = Time.unscaledTime;
+            // An imported career brings its own island.
+            if (Discover.P != Career.Profile) Discover = new Discoveries(Sim.World, Sim.Ground, Career.Profile);
+            var v = Sim.Player.vehicle;
+            var notes = Discover.Update(v.pos.x, v.pos.z);
+            foreach (var n in notes) Career.Say(n);
+            if (notes.Count > 0) Career.MarkDirty();
+            else if (Time.unscaledTime - discoverSaveAt > 30)
+            {
+                // The fog and the roads, now and then.
+                discoverSaveAt = Time.unscaledTime;
+                Career.MarkDirty();
+            }
+        }
+
+        /// <summary>Fast travel to a place found: onto its road (or the proving ground's paddock), the traffic around it anew.</summary>
+        public void FastTravel(Place p)
+        {
+            if (Racing || !Discover.FastTravel(p, out double x, out double z, out double yaw)) return;
+            Sim.Teleport(x, z, yaw);
+            Sim.Traffic?.Suspend();
+            Sim.Traffic?.Resume();
+            PlayerRig.Snap();
+            CameraRig.Snap();
+            accumulator = 0;
+            Career.Say($"Travelled to {p.Name}");
         }
 
         /// <summary>
@@ -370,7 +437,7 @@ namespace Halcyon
             GUI.DrawTexture(new Rect(Screen.width - 250, Screen.height - 18, 220 * frac, 6), Texture2D.whiteTexture);
             GUI.color = Color.white;
             var help = new GUIStyle(small) { alignment = TextAnchor.UpperLeft, fontSize = 13 };
-            GUI.Label(new Rect(14, 10, 1100, 22), "W/S throttle & brake · A/D steer · Space handbrake · E/Q shift · R reset · C camera · B look back · L lights · G garage · T events · [ ] time · \\ weather · Esc pause", help);
+            GUI.Label(new Rect(14, 10, 1100, 22), "W/S throttle & brake · A/D steer · Space handbrake · E/Q shift · R reset · C camera · B look back · L lights · G garage · T events · [ ] time · \\ weather · M map · Esc pause", help);
             var car = Career.Profile.CurrentCar;
             var (level, _, _) = Economy.Level(Career.Profile.Xp);
             string pi = car.Pi > 0 ? $" · {Performance.ClassOf(car.Pi)} {car.Pi}" : "";

@@ -77,6 +77,12 @@ namespace Halcyon.Core
             };
         }
 
+        static RoadNode FindNode(WorldData w, string id)
+        {
+            foreach (var n in w.Nodes) if (n.id == id) return n;
+            return null;
+        }
+
         static Poi FindPoi(WorldData w, string name)
         {
             foreach (var p in w.Pois) if (p.name == name) return p;
@@ -91,6 +97,19 @@ namespace Halcyon.Core
         public static List<RaceEvent> Festival(WorldData w, IslandGround g)
         {
             var list = All(w, g);
+            // The Highcrest hill climb: from the lake up the pass to the village (its hairpins were rebuilt in M6).
+            var lakeNorth = FindNode(w, "lakeNorth");
+            var high = FindPoi(w, "Highcrest");
+            if (lakeNorth != null && high != null)
+            {
+                var climb = Sprint(w, g, "sprint-highcrest", "Highcrest Hill Climb", lakeNorth.x, lakeNorth.z, high.x, high.z);
+                if (climb != null)
+                {
+                    climb.Description = $"{climb.Distance / 1000:0.0} km up the mountain pass: hairpins all the way to the village.";
+                    climb.ClassLimit = PiClass.S1;
+                    list.Add(climb);
+                }
+            }
             var night = ProvingGP(w, 3);
             night.Id = "proving-gp-night";
             night.Name = "Proving Ground by Night";

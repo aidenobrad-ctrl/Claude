@@ -87,6 +87,7 @@ namespace Halcyon.Core
             World = world;
             Ground = new IslandGround(world);
             Colliders = Ground.BuildColliders();
+            Halcyon.Core.Landmarks.AddColliders(Colliders, Halcyon.Core.Landmarks.Find(world, Ground));
             Spawn = spawn;
             PlayerCarId = playerCar ?? Halcyon.Core.Cars.All[0].id;
             onBreak = prop => Emit(SimEventKind.Break, breakCar.id, prop.x, prop.z, 0);

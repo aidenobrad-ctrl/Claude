@@ -4,10 +4,11 @@
 //   Keyboard: W/S or arrows (throttle/brake), A/D or arrows (steer), Space
 //   (handbrake), E/Q (shift up/down), R (reset to road), C (camera),
 //   B (look back), L (lights), Esc (pause), G (garage), T (events),
-//   [ and ] (an hour back or forward), \ (the weather: dynamic, then each sky).
+//   [ and ] (an hour back or forward), \ (the weather: dynamic, then each
+//   sky), M (the map).
 //   Gamepad: left stick (steer), RT/LT (throttle/brake), A (handbrake),
 //   B/X (shift), Y (camera), Back (reset), Start (pause), LB (garage),
-//   d-pad up (events).
+//   d-pad up (events), d-pad down (the map).
 //   Menus (the garage): arrows / WASD / d-pad, Enter / Space / A to pick,
 //   Esc / Backspace / B to go back.
 using Halcyon.Core;
@@ -27,7 +28,7 @@ namespace Halcyon
         /// <summary>Menu keys (the garage): true on the frame they go down.</summary>
         public struct MenuKeys
         {
-            public bool left, right, up, down, select, back, garage, events, hourBack, hourForward, weather;
+            public bool left, right, up, down, select, back, garage, events, hourBack, hourForward, weather, map;
         }
 
         public MenuKeys Menu;
@@ -70,6 +71,7 @@ namespace Halcyon
                 hourBack = m.hourBack && !menuHeld.hourBack,
                 hourForward = m.hourForward && !menuHeld.hourForward,
                 weather = m.weather && !menuHeld.weather,
+                map = m.map && !menuHeld.map,
             };
             menuHeld = m;
             // Edges: pressed this frame and not the last.
@@ -97,6 +99,7 @@ namespace Halcyon
             m.hourBack |= Key(KeyCode.LeftBracket);
             m.hourForward |= Key(KeyCode.RightBracket);
             m.weather |= Key(KeyCode.Backslash);
+            m.map |= Key(KeyCode.M);
         }
 
         bool ReadLegacy(Controls c)
@@ -141,6 +144,7 @@ namespace Halcyon
                 m.hourBack |= kb.leftBracketKey.isPressed;
                 m.hourForward |= kb.rightBracketKey.isPressed;
                 m.weather |= kb.backslashKey.isPressed;
+                m.map |= kb.mKey.isPressed;
             }
             var gp = Gamepad.current;
             if (gp != null)
@@ -154,6 +158,7 @@ namespace Halcyon
                 m.back |= gp.buttonEast.isPressed;
                 m.garage |= gp.leftShoulder.isPressed;
                 m.events |= gp.dpad.up.isPressed && !gp.leftStick.IsActuated();
+                m.map |= gp.dpad.down.isPressed && !gp.leftStick.IsActuated();
             }
         }
 

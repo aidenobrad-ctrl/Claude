@@ -433,14 +433,31 @@ namespace Halcyon.Core
             double vmax = car.TopSpeed * 0.995;
             var v = sp.V;
             double Lat(double vv) => car.LatMax(vv) * grip;
-            // Cornering limit.
+            // Crests: the road's vertical curvature over 12 m either side (negative over a rise).
+            double step = r.Length / n;
+            int kk = Math.Max(1, (int)Math.Round(12 / Math.Max(0.5, step)));
+            double span = kk * step;
+            var crest = new double[n];
+            for (int i = 0; i < n; i++)
+            {
+                int a = i - kk, b = i + kk;
+                if (!r.Closed && (a < 0 || b >= n)) continue;
+                a = (a + n) % n;
+                b %= n;
+                crest[i] = Math.Max(0, -(r.Y[b] - 2 * r.Y[i] + r.Y[a]) / (span * span));
+            }
+            // Cornering limit. Over a crest the car is lighter by v^2 times the crest's curvature,
+            // and so has less grip: v^2 k <= mu (g - v^2 c) gives v^2 <= mu g / (k + mu c).
             for (int i = 0; i < n; i++)
             {
                 double k = Math.Abs(line.Curv[i]);
                 double mu = car.Mu * grip;
-                double den = k - mu * car.AeroK * g;
+                double den = k + mu * crest[i] - mu * car.AeroK * g;
                 v[i] = den <= 1e-6 ? vmax : Math.Min(vmax, Math.Sqrt(mu * g / den));
                 if (k > 1e-9) v[i] = Math.Min(v[i], Math.Sqrt(car.RollG * grip * g / k));
+                // Above sqrt(g / c) the car leaves the ground (and lands on its nose on a mountain
+                // road): plan for 95% of that.
+                if (crest[i] > 1e-4) v[i] = Math.Min(v[i], 0.95 * Math.Sqrt(g / crest[i]));
             }
             int laps = r.Closed ? 2 : 1;
             // Forward: acceleration-limited, sharing grip with cornering.

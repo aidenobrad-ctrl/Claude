@@ -147,6 +147,14 @@ export class World {
       for (let i = 0; i < n; i++) if (water[i] > -Infinity) y[i] = Math.max(y[i], water[i] + 4.5);
       // Approaches to a crossing rise at the class grade.
       gradeLimit(y, road.s, info.maxGrade, this.nodes[a].y, this.nodes[b].y);
+      if (cls === 'pass') {
+        // The grade limit leaves kinks (from +12% to -11% in 20 m throws a car into the air on a
+        // mountain pass). Two short box filters round them into vertical curves; averaging never
+        // steepens a profile, so the limit still holds. Bridges stay clear of the water.
+        for (let k = 0; k < 2; k++) boxSmooth(y, road.s, 30);
+        for (let i = 0; i < n; i++) if (water[i] > -Infinity) y[i] = Math.max(y[i], water[i] + 4.5);
+        gradeLimit(y, road.s, info.maxGrade, this.nodes[a].y, this.nodes[b].y);
+      }
       const bridge = new Uint8Array(n);
       for (let i = 0; i < n; i++) bridge[i] = y[i] - base[i] > 5.5 || water[i] > -Infinity ? 1 : 0;
       // Close tiny gaps in bridge runs.
@@ -672,6 +680,19 @@ function smoothProfile(base: Float32Array, s: Float64Array, window: number, y0: 
   out[0] = y0;
   out[n - 1] = y1;
   return out;
+}
+
+/** In-place box filter over a window in metres, the window shrinking toward the ends so they stay pinned. */
+function boxSmooth(y: Float64Array, s: Float64Array, window: number): void {
+  const n = y.length;
+  const pre = new Float64Array(n + 1);
+  for (let i = 0; i < n; i++) pre[i + 1] = pre[i] + y[i];
+  const step = n > 1 ? (s[n - 1] - s[0]) / (n - 1) : 1;
+  const half = Math.max(1, Math.round(window / 2 / Math.max(0.5, step)));
+  for (let i = 1; i + 1 < n; i++) {
+    const h = Math.min(half, i, n - 1 - i);
+    y[i] = (pre[i + h + 1] - pre[i - h]) / (2 * h + 1);
+  }
 }
 
 /** Enforce a maximum grade with forward and backward passes, endpoints pinned. */

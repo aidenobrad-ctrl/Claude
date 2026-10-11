@@ -44,6 +44,9 @@ static class Program
         if (only == "" || only == "festival") FestivalEvents();
         if (only == "" || only == "traffic") TrafficTests();
         if (only == "trafficdebug") TrafficDebug();
+        if (only == "" || only == "highcrest") Highcrest();
+        if (only == "" || only == "discover") DiscoveryTests();
+        if (only == "coast") CoastDebug();
         Console.WriteLine($"\n{(failures == 0 ? "PASS" : $"FAIL ({failures})")} in {sw.Elapsed.TotalSeconds:0.0} s");
         return failures == 0 ? 0 : 1;
     }
@@ -341,7 +344,7 @@ static class Program
         var fest = EventCatalog.Festival(World(), sim.Ground);
         var night = fest.FirstOrDefault(e => e.Id == "proving-gp-night");
         var storm = fest.FirstOrDefault(e => e.Id == "sprint-storm");
-        Check(fest.Count == all.Count + 2 && night != null && storm != null, $"the festival lists {fest.Count} events: the {all.Count} plus a night race and a storm");
+        Check(fest.Count == all.Count + 3 && night != null && storm != null && fest.Any(e => e.Id == "sprint-highcrest"), $"the festival lists {fest.Count} events: the {all.Count} plus the Highcrest climb, a night race and a storm");
         Check(all.All(e => e.ConditionsText == null) && night.ConditionsText == "Night · Clear" && storm.ConditionsText == "Day · Storm", $"conditions read \"{night.ConditionsText}\" and \"{storm.ConditionsText}\"");
         foreach (var ev in new[] { night, storm })
         {
@@ -371,6 +374,235 @@ static class Program
             if (ev == night) Check(race.AllFinished && wet == 0 && lightsOn && stillNight && resets == 0 && s.Clock.Rate == 1, "the night race is at night from start to finish (time runs at a fifth while racing), on a dry road, and every car finishes cleanly");
             else Check(race.AllFinished && wet == 1 && heldWet && strikes > 3 && resets <= 1 && !s.Weather.Hold, "the storm soaks the road for the whole race (the AI planned for it), lightning flashes, every car finishes, and the weather is released after");
         }
+    }
+
+    // --- Discoveries, the map and fast travel --------------------------------------------------------
+
+    static void DiscoveryTests()
+    {
+        Console.WriteLine("\nDiscoveries: landmarks, places found by driving, the fog of war, saves and fast travel");
+        var sim = new Simulation(World(), SpawnAt.Island) { WorldTime = false };
+        var lms = Landmarks.Find(World(), sim.Ground);
+        var hit = new RoadHit();
+        bool placed = true;
+        foreach (var l in lms)
+        {
+            double rd = Landmarks.RoadDistance(World(), l.X, l.Z);
+            Console.WriteLine($"  {l.Name,-22} {l.Kind,-12} at ({l.X:0}, {l.Z:0}), {l.Y:0} m up, {rd:0} m from a road, found within {l.Radius:0} m{(l.Parts.Count > 0 ? $", {l.Parts.Count} turbines" : "")}");
+            placed &= rd >= 25 && rd < 650 && l.Y > 1 && l.Radius > rd + 50;
+        }
+        bool apart = true;
+        for (int a = 0; a < lms.Count; a++)
+            for (int b = a + 1; b < lms.Count; b++)
+                apart &= Math.Sqrt((lms[a].X - lms[b].X) * (lms[a].X - lms[b].X) + (lms[a].Z - lms[b].Z) * (lms[a].Z - lms[b].Z)) > 800;
+        Check(lms.Count == 5 && lms.Select(l => l.Kind).Distinct().Count() == 5, "five landmarks: mast, lighthouse, wind farm, arch, observatory");
+        Check(placed && apart, "each on dry land, clear of the roads but found from the nearest one, and far apart");
+        var farm = lms.FirstOrDefault(l => l.Kind == Landmarks.WindFarm);
+        Check(farm != null && farm.Parts.Count >= 3, "the wind farm has its turbines");
+        int solid = sim.Colliders.Circles.Count(c => lms.Any(l => Math.Abs(c.x - l.X) < 1e-9 && Math.Abs(c.z - l.Z) < 1e-9) || (farm != null && farm.Parts.Any(q => Math.Abs(c.x - q.x) < 1e-9 && Math.Abs(c.z - q.z) < 1e-9)));
+        Check(solid >= lms.Count - 1 + (farm?.Parts.Count ?? 0) - 1, $"the structures are solid to the cars ({solid} colliders)");
+
+        // Drive the Harbour Dash route with the AI and let the player's discoveries follow.
+        var profile = Profile.New();
+        var disc = new Discoveries(World(), sim.Ground, profile);
+        Check(disc.RoadShare == 0 && disc.MapShare == 0 && profile.Found.Count == 0, "a new career has found nothing");
+        var ev = EventCatalog.All(World(), sim.Ground).First(e => e.Id == "sprint-harbor");
+        var race = new RaceSession(sim, ev, new List<(string, Personality)> { ("halden-aster-gt", new Personality { Name = "Bot", Skill = 0.8, Aggression = 0.5, Consistency = 1, Risk = 0.5 }) }, new RaceSession.AbilityCache(), 1, includePlayer: false);
+        var car = race.Entrants[0].Car.vehicle;
+        var c = Controls.Neutral();
+        var notes = new List<string>();
+        int xp0 = profile.Xp;
+        while (!race.AllFinished && race.Clock < 600)
+        {
+            race.Step(c);
+            if (sim.Tick % 60 == 0) notes.AddRange(disc.Update(car.pos.x, car.pos.z));
+        }
+        race.End();
+        foreach (var n in notes) Console.WriteLine("    " + n);
+        Console.WriteLine($"  after the Harbour Dash: {profile.Found.Count} places found, {disc.RoadShare * 100:0.0}% of the roads driven, {disc.MapShare * 100:0.0}% of the map uncovered, +{profile.Xp - xp0} XP");
+        Check(profile.Found.Contains("place:Halcyon Festival") && profile.Found.Contains("place:Harbor"), "driving finds the festival and the harbour");
+        Check(disc.RoadShare > 0.08 && disc.RoadShare < 0.2, "the roads driven are about the route's share of the network (7.6 of 63 km)");
+        r_At(ev.Route, ev.Route.Length * 0.5, out double mx, out double mz);
+        Check(disc.Uncovered(mx, mz) && !disc.Uncovered(-3500, -3500), "the fog clears along the route and nowhere else");
+        Check(profile.Xp - xp0 >= 600, "finding places pays XP");
+
+        // Saves: the career carries its discoveries; an old save (before M6) loads with none.
+        disc.Save();
+        var json = profile.ToJson();
+        var back = Profile.FromJson(json);
+        var disc2 = new Discoveries(World(), sim.Ground, back);
+        Check(disc2.DrivenSamples == disc.DrivenSamples && disc2.FogCleared == disc.FogCleared && back.Found.SetEquals(profile.Found), "discoveries survive a save and load bit for bit");
+        var old = Profile.FromJson("{\"version\":1,\"credits\":1000,\"xp\":0,\"current\":0,\"garage\":[{\"id\":\"halden-aster-gt\",\"parts\":{},\"pi\":0}]}");
+        Check(old.Found.Count == 0 && new Discoveries(World(), sim.Ground, old).RoadShare == 0, "a save from before M6 loads with an undiscovered island");
+
+        // Fast travel to every place found: onto a road, upright, settled.
+        var targets = disc.FastTravelTargets();
+        bool allGood = targets.Count >= 2;
+        foreach (var t in targets)
+        {
+            var s2 = new Simulation(World(), SpawnAt.Island) { WorldTime = false };
+            if (!disc.FastTravel(t, out double x, out double z, out double yaw)) { allGood = false; continue; }
+            s2.Teleport(x, z, yaw);
+            var hold = Controls.Neutral();
+            hold.handbrake = 1;
+            for (int i = 0; i < 480; i++) s2.Step(hold);
+            var v = s2.Player.vehicle;
+            bool onRoad = s2.OnRoad();
+            double moved = Math.Sqrt((v.pos.x - x) * (v.pos.x - x) + (v.pos.z - z) * (v.pos.z - z));
+            Console.WriteLine($"  fast travel to {t.Name}: ({x:0}, {z:0}), on the road {onRoad}, upright {v.up.y:0.00}, moved {moved:0.00} m, {Math.Sqrt((x - t.X) * (x - t.X) + (z - t.Z) * (z - t.Z)):0} m from the place");
+            allGood &= (onRoad || t.Kind == "track") && v.up.y > 0.95 && moved < 1 && v.speed < 0.2; // the proving ground: its paddock
+        }
+        Check(allGood, $"fast travel to each of the {targets.Count} places found lands on a road, upright and still");
+    }
+
+    static void CoastDebug()
+    {
+        var w = World();
+        var g = new IslandGround(w);
+        int n = w.N, step = Math.Max(1, (int)Math.Round(16 / w.Spacing));
+        int reach = Math.Max(1, (int)Math.Round(80 / w.Spacing));
+        int dry = 0, height = 0, region = 0, sea = 0, road = 0;
+        double minH = 1e9;
+        var hit = new RoadHit();
+        Console.WriteLine($"grid {n} spacing {w.Spacing} origin {w.Origin} reach {reach}");
+        for (int j = reach; j < n - reach; j += step)
+            for (int i = reach; i < n - reach; i += step)
+            {
+                int k = j * n + i;
+                minH = Math.Min(minH, w.Height[k]);
+                bool isDry = w.Water[k] == short.MinValue || w.Height[k] > w.Water[k] / 100.0 + 0.5;
+                if (!isDry) continue;
+                dry++;
+                double h = w.Height[k];
+                if (h < 4 || h > 45) continue;
+                height++;
+                if (w.Region[k] == 5 || w.Region[k] == 6) continue;
+                region++;
+                bool s2 = false;
+                for (int a2 = 0; a2 < 8 && !s2; a2++)
+                {
+                    double ang = a2 * Math.PI / 4;
+                    int ii = i + (int)Math.Round(Math.Cos(ang) * reach), jj = j + (int)Math.Round(Math.Sin(ang) * reach);
+                    int kk = jj * n + ii;
+                    if (w.Height[kk] < -0.5 && (w.Water[kk] == short.MinValue || w.Water[kk] < 100)) s2 = true;
+                }
+                if (!s2) continue;
+                sea++;
+                double x = w.Origin + i * w.Spacing, z = w.Origin + j * w.Spacing;
+                double rd = g.NearestRoad(x, z, 600, hit) ? hit.dist : 600;
+                if (rd < 30 || rd >= 600) continue;
+                road++;
+            }
+        Console.WriteLine($"min height {minH:0.0}; dry {dry}, height ok {height}, region ok {region}, sea near {sea}, road ok {road}");
+        // What is the water grid like at sea?
+        int k0 = 5 * n + 5;
+        Console.WriteLine($"corner cell: height {w.Height[k0]:0.0} water {w.Water[k0]}");
+    }
+
+    static void r_At(RaceRoute r, double s, out double x, out double z) => r.At(s, out x, out _, out z, out _, out _);
+
+    // --- The Highcrest pass ----------------------------------------------------------------------
+
+    static void Highcrest()
+    {
+        Console.WriteLine("\nThe Highcrest hill climb: the rebuilt pass (hairpins of 19 m and wider) raced by the AI");
+        var sim0 = new Simulation(World(), SpawnAt.Island);
+        var ev = EventCatalog.Festival(World(), sim0.Ground).FirstOrDefault(e => e.Id == "sprint-highcrest");
+        Check(ev != null, "the festival has a Highcrest hill climb");
+        if (ev == null) return;
+        // The tightest bend of the race route.
+        var r = ev.Route;
+        double tight = 1e9;
+        for (int i = 3; i < r.N - 3; i++)
+        {
+            double a0 = Math.Atan2(r.Tz[i - 3], r.Tx[i - 3]), a1 = Math.Atan2(r.Tz[i + 3], r.Tx[i + 3]);
+            double d = a1 - a0;
+            while (d > Math.PI) d -= 2 * Math.PI;
+            while (d < -Math.PI) d += 2 * Math.PI;
+            double ds = r.S[i + 3] - r.S[i - 3];
+            if (Math.Abs(d) > 1e-6) tight = Math.Min(tight, ds / Math.Abs(d));
+        }
+        Console.WriteLine($"  {ev.Name}: {ev.Distance / 1000:0.0} km, tightest bend on the route {tight:0.0} m");
+        double RadiusAt(double s)
+        {
+            int i = Math.Max(3, Math.Min(r.N - 4, (int)(s / (r.Length / r.N))));
+            double d = Math.Atan2(r.Tz[i + 3], r.Tx[i + 3]) - Math.Atan2(r.Tz[i - 3], r.Tx[i - 3]);
+            while (d > Math.PI) d -= 2 * Math.PI;
+            while (d < -Math.PI) d += 2 * Math.PI;
+            return (r.S[i + 3] - r.S[i - 3]) / Math.Max(1e-6, Math.Abs(d));
+        }
+        if (Environment.GetEnvironmentVariable("HC_PROFILE") != null)
+        {
+            var parts = Environment.GetEnvironmentVariable("HC_PROFILE").Split(',');
+            double s0 = double.Parse(parts[0]), s1 = double.Parse(parts[1]);
+            var gh = new GroundHit();
+            for (double s = s0; s <= s1; s += 6)
+            {
+                r.At(s, out double x, out double y, out double z, out double tx, out double tz);
+                r.At(s + 6, out _, out double y2, out _, out _, out _);
+                // Cross-slope: ground height 3 m either side of the centre line.
+                sim0.Ground.Sample(x - tz * 3, z + tx * 3, y + 5, gh);
+                double yr = gh.y;
+                sim0.Ground.Sample(x + tz * 3, z - tx * 3, y + 5, gh);
+                double yl = gh.y;
+                sim0.Ground.Sample(x, z, y + 5, gh);
+                Console.WriteLine($"    s {s,6:0} ({x,6:0},{z,6:0}) y {y,6:0.0} ground {gh.y,6:0.0} grade {(y2 - y) / 6 * 100,5:0.0}% cross {(yr - yl) / 6 * 100,5:0.0}% radius {RadiusAt(s),6:0} surf {gh.surface}");
+            }
+        }
+        if (Environment.GetEnvironmentVariable("HC_BENDS") == "1")
+            for (double s = 0; s < r.Length; s += 8)
+                if (RadiusAt(s) < 15) { r.At(s, out double bx, out _, out double bz, out _, out _); Console.WriteLine($"    tight {RadiusAt(s):0.0} m at s {s:0} ({bx:0}, {bz:0})"); }
+        if (Environment.GetEnvironmentVariable("HC_TRACE") != null)
+        {
+            var parts = Environment.GetEnvironmentVariable("HC_TRACE").Split(',');
+            string car = parts[0];
+            double t0s = double.Parse(parts[1]), t1s = double.Parse(parts[2]);
+            var simT = new Simulation(World(), SpawnAt.Island) { WorldTime = false };
+            var raceT = new RaceSession(simT, ev, new List<(string, Personality)> { (car, new Personality { Name = "T", Skill = 0.9, Aggression = 0.5, Consistency = 0.9, Risk = 0.5 }) }, new RaceSession.AbilityCache(), 1, includePlayer: false);
+            var en = raceT.Entrants[0];
+            en.Ai.OnEvent = m => Console.WriteLine($"    EVENT t {raceT.Clock:0.0}: {m}");
+            var cc = Controls.Neutral();
+            int n = 0;
+            while (!raceT.AllFinished && raceT.Clock < 600)
+            {
+                raceT.Step(cc);
+                if (++n % 30 != 0 || en.S < t0s || en.S > t1s) continue;
+                var v = en.Car.vehicle;
+                Console.WriteLine($"    t {raceT.Clock,6:0.00} s {en.S,6:0.0} lat {en.Lateral,5:0.0} v {v.vLong,5:0.0} vT {en.Ai.TargetSpeed,5:0.0} th {v.input.throttle:0.00} br {v.input.brake:0.00} st {v.input.steer,5:0.00} gear {v.gear} up ({v.up.x:0.00},{v.up.y:0.00},{v.up.z:0.00}) y {v.pos.y:0.0} wheels {string.Join("", v.wheels.Select(q => q.grounded ? q.surface.ToString() : "-"))} radius {RadiusAt(en.S):0}");
+            }
+            return;
+        }
+        string[][] fields =
+        {
+            new[] { "halden-aster-gt", "aurelle-vif-r", "nordvik-kyst-sport", "hoshida-kiri-rs", "halden-280-sprint", "aurelle-pico" },
+            new[] { "arcline-vanta", "orsini-saetta", "stallworth-prairie", "ironbark-ridgeback", "stallworth-ironside-454", "nordvik-varg" },
+        };
+        var abilities = new RaceSession.AbilityCache();
+        var results = new (bool ok, string line)[fields.Length * 2];
+        Parallel.For(0, results.Length, k =>
+        {
+            var cars = fields[k % fields.Length];
+            uint seed = (uint)(k / fields.Length + 1);
+            var sim = new Simulation(World(), SpawnAt.Island) { WorldTime = false };
+            var field = new List<(string, Personality)>();
+            for (int i = 0; i < cars.Length; i++) field.Add((cars[i], new Personality { Name = $"D{i}", Skill = 0.75 + 0.05 * i, Aggression = 0.5, Consistency = 0.9, Risk = 0.5 }));
+            var race = new RaceSession(sim, ev, field, abilities, seed, includePlayer: false);
+            if (Environment.GetEnvironmentVariable("HC_RESETS") == "1")
+                foreach (var e in race.Entrants)
+                {
+                    var en = e;
+                    e.Ai.OnEvent = m => { if (m.Contains("reset")) Console.WriteLine($"    {en.Car.specId} at s {en.S:0} (radius {RadiusAt(en.S):0} m, lateral {en.Lateral:0.0}): {m}"); };
+                }
+            var c = Controls.Neutral();
+            while (!race.AllFinished && race.Clock < 900) race.Step(c);
+            int resets = race.Entrants.Sum(e => e.Ai.Resets);
+            double stuck = race.Entrants.Max(e => e.Ai.MaxStuck);
+            var times = string.Join(" ", race.Order.Select(e => $"{e.Car.specId.Split('-').Last()} {Fmt(e.FinishTime)}{(e.Ai.Resets > 0 ? $" ({e.Ai.Resets}R)" : "")}"));
+            results[k] = (race.AllFinished && stuck < 5 && resets <= 1, $"  field {k % fields.Length} seed {seed}: {resets} resets, {race.Contacts} contacts, {race.WallHits} wall hits, max stuck {stuck:0.0} s | {times}");
+        });
+        foreach (var x in results) Console.WriteLine(x.line);
+        Check(tight >= 15, "the race route has no bend tighter than 15 m");
+        Check(results.All(x => x.ok), "every car, from the Pico to the Vanta and the pickup, climbs the pass: all finish, at most one reset a race, nobody stuck");
     }
 
     // --- Traffic -------------------------------------------------------------------------------

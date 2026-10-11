@@ -147,6 +147,58 @@ static class Program
                 sumMax = Math.Max(sumMax, Math.Abs(alpha[r, c, 0] + alpha[r, c, 1] + alpha[r, c, 2] + alpha[r, c, 3] + alpha[r, c, 4] - 1));
         Check(sumMax < 1e-5, "alphamap weights sum to 1");
 
+        // --- The whole simulation: a scripted drive from the festival spawn ----------------------
+        var sref = Json.Obj(MiniJson.Parse(File.ReadAllText(Path.Combine(root, "dotnet/ref/world/sim-ref.json"))));
+        var script = sref.Arr("script");
+        var sim = new Simulation(w);
+        var ctl = new Controls();
+        var samples = sref.Arr("samples");
+        int si = 0;
+        double maxDev = 0, devAt = 0, devRoad = 0, devDirt = 0;
+        var devs = new List<string>();
+        int total = (int)Math.Round(Json.Num(Json.Arr(script[script.Count - 1])[0]) * 240);
+        sw.Restart();
+        for (int k = 0; k < total; k++)
+        {
+            double tsec = k / 240.0;
+            List<object> seg = null;
+            foreach (var row in script)
+            {
+                var r = Json.Arr(row);
+                if (tsec < Json.Num(r[0])) { seg = r; break; }
+            }
+            seg = seg ?? Json.Arr(script[script.Count - 1]);
+            ctl.throttle = Json.Num(seg[1]);
+            ctl.brake = Json.Num(seg[2]);
+            ctl.steer = Json.Num(seg[3]);
+            ctl.analogSteer = true;
+            ctl.source = InputSource.Gamepad;
+            sim.Step(ctl);
+            if ((k + 1) % 60 == 0 && si < samples.Count)
+            {
+                var a = Json.Arr(samples[si++]);
+                var v = sim.Player.vehicle;
+                double d = Math.Sqrt(Math.Pow(v.pos.x - Json.Num(a[1]), 2) + Math.Pow(v.pos.y - Json.Num(a[2]), 2) + Math.Pow(v.pos.z - Json.Num(a[3]), 2));
+                if (d > maxDev) { maxDev = d; devAt = Json.Num(a[0]); }
+                double ts = Json.Num(a[0]);
+                if (ts <= 5.01) devRoad = Math.Max(devRoad, d);
+                else if (ts <= 6.51) devDirt = Math.Max(devDirt, d);
+                if (si % 8 == 0) devs.Add($"{Json.Num(a[0]):F0}s:{d * 100:F1}cm");
+                if (Environment.GetEnvironmentVariable("SIM_DEBUG") == "1" && si >= 16 && si <= 40)
+                {
+                    var g0 = new GroundHit();
+                    sim.Ground.Sample(v.pos.x, v.pos.z, v.pos.y, g0);
+                    Console.WriteLine($"  t={Json.Num(a[0]):F2} C# ({v.pos.x:F3},{v.pos.y:F3},{v.pos.z:F3}) TS ({Json.Num(a[1]):F3},{Json.Num(a[2]):F3},{Json.Num(a[3]):F3}) d={d * 100:F2}cm v={v.speed * 3.6:F1} surf={g0.surface} onRoad={sim.OnRoad()} events={sim.Events.Count}");
+                }
+            }
+        }
+        var pvEnd = sim.Player.vehicle;
+        Console.WriteLine($"island drive: {total / 240.0:F0} s simulated in {sw.ElapsedMilliseconds} ms; deviation from the TypeScript {string.Join(" ", devs)}; max {maxDev * 100:F1} cm at {devAt:F1} s; ends at {pvEnd.speed * 3.6:F1} km/h");
+        // On the asphalt the two agree exactly; on the dirt shoulder the 16-bit
+        // terrain (1.3 cm steps) shows; after the crash at 6.75 s chaos takes over.
+        Check(devRoad < 0.001, $"on the road the C# drive matches the TypeScript ({devRoad * 1000:F2} mm over 5 s at up to 105 km/h)");
+        Check(devDirt < 0.05, $"on the dirt shoulder it stays within 5 cm ({devDirt * 100:F2} cm, 16-bit terrain)");
+
         Console.WriteLine(failures == 0 ? "\nWORLD EQUIVALENCE: PASS" : $"\nWORLD EQUIVALENCE: FAIL ({failures})");
         return failures == 0 ? 0 : 1;
     }

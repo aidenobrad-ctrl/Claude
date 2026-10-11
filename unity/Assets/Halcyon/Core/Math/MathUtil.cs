@@ -42,12 +42,14 @@ namespace Halcyon.Core
         public static double Damp(double current, double target, double lambda, double dt) =>
             Lerp(current, target, 1 - DMath.Exp(-lambda * dt));
 
-        /// <summary>JavaScript's Math.round: halves round towards +infinity.</summary>
+        /// <summary>JavaScript's Math.round: halves round towards +infinity, and the sign of zero is kept.</summary>
         public static double JsRound(double x)
         {
             if (double.IsNaN(x) || double.IsInfinity(x)) return x;
             double f = Math.Floor(x);
-            return x - f >= 0.5 ? f + 1 : f;
+            double r = x - f >= 0.5 ? f + 1 : f;
+            // Math.round(x) is -0 for x in [-0.5, 0) (f + 1 above gives +0).
+            return r == 0 && x < 0 ? -0.0 : r;
         }
 
         /// <summary>JavaScript's Math.imul.</summary>

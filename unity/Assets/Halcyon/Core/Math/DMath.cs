@@ -57,7 +57,8 @@ namespace Halcyon.Core
         static double Reduce(double x, out int quadrant)
         {
             double n = M.JsRound(x * INV_PIO2);
-            quadrant = (int)((long)n & 3);
+            // JavaScript's n & 3 (ToInt32). A (long) cast of |n| >= 2^63 differs by platform (x64 vs ARM64).
+            quadrant = Hash.ToInt32(n) & 3;
             return x - n * PIO2_1 - n * PIO2_2 - n * PIO2_3;
         }
 

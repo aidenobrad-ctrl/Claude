@@ -31,7 +31,12 @@ namespace Halcyon
                 bool dirt = info.surface == Surface.Dirt;
                 var tex = ProceduralTextures.Road(info, dirt, out var nrm);
                 classMats[c] = Mats.Make("Road_" + info.id, Color.white, dirt ? 0.06f : 0.22f, 0f, tex, nrm);
+                // Rain darkens the asphalt and makes it shine; a dirt road turns to dark mud.
+                if (dirt) SkyDirector.Wettable(classMats[c], 0.35f, 0.7f);
+                else SkyDirector.Wettable(classMats[c], 0.86f, 0.58f);
             }
+            SkyDirector.Wettable(shoulder, 0.4f, 0.75f);
+            SkyDirector.Wettable(concrete, 0.7f, 0.7f);
             // Rails by edge, for the walls and beams.
             var railsByEdge = new Dictionary<int, List<RailRun>>();
             foreach (var run in w.Rails)

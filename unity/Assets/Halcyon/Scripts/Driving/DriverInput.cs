@@ -3,7 +3,8 @@
 // otherwise the legacy Input Manager.
 //   Keyboard: W/S or arrows (throttle/brake), A/D or arrows (steer), Space
 //   (handbrake), E/Q (shift up/down), R (reset to road), C (camera),
-//   B (look back), L (lights), Esc (pause), G (garage), T (events).
+//   B (look back), L (lights), Esc (pause), G (garage), T (events),
+//   [ and ] (an hour back or forward), \ (the weather: dynamic, then each sky).
 //   Gamepad: left stick (steer), RT/LT (throttle/brake), A (handbrake),
 //   B/X (shift), Y (camera), Back (reset), Start (pause), LB (garage),
 //   d-pad up (events).
@@ -26,7 +27,7 @@ namespace Halcyon
         /// <summary>Menu keys (the garage): true on the frame they go down.</summary>
         public struct MenuKeys
         {
-            public bool left, right, up, down, select, back, garage, events;
+            public bool left, right, up, down, select, back, garage, events, hourBack, hourForward, weather;
         }
 
         public MenuKeys Menu;
@@ -66,6 +67,9 @@ namespace Halcyon
                 back = m.back && !menuHeld.back,
                 garage = m.garage && !menuHeld.garage,
                 events = m.events && !menuHeld.events,
+                hourBack = m.hourBack && !menuHeld.hourBack,
+                hourForward = m.hourForward && !menuHeld.hourForward,
+                weather = m.weather && !menuHeld.weather,
             };
             menuHeld = m;
             // Edges: pressed this frame and not the last.
@@ -90,6 +94,9 @@ namespace Halcyon
             m.back |= Key(KeyCode.Escape) || Key(KeyCode.Backspace);
             m.garage |= Key(KeyCode.G);
             m.events |= Key(KeyCode.T);
+            m.hourBack |= Key(KeyCode.LeftBracket);
+            m.hourForward |= Key(KeyCode.RightBracket);
+            m.weather |= Key(KeyCode.Backslash);
         }
 
         bool ReadLegacy(Controls c)
@@ -131,6 +138,9 @@ namespace Halcyon
                 m.back |= kb.escapeKey.isPressed || kb.backspaceKey.isPressed;
                 m.garage |= kb.gKey.isPressed;
                 m.events |= kb.tKey.isPressed;
+                m.hourBack |= kb.leftBracketKey.isPressed;
+                m.hourForward |= kb.rightBracketKey.isPressed;
+                m.weather |= kb.backslashKey.isPressed;
             }
             var gp = Gamepad.current;
             if (gp != null)

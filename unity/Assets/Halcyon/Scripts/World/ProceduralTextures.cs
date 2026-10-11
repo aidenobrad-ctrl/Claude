@@ -248,6 +248,106 @@ namespace Halcyon
             (u, v) => Fbm(u, v, 16, 4, 81) * 0.5f + (Noise(u * 128, v * 128, 128, 82) > 0.9f ? 0.2f : 0),
             (u, v, h) => Mix(new Color(0.48f, 0.47f, 0.45f), new Color(0.64f, 0.63f, 0.60f), h), 1.5f, out a, out n, "Concrete");
 
+        /// <summary>
+        /// The facade's windows at night, as an emission map on the same UVs:
+        /// about four in ten lit, in warm tungsten, cooler LED and the odd
+        /// television blue, a little uneven across each pane.
+        /// </summary>
+        public static Texture2D FacadeLights()
+        {
+            const int size = 256;
+            var cols = new Color32[size * size];
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    float u = (float)x / size, v = (float)y / size;
+                    float fx = (u * 4) % 1f, fy = (v * 4) % 1f;
+                    bool win = fx > 0.27f && fx < 0.73f && fy > 0.32f && fy < 0.78f;
+                    Color c = Color.black;
+                    if (win)
+                    {
+                        int wx = Mathf.FloorToInt(u * 4), wy = Mathf.FloorToInt(v * 4);
+                        float h = Hash(wx, wy, 401), k = Hash(wx, wy, 402);
+                        if (h < 0.42f)
+                        {
+                            c = k < 0.6f ? new Color(1f, 0.72f, 0.42f) : k < 0.9f ? new Color(0.95f, 0.9f, 0.8f) : new Color(0.55f, 0.68f, 1f);
+                            // Brighter toward the top of the pane (a ceiling lamp), with a curtain's unevenness.
+                            c *= (0.55f + 0.45f * fy) * (0.8f + 0.2f * Noise(u * 64, v * 64, 64, 403)) * (0.6f + 0.4f * Hash(wx, wy, 404));
+                        }
+                    }
+                    cols[y * size + x] = c;
+                }
+            }
+            var t = new Texture2D(size, size, TextureFormat.RGBA32, true, false) { name = "FacadeLights", wrapMode = TextureWrapMode.Repeat, filterMode = FilterMode.Trilinear, anisoLevel = 8 };
+            t.SetPixels32(cols);
+            t.Apply(true, false);
+            return t;
+        }
+
+        /// <summary>A raindrop streak: bright in the middle, fading to the ends and the sides.</summary>
+        public static Texture2D RainStreak()
+        {
+            const int w = 8, h = 64;
+            var cols = new Color32[w * h];
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                {
+                    float sx = 1 - Mathf.Abs((x + 0.5f) / w * 2 - 1), sy = Mathf.Sin((y + 0.5f) / h * Mathf.PI);
+                    cols[y * w + x] = new Color(1, 1, 1, Mathf.Pow(sx, 1.5f) * sy);
+                }
+            var t = new Texture2D(w, h, TextureFormat.RGBA32, false, false) { name = "RainStreak", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
+            t.SetPixels32(cols);
+            t.Apply(false, false);
+            return t;
+        }
+
+        /// <summary>A soft round puff for spray and mist.</summary>
+        public static Texture2D SoftDot()
+        {
+            const int size = 64;
+            var cols = new Color32[size * size];
+            for (int y = 0; y < size; y++)
+                for (int x = 0; x < size; x++)
+                {
+                    float dx = (x + 0.5f) / size * 2 - 1, dy = (y + 0.5f) / size * 2 - 1;
+                    float r = Mathf.Sqrt(dx * dx + dy * dy);
+                    float a = Mathf.Clamp01(1 - r);
+                    a = a * a * (3 - 2 * a) * (0.75f + 0.25f * Noise(x / 8f, y / 8f, 8, 411));
+                    cols[y * size + x] = new Color(1, 1, 1, a);
+                }
+            var t = new Texture2D(size, size, TextureFormat.RGBA32, true, false) { name = "SoftDot", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Trilinear };
+            t.SetPixels32(cols);
+            t.Apply(true, false);
+            return t;
+        }
+
+        /// <summary>
+        /// Cloud cover as alpha (white RGB), tileable: fBm thresholded so the
+        /// share of sky covered follows coverage (0 clear to 1 overcast), with
+        /// soft edges. Pure math on plain arrays: safe on a worker thread.
+        /// </summary>
+        public static Color32[] CloudPixels(int size, float coverage, int seed)
+        {
+            var px = new Color32[size * size];
+            float cut = Mathf.Lerp(0.78f, 0.18f, Mathf.Clamp01(coverage));
+            float soft = 0.16f;
+            for (int y = 0; y < size; y++)
+                for (int x = 0; x < size; x++)
+                {
+                    float u = (float)x / size, v = (float)y / size;
+                    float n = Fbm(u, v, 4, 6, seed, 0.55f);
+                    // Ridges and wisps: stretch a little along the wind.
+                    n = n * 0.85f + 0.15f * Fbm(u * 2 % 1f, v, 8, 3, seed + 7);
+                    float a = Mathf.Clamp01((n - cut) / soft);
+                    a = a * a * (3 - 2 * a);
+                    // Thick cloud is darker underneath: keep that in the green channel (shade).
+                    byte shade = (byte)(255 * (1 - 0.45f * Mathf.Clamp01((n - cut - soft) / 0.3f)));
+                    px[y * size + x] = new Color32(shade, shade, shade, (byte)(255 * a));
+                }
+            return px;
+        }
+
         /// <summary>A facade: wall with a grid of windows every 3 m (u, v in metres / 3).</summary>
         public static void Facade(out Texture2D a, out Texture2D n) => Make(256,
             (u, v) =>

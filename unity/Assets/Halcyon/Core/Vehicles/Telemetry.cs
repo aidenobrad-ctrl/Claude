@@ -58,10 +58,11 @@ namespace Halcyon.Core
         }
 
         /// <summary>Standing start at full throttle until the car stops gaining speed.</summary>
-        public static AccelResult AccelTest(VehicleParams p, double? maxTime = null, PartialAids aids = null, int surface = Surface.Asphalt)
+        public static AccelResult AccelTest(VehicleParams p, double? maxTime = null, PartialAids aids = null, int surface = Surface.Asphalt, double wetness = 0)
         {
             IGround ground = Flat(surface);
             Vehicle v = NewTestVehicle(p, aids);
+            v.wetness = wetness;
             Settle(v, ground);
             V3 start = v.pos.Clone();
             var r = new AccelResult();
@@ -104,10 +105,11 @@ namespace Halcyon.Core
         }
 
         /// <summary>Full braking from a speed to a standstill, in a straight line.</summary>
-        public static BrakeResult BrakeTest(VehicleParams p, double fromKmh = 100, PartialAids aids = null, int surface = Surface.Asphalt)
+        public static BrakeResult BrakeTest(VehicleParams p, double fromKmh = 100, PartialAids aids = null, int surface = Surface.Asphalt, double wetness = 0)
         {
             IGround ground = Flat(surface);
             Vehicle v = NewTestVehicle(p, aids);
+            v.wetness = wetness;
             Settle(v, ground);
             v.SetSpeed(fromKmh / 3.6);
             // Let the suspension settle at speed with a whiff of throttle.
@@ -136,11 +138,12 @@ namespace Halcyon.Core
         /// with the car within 0.6 m of the line. Aids default to steering off and
         /// ESC off; <paramref name="aids"/> overrides that.
         /// </summary>
-        public static SkidpadResult SkidpadTest(VehicleParams p, double radius = 40, PartialAids aids = null, int surface = Surface.Asphalt, double? maxTime = null)
+        public static SkidpadResult SkidpadTest(VehicleParams p, double radius = 40, PartialAids aids = null, int surface = Surface.Asphalt, double? maxTime = null, double wetness = 0)
         {
             IGround ground = Flat(surface);
             var baseAids = new PartialAids { steering = SteeringAssist.Off, esc = false };
             Vehicle v = NewTestVehicle(p, baseAids.Merge(aids));
+            v.wetness = wetness;
             // Counter-clockwise (left turn) around the origin, starting at (R, 0).
             // Heading at (R,0) tangent toward -Z (north) is yaw 0.
             v.Place(radius, 0, 0, 0);

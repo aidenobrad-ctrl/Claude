@@ -9,8 +9,8 @@
 import { V3, Quat, clamp, lerp, moveTowards, smoothstep } from '../engine/math';
 import { datan, datan2, dcos, dsin, dtan } from '../engine/dmath';
 import { newHit, type Ground, type GroundHit } from '../world/ground';
-import { SURFACES, SURFACE, type SurfaceId } from '../world/surfaces';
-import { tireForce, type TireResult } from './tires';
+import { SURFACES, SURFACE, type SurfaceId, type SurfaceInfo } from '../world/surfaces';
+import { tireForce, type TireResult, type TireSetup } from './tires';
 import { AIR_DENSITY, GRAVITY, camberLateralGrip, camberLongGrip, curveTorque, type VehicleParams } from './params';
 
 export interface DriverInput {
@@ -140,6 +140,8 @@ export class Vehicle {
   impact = 0;
   /** Extra drag multiplier from drafting (set by the race/sim layer). */
   draftFactor = 1;
+  /** How wet paved roads are, 0 dry to 1 soaked (set by the sim layer from the weather). */
+  wetness = 0;
   odometer = 0;
   private readonly prevVel = new V3();
   private readonly frontAxle = new V3();
@@ -289,7 +291,7 @@ export class Vehicle {
       tmpA.copy(this.up).scale(w.load).addScaled(w.fwdDir, w.fx).addScaled(w.sideDir, w.fy);
       // Loose and soft surfaces add drag proportional to speed and load.
       const surf = SURFACES[w.surface];
-      const drag = surf.drag + (w.water > 0.05 ? Math.min(w.water, 0.8) * 25 : 0);
+      const drag = surf.drag + (w.water > 0.05 ? Math.min(w.water, 0.8) * 25 : 0) + (this.wetness > 0 && surf.grip === 'asphalt' ? this.wetness * SURFACES[SURFACE.asphaltWet].drag : 0);
       if (drag > 0) {
         this.pointVelocity(w.contact, tmpB);
         tmpB.addScaled(w.normal, -tmpB.dot(w.normal));
@@ -441,7 +443,7 @@ export class Vehicle {
     w.vLong = vL;
     const wheelSpeed = w.omega * wp.radius;
     const surf = SURFACES[w.surface];
-    let grip = wp.tire.info.surface[surf.grip] * surf.gripScale;
+    let grip = this.surfaceGrip(wp.tire, surf);
     if (w.water > 0.02) grip *= Math.max(0.35, 1 - w.water * 1.5);
     // Caster: a steered wheel leans as it turns, the outer one into the corner.
     let lateral: number | undefined;
@@ -739,7 +741,7 @@ export class Vehicle {
       // The tire's own peak, as in tireForce: load sensitivity (a squatting
       // car's rear tires grip less per newton) and standing water.
       const sens = Math.max(0.6, Math.min(1.25, 1 - t.info.loadSens * (w.load / t.nominalLoad - 1)));
-      let grip = t.info.surface[surf.grip] * surf.gripScale;
+      let grip = this.surfaceGrip(t, surf);
       if (w.water > 0.02) grip *= Math.max(0.35, 1 - w.water * 1.5);
       const mu = t.info.mu * sens * t.info.muLong * t.widthGrip * t.tuneGrip * grip;
       // Limited by the driven wheel with the least grip relative to its torque share.
@@ -747,6 +749,13 @@ export class Vehicle {
       wheelTorque = wheelTorque === 0 ? perWheel : Math.min(wheelTorque, perWheel);
     }
     return wheelTorque / Math.max(1e-6, G * g.efficiency);
+  }
+
+  /** A tire's grip factor on a surface; paved surfaces grip like wet asphalt in proportion to the road's wetness. */
+  private surfaceGrip(t: TireSetup, surf: SurfaceInfo): number {
+    let grip = t.info.surface[surf.grip] * surf.gripScale;
+    if (this.wetness > 0 && surf.grip === 'asphalt') grip += (t.info.surface.wet - t.info.surface.asphalt) * surf.gripScale * this.wetness;
+    return grip;
   }
 
   /** Number of forward gears. */

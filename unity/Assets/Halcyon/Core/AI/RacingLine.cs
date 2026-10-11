@@ -117,6 +117,22 @@ namespace Halcyon.Core
         }
 
         /// <summary>
+        /// A road driver's line: the right-hand lane (the inner lane of a dual
+        /// carriageway), for driving with traffic rather than racing.
+        /// </summary>
+        public static RacingLine KeepRight(RaceRoute r)
+        {
+            var line = new RacingLine(r);
+            for (int i = 0; i < line.Offset.Length; i++)
+            {
+                double wr = r.WRight[i];
+                line.Offset[i] = wr > 6 ? wr / 4 : wr / 2;
+            }
+            line.Finish();
+            return line;
+        }
+
+        /// <summary>
         /// A driver's own version of the line: the offsets scaled by accuracy
         /// (1 = this line, 0 = the centreline). A less accurate driver uses less
         /// of the road, so corners are tighter and their speed profile slower.
@@ -233,6 +249,8 @@ namespace Halcyon.Core
         public const double Bin = 2.0;
 
         public string Id;
+        /// <summary>How wet the paved test track was (0 dry to 1 soaked): the AI plans for the road it races on.</summary>
+        public double Wetness;
         /// <summary>Lateral grip in g on the skidpad.</summary>
         public double Mu;
         /// <summary>Braking deceleration in g from 100 km/h with ABS.</summary>
@@ -311,12 +329,15 @@ namespace Halcyon.Core
             return BrakeG + (stable - BrakeG) * t;
         }
 
-        public static CarAbility Measure(CarSpec spec, Tune tune = null, Upgrades up = null)
+        public static CarAbility Measure(CarSpec spec, Tune tune = null, Upgrades up = null, double wetness = 0)
         {
             var p = VehicleParams.Build(spec, tune, up);
+            CompoundInfo rear = p.wheels[2].tire.info;
+            double wet = 1 + wetness * (rear.surface.wet / rear.surface.asphalt - 1);
             var c = new CarAbility
             {
                 Id = spec.id,
+                Wetness = wetness,
                 Wheelbase = spec.wheelbase,
                 HalfWidth = spec.width / 2,
                 Length = spec.length,
@@ -324,12 +345,12 @@ namespace Halcyon.Core
                 RearBrake = 1 - p.brakeBias,
                 RearWeight = p.a / p.wheelbase,
                 HOverL = p.cgHeight / p.wheelbase,
-                RearMuX = p.wheels[2].tire.info.mu * p.wheels[2].tire.info.muLong,
-                RearMuY = p.wheels[2].tire.info.mu,
+                RearMuX = rear.mu * rear.muLong * wet,
+                RearMuY = rear.mu * wet,
             };
-            c.Mu = Telemetry.SkidpadTest(p, 40).g;
+            c.Mu = Telemetry.SkidpadTest(p, 40, wetness: wetness).g;
             c.RollG = RollLimit(p);
-            var br = Telemetry.BrakeTest(p, 100);
+            var br = Telemetry.BrakeTest(p, 100, wetness: wetness);
             double v0 = 100 / 3.6;
             c.BrakeG = v0 * v0 / (2 * Math.Max(1, br.distance)) / G;
             c.AeroK = 0.5 * VehicleParams.AIR_DENSITY * p.aero.clA / (p.mass * G);
@@ -337,6 +358,7 @@ namespace Halcyon.Core
             // Acceleration curve from a full-throttle run, binned by speed.
             var ground = new FlatGround();
             var v = Telemetry.NewTestVehicle(p);
+            v.wetness = wetness;
             for (int i = 0; i < 240; i++) v.Step(Loop.SIM_DT, ground);
             const int bins = 120;
             var sum = new double[bins];

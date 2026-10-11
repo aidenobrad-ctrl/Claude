@@ -30,6 +30,8 @@ namespace Halcyon
         public bool Paused;
 
         IslandRuntime island;
+        SkyDirector sky;
+        Light sunLight;
         DriverInput input;
         Garage garage;
         RaceController races;
@@ -59,6 +61,7 @@ namespace Halcyon
         IEnumerator Start()
         {
             loadStart = Time.realtimeSinceStartup;
+            SkyDirector.ClearRegistry();
             Career = new Career();
             var world = new GameObject("World").transform;
             world.SetParent(transform, false);
@@ -66,7 +69,7 @@ namespace Halcyon
             yield return null;
             var sun = FindFirstObjectByType<Light>();
             if (sun != null && sun.type == LightType.Directional) Destroy(sun.gameObject);
-            EnvironmentSetup.Build(world);
+            sunLight = EnvironmentSetup.Build(world);
             var cam = Camera.main;
             if (cam == null)
             {
@@ -125,6 +128,7 @@ namespace Halcyon
             CameraRig = new ChaseCamera(cam);
             CameraRig.Snap();
             UpdateCamera(0.016f);
+            sky = SkyDirector.Create(world, Sim, cam, sunLight);
             garage = Garage.Create(this, data, world);
             races = RaceController.Create(this, world);
             Ready = true;
@@ -239,11 +243,16 @@ namespace Halcyon
                     races.OpenMenu();
                     return;
                 }
+                WorldKeys(input.Menu, races.Racing);
             }
             var c = scripted ?? input.Controls;
             if (c.pressed[ControlAction.Pause]) Paused = !Paused;
             if (c.pressed[ControlAction.Camera]) CameraRig.Cycle();
-            if (c.pressed[ControlAction.Lights]) PlayerRig.Headlights = !PlayerRig.Headlights;
+            if (c.pressed[ControlAction.Lights])
+            {
+                PlayerRig.ToggleLights();
+                Career.Say(PlayerRig.LightsOverride.HasValue ? $"Headlights {(PlayerRig.Headlights ? "on" : "off")} (L again: automatic)" : "Headlights automatic");
+            }
             CameraRig.LookBack = c.held[ControlAction.LookBack];
             if (c.pressed[ControlAction.Reset])
             {
@@ -272,11 +281,41 @@ namespace Halcyon
                 // Only the player's own hits shake the camera (the player is the first car, so a
                 // contact between the player and an AI car carries the player's id).
                 foreach (var e in Sim.Events)
+                {
                     if (e.kind == SimEventKind.Impact && e.carId == Sim.Player.id) CameraRig.Impact((float)System.Math.Min(1, e.value / 20000));
+                    else if (e.kind == SimEventKind.Lightning) sky.Lightning(e.x, e.z, e.value);
+                }
                 Sim.Events.Clear();
             }
             PlayerRig.Apply((float)(accumulator / Loop.SIM_DT));
             if (races.Racing) races.Apply((float)(accumulator / Loop.SIM_DT));
+        }
+
+        /// <summary>
+        /// [ and ] move the clock an hour; \ steps the weather through each sky and
+        /// back to dynamic. The weather holds during a race (the AI plans for the
+        /// road as it is), so it is not changed then.
+        /// </summary>
+        void WorldKeys(DriverInput.MenuKeys m, bool racing)
+        {
+            if (m.hourBack || m.hourForward)
+            {
+                Sim.Clock.Set(System.Math.Floor(Sim.Clock.Hours) + (m.hourForward ? 1 : -1));
+                Career.Say($"Time {Sim.Clock.Label}");
+            }
+            if (m.weather)
+            {
+                if (racing)
+                {
+                    Career.Say("The weather is set for the race.");
+                    return;
+                }
+                var w = Sim.Weather;
+                if (!w.Locked) w.Force(Sky.Clear, snap: true);
+                else if (w.State == Sky.Fog) w.Release();
+                else w.Force(w.State + 1, snap: true);
+                Career.Say(w.Locked ? $"Weather: {Weather.Name(w.State)} (\\ for the next)" : "Weather: dynamic");
+            }
         }
 
         void LateUpdate()
@@ -331,11 +370,13 @@ namespace Halcyon
             GUI.DrawTexture(new Rect(Screen.width - 250, Screen.height - 18, 220 * frac, 6), Texture2D.whiteTexture);
             GUI.color = Color.white;
             var help = new GUIStyle(small) { alignment = TextAnchor.UpperLeft, fontSize = 13 };
-            GUI.Label(new Rect(14, 10, 900, 22), "W/S throttle & brake · A/D steer · Space handbrake · E/Q shift · R reset · C camera · B look back · L lights · G garage · T events · Esc pause", help);
+            GUI.Label(new Rect(14, 10, 1100, 22), "W/S throttle & brake · A/D steer · Space handbrake · E/Q shift · R reset · C camera · B look back · L lights · G garage · T events · [ ] time · \\ weather · Esc pause", help);
             var car = Career.Profile.CurrentCar;
             var (level, _, _) = Economy.Level(Career.Profile.Xp);
             string pi = car.Pi > 0 ? $" · {Performance.ClassOf(car.Pi)} {car.Pi}" : "";
-            GUI.Label(new Rect(14, 30, 900, 22), $"{PlayerRig.Visual.Look.name}{pi} · {Career.Profile.Credits:N0} cr · level {level}", help);
+            var wx = Sim.Weather;
+            string skyText = $"{Sim.Clock.Label} · {Weather.Name(wx.State)}{(wx.Locked ? " (set)" : "")}{(Sim.Wetness > 0.15 ? $" · roads {(Sim.Wetness > 0.7 ? "soaked" : "wet")}" : "")}";
+            GUI.Label(new Rect(14, 30, 1100, 22), $"{PlayerRig.Visual.Look.name}{pi} · {Career.Profile.Credits:N0} cr · level {level} · {skyText}", help);
             if (Career.Notice != null && Time.unscaledTime - Career.NoticeAt < 5f)
             {
                 GUI.Label(new Rect(14, 50, 900, 22), Career.Notice, help);

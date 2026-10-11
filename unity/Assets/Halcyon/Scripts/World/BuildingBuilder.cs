@@ -30,6 +30,13 @@ namespace Halcyon
             var mats = new Material[Subs];
             for (int i = 0; i < 5; i++) mats[Walls + i] = Mats.Make("Wall" + i, WallTints[i], 0.12f, 0f, fa, fn);
             mats[Glass] = Mats.Make("TowerGlass", new Color(0.30f, 0.42f, 0.52f), 0.9f, 0.6f, fa, fn);
+            // Windows light up at dusk (the emission map is the facade's lit panes).
+            var lights = ProceduralTextures.FacadeLights();
+            for (int i = 0; i <= Glass; i++)
+            {
+                mats[i].SetTexture("_EmissionMap", lights);
+                SkyDirector.Glow(mats[i], Color.black, Color.white * (i == Glass ? 2.2f : 1.6f));
+            }
             mats[Metal] = Mats.Make("Metal", new Color(0.55f, 0.58f, 0.62f), 0.45f, 0.6f);
             mats[RoofTiles] = Mats.Make("RoofTiles", new Color(0.56f, 0.22f, 0.15f), 0.2f);
             mats[RoofDark] = Mats.Make("RoofDark", new Color(0.20f, 0.21f, 0.23f), 0.25f);

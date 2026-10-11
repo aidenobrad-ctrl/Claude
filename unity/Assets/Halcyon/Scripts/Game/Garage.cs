@@ -26,6 +26,9 @@ namespace Halcyon
         HalcyonGame game;
         Career career;
         Transform turntable;
+        /// <summary>Stage lights for the showroom (key, fill, rim), on while the garage is open, brightest at night.</summary>
+        Light[] stage;
+        float[] stageBase;
         CarVisual display;
         string displayKey;
         Page page;
@@ -90,6 +93,41 @@ namespace Halcyon
             turntable = go.transform;
             turntable.position = top;
             top += Vector3.up * H;
+            var rigs = new[]
+            {
+                (at: fw * 6f + rt * 4f + Vector3.up * 7f, angle: 50f, power: 40f, color: new Color(1f, 0.95f, 0.88f), shadows: true),
+                (at: fw * 5f - rt * 6f + Vector3.up * 4.5f, angle: 70f, power: 16f, color: new Color(0.8f, 0.88f, 1f), shadows: false),
+                (at: -fw * 6f + rt * 1.5f + Vector3.up * 6f, angle: 55f, power: 30f, color: new Color(1f, 0.85f, 0.7f), shadows: false),
+            };
+            stage = new Light[rigs.Length];
+            stageBase = new float[rigs.Length];
+            for (int i = 0; i < rigs.Length; i++)
+            {
+                var lgo = new GameObject("StageLight" + i);
+                lgo.transform.SetParent(transform, false);
+                lgo.transform.position = top + rigs[i].at;
+                lgo.transform.rotation = Quaternion.LookRotation(top + Vector3.up * 0.6f - lgo.transform.position);
+                var l = lgo.AddComponent<Light>();
+                l.type = LightType.Spot;
+                l.spotAngle = rigs[i].angle;
+                l.innerSpotAngle = rigs[i].angle * 0.6f;
+                l.range = 25;
+                l.color = rigs[i].color;
+                l.shadows = rigs[i].shadows ? LightShadows.Soft : LightShadows.None;
+                l.enabled = false;
+                stage[i] = l;
+                stageBase[i] = rigs[i].power;
+            }
+        }
+
+        void StageLights(bool on)
+        {
+            float night = SkyDirector.Instance != null ? SkyDirector.Instance.Night : 0;
+            for (int i = 0; i < stage.Length; i++)
+            {
+                stage[i].enabled = on;
+                stage[i].intensity = stageBase[i] * Mathf.Lerp(0.2f, 1f, night);
+            }
         }
 
         Profile P => career.Profile;
@@ -98,6 +136,7 @@ namespace Halcyon
         public void Open()
         {
             IsOpen = true;
+            StageLights(true);
             page = Page.Cars;
             carIndex = P.Current;
             row = 0;
@@ -110,6 +149,7 @@ namespace Halcyon
         {
             SaveTune();
             IsOpen = false;
+            StageLights(false);
             if (display != null) Destroy(display.Root);
             display = null;
             displayKey = null;

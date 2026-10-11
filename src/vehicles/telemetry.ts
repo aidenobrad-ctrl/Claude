@@ -37,9 +37,10 @@ export function newTestVehicle(params: VehicleParams, aids: Partial<Aids> = {}):
 }
 
 /** Standing start at full throttle until the car stops gaining speed. */
-export function accelTest(params: VehicleParams, opts: { maxTime?: number; aids?: Partial<Aids>; surface?: SurfaceId } = {}): AccelResult {
+export function accelTest(params: VehicleParams, opts: { maxTime?: number; aids?: Partial<Aids>; surface?: SurfaceId; wetness?: number } = {}): AccelResult {
   const ground = flat(opts.surface);
   const v = newTestVehicle(params, opts.aids);
+  v.wetness = opts.wetness ?? 0;
   settle(v, ground);
   const start = v.pos.clone();
   const r: AccelResult = { t100: NaN, t200: NaN, quarter: NaN, quarterKmh: NaN, topKmh: 0, topTime: 0, shifts: 0, maxSlip: 0 };
@@ -85,9 +86,10 @@ export interface BrakeResult {
 }
 
 /** Full braking from a speed to a standstill, in a straight line. */
-export function brakeTest(params: VehicleParams, fromKmh = 100, opts: { aids?: Partial<Aids>; surface?: SurfaceId } = {}): BrakeResult {
+export function brakeTest(params: VehicleParams, fromKmh = 100, opts: { aids?: Partial<Aids>; surface?: SurfaceId; wetness?: number } = {}): BrakeResult {
   const ground = flat(opts.surface);
   const v = newTestVehicle(params, opts.aids);
+  v.wetness = opts.wetness ?? 0;
   settle(v, ground);
   v.setSpeed(fromKmh / 3.6);
   // Let the suspension settle at speed with a whiff of throttle.
@@ -122,9 +124,10 @@ export interface SkidpadResult {
  * The result is the highest lateral acceleration held for a full second
  * with the car within 0.6 m of the line.
  */
-export function skidpadTest(params: VehicleParams, radius = 40, opts: { aids?: Partial<Aids>; surface?: SurfaceId; maxTime?: number } = {}): SkidpadResult {
+export function skidpadTest(params: VehicleParams, radius = 40, opts: { aids?: Partial<Aids>; surface?: SurfaceId; maxTime?: number; wetness?: number } = {}): SkidpadResult {
   const ground = flat(opts.surface);
   const v = newTestVehicle(params, { steering: 'off', esc: false, ...opts.aids });
+  v.wetness = opts.wetness ?? 0;
   // Counter-clockwise (left turn) around the origin, starting at (R, 0).
   // Heading at (R,0) tangent toward -Z (north) is yaw 0.
   v.place(radius, 0, 0, 0);

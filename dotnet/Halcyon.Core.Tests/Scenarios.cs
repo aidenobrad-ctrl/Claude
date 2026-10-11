@@ -571,6 +571,7 @@ namespace Halcyon.Core.Tests
             {
                 vs[k] = new Vehicle(ParamsFor(cars[k]));
                 vs[k].aids = RefJson.Build<Aids>(aidsJson[k]);
+                if (RefJson.TryGet(cars[k], "wetness", out JsonElement wet)) vs[k].wetness = RefJson.D(wet);
             }
             var c = new Ctx(vs, MakeGround(trace.GetProperty("ground")), (int)RefJson.D(trace, "every"));
             string driver = RefJson.S(trace, "driver");

@@ -2,7 +2,9 @@
 // the simulation each frame. The root follows the physics body (centre of
 // mass) interpolated between 240 Hz steps; wheels move with the suspension,
 // steer and spin; callipers steer but do not spin; brake and reverse lights
-// glow from the driver's inputs.
+// glow from the driver's inputs. Headlights come on with the sky (dusk to
+// dawn, fog, heavy rain) unless the driver chooses, with a real spotlight
+// near the camera; on wet roads the tyres throw spray.
 using Halcyon.Core;
 using UnityEngine;
 
@@ -19,7 +21,17 @@ namespace Halcyon
         Quaternion prevRot, curRot;
         readonly double[] prevLen = new double[4], curLen = new double[4];
         readonly double[] prevSpin = new double[4], curSpin = new double[4];
-        public bool Headlights = true;
+        /// <summary>Null: the headlights follow the sky (SkyDirector.LightsNeeded); true or false: the driver's choice.</summary>
+        public bool? LightsOverride;
+        public bool Headlights => LightsOverride ?? (SkyDirector.Instance != null && SkyDirector.Instance.LightsNeeded);
+        Light lamp;
+        ParticleSystem spray;
+        ParticleSystem.EmissionModule sprayEmission;
+        static Material sprayMat;
+        static Camera viewer;
+
+        /// <summary>The L key: from automatic to the opposite of what the lights are doing now, and back to automatic.</summary>
+        public void ToggleLights() => LightsOverride = LightsOverride.HasValue ? (bool?)null : !Headlights;
 
         public static CarRig Create(Vehicle v, string specId, Color? paint = null)
         {
@@ -49,6 +61,58 @@ namespace Halcyon
                 wheels[i] = Pivot(Visual.Wheels[k], "WheelPivot_" + tag);
                 calipers[i] = Pivot(Visual.Calipers[k], "CaliperPivot_" + tag);
             }
+            var spec = p.spec;
+            var ground = model.localPosition;
+            // One headlamp beam from the middle of the nose, aimed a little down the road.
+            var lgo = new GameObject("Headlamp");
+            lgo.transform.SetParent(transform, false);
+            lgo.transform.localPosition = ground + new Vector3(0, (float)System.Math.Min(0.75, spec.height * 0.5), (float)spec.length / 2 - 0.25f);
+            lgo.transform.localRotation = Quaternion.Euler(4f, 0, 0);
+            lamp = lgo.AddComponent<Light>();
+            lamp.type = LightType.Spot;
+            lamp.range = 85;
+            lamp.spotAngle = 80;
+            lamp.innerSpotAngle = 44;
+            lamp.intensity = 24;
+            lamp.color = new Color(1f, 0.95f, 0.86f);
+            lamp.shadows = LightShadows.None;
+            lamp.enabled = false;
+            // Spray from the rear tyres on a wet road.
+            var sgo = new GameObject("Spray");
+            sgo.transform.SetParent(transform, false);
+            sgo.transform.localPosition = ground + new Vector3(0, 0.25f, -(float)spec.wheelbase / 2 - 0.4f);
+            spray = sgo.AddComponent<ParticleSystem>();
+            spray.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+            var main = spray.main;
+            main.loop = true;
+            main.playOnAwake = false;
+            main.startLifetime = new ParticleSystem.MinMaxCurve(0.45f, 0.8f);
+            main.startSpeed = new ParticleSystem.MinMaxCurve(0.5f, 2.5f);
+            main.startSize = new ParticleSystem.MinMaxCurve(0.5f, 1.2f);
+            main.startColor = new Color(0.86f, 0.88f, 0.92f, 0.16f);
+            main.gravityModifier = 0.15f;
+            main.maxParticles = 400;
+            main.simulationSpace = ParticleSystemSimulationSpace.World;
+            var shape = spray.shape;
+            shape.enabled = true;
+            shape.shapeType = ParticleSystemShapeType.Box;
+            shape.scale = new Vector3((float)spec.width * 0.9f, 0.1f, 0.3f);
+            var size = spray.sizeOverLifetime;
+            size.enabled = true;
+            size.size = new ParticleSystem.MinMaxCurve(1f, AnimationCurve.Linear(0, 0.6f, 1, 2.6f));
+            var inherit = spray.inheritVelocity;
+            inherit.enabled = true;
+            inherit.mode = ParticleSystemInheritVelocityMode.Initial;
+            inherit.curve = 0.45f;
+            sprayEmission = spray.emission;
+            sprayEmission.rateOverTime = 0;
+            var r = sgo.GetComponent<ParticleSystemRenderer>();
+            r.renderMode = ParticleSystemRenderMode.Billboard;
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            r.receiveShadows = false;
+            if (sprayMat == null) sprayMat = Mats.Particle("Spray", ProceduralTextures.SoftDot(), Color.white);
+            r.sharedMaterial = sprayMat;
+            spray.Play();
         }
 
         /// <summary>
@@ -116,7 +180,17 @@ namespace Halcyon
                 }
             }
             bool braking = v.gear == -1 ? v.input.throttle > 0.05 : v.input.brake > 0.05;
-            Visual.SetLights(Headlights, braking);
+            bool on = Headlights;
+            Visual.SetLights(on, braking);
+            // A real beam only near the camera (lights are costly); the lenses glow at any distance.
+            if (viewer == null) viewer = Camera.main;
+            float far = viewer != null ? (viewer.transform.position - transform.position).sqrMagnitude : 0;
+            lamp.enabled = on && far < 180 * 180;
+            // Spray: from 30 km/h on a wet road, more with speed.
+            double wet = v.wetness;
+            double speed = System.Math.Abs(v.vLong);
+            bool grounded = v.wheels[2].grounded || v.wheels[3].grounded;
+            sprayEmission.rateOverTime = wet > 0.2 && speed > 8 && grounded && far < 250 * 250 ? (float)((speed - 8) * wet * 7) : 0f;
         }
     }
 }

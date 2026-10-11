@@ -23,6 +23,9 @@ namespace Halcyon.Core.Tests
                 case "skidpad-3-too-tight": return Telemetry.SkidpadTest(p, 3, maxTime: 10);
                 case "skidpad-40-ice-20s": return Telemetry.SkidpadTest(p, 40, surface: Surface.Ice, maxTime: 20);
                 case "skidpad-25-assisted-esc": return Telemetry.SkidpadTest(p, 25, aids: new PartialAids { steering = SteeringAssist.Assisted, esc = true }, maxTime: 40);
+                case "accel-wet": return Telemetry.AccelTest(p, maxTime: 30, wetness: 1);
+                case "brake-wet-100": return Telemetry.BrakeTest(p, 100, wetness: 1);
+                case "skidpad-40-damp": return Telemetry.SkidpadTest(p, 40, wetness: 0.5);
             }
             return null;
         }

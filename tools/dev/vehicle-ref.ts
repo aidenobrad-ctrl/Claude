@@ -151,6 +151,8 @@ interface CarSetup {
   car: string;
   tune?: Tune;
   up?: Upgrades;
+  /** How wet paved roads are under this car, 0 to 1 (the weather's job in the game). */
+  wetness?: number;
 }
 const paramsFor = (s: CarSetup): VehicleParams => buildParams(carSpec(s.car), s.tune ?? defaultTune(carSpec(s.car)), s.up ?? noUpgrades());
 
@@ -663,6 +665,11 @@ const SCENARIOS: Scenario[] = [
   { name: `cruise.${H}`, driver: 'cruise', cars: [{ car: H }], every: 1200, args: { speed: 75, throttle: 1, seconds: 60 } },
   { name: `edge.${H}`, driver: 'edge', cars: [{ car: H }], ground: { type: 'edge' }, every: 12, args: { speed: 15, seconds: 3 } },
   { name: 'limiter.test-ev-awd', driver: 'limiter', cars: [{ car: 'test-ev-awd' }], args: { speed: 60, seconds: 3 } },
+  // Wet roads: paved grip blends toward wet asphalt (and the spray drags) in proportion to the wetness.
+  { name: `brake-abs-wet.${H}`, driver: 'brake', cars: [{ car: H, wetness: 1 }], args: { kmh: 100, seconds: 4 } },
+  { name: `launch-wet.${H}`, driver: 'launch', cars: [{ car: H, wetness: 0.6 }], args: { seconds: 5.5 } },
+  { name: 'lanechange-wet.test-fwd-na', driver: 'lanechange', cars: [{ car: 'test-fwd-na', wetness: 0.8 }], aids: { steering: 'off' }, args: { speed: 30, seconds: 4 } },
+  { name: `surfaces-wet.${H}`, driver: 'surfaces', cars: [{ car: H, wetness: 1 }], ground: { type: 'stripes' }, args: { speed: 12, seconds: 6, brakeAt: 4.5 } },
 ];
 
 // --- Static checks -----------------------------------------------------------
@@ -863,6 +870,9 @@ function telemetry(): unknown[] {
   out.push({ car: H, test: 'skidpad-3-too-tight', r: skidpadTest(p, 3, { maxTime: 10 }) }); // never steady: err NaN
   out.push({ car: H, test: 'skidpad-40-ice-20s', r: skidpadTest(p, 40, { surface: SURFACE.ice, maxTime: 20 }) });
   out.push({ car: H, test: 'skidpad-25-assisted-esc', r: skidpadTest(p, 25, { aids: { steering: 'assisted', esc: true }, maxTime: 40 }) });
+  out.push({ car: H, test: 'accel-wet', r: accelTest(p, { wetness: 1, maxTime: 30 }) });
+  out.push({ car: H, test: 'brake-wet-100', r: brakeTest(p, 100, { wetness: 1 }) });
+  out.push({ car: H, test: 'skidpad-40-damp', r: skidpadTest(p, 40, { wetness: 0.5 }) });
   return out;
 }
 
@@ -886,10 +896,10 @@ bytes += writeJson('telemetry.json', { results: telemetry() });
 
 const index: unknown[] = [];
 for (const sc of SCENARIOS) {
-  const ps = sc.cars.map(paramsFor);
-  const vs = ps.map((p) => {
-    const v = new Vehicle(p);
+  const vs = sc.cars.map((s) => {
+    const v = new Vehicle(paramsFor(s));
     v.aids = { ...defaultAids(), ...sc.aids };
+    v.wetness = s.wetness ?? 0;
     return v;
   });
   const ground = sc.ground ?? FLAT;

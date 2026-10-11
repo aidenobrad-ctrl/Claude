@@ -24,6 +24,21 @@ namespace Halcyon.Core
         public int GridSize = 8;
         /// <summary>The highest class allowed (null: open to every car). Rivals are matched to the player's PI within it.</summary>
         public PiClass? ClassLimit;
+        /// <summary>The event's own sky and time of day (null: whatever the island has when it starts).</summary>
+        public Sky? Weather;
+        public double? Hour;
+
+        /// <summary>"Night · Storm", or null when the event runs in the island's own conditions.</summary>
+        public string ConditionsText
+        {
+            get
+            {
+                if (!Weather.HasValue && !Hour.HasValue) return null;
+                string time = Hour.HasValue ? (Hour.Value >= 21 || Hour.Value < 5 ? "Night" : Hour.Value >= 18 ? "Dusk" : Hour.Value < 8 ? "Dawn" : "Day") : null;
+                string sky = Weather.HasValue ? Core.Weather.Name(Weather.Value) : null;
+                return time != null && sky != null ? time + " · " + sky : time ?? sky;
+            }
+        }
     }
 
     public static class EventCatalog
@@ -66,6 +81,46 @@ namespace Halcyon.Core
         {
             foreach (var p in w.Pois) if (p.name == name) return p;
             return null;
+        }
+
+        /// <summary>
+        /// The festival's list: every event, plus ones that set their own
+        /// conditions (a night race, a storm). Set them with SetConditions
+        /// before the grid is measured.
+        /// </summary>
+        public static List<RaceEvent> Festival(WorldData w, IslandGround g)
+        {
+            var list = All(w, g);
+            var night = ProvingGP(w, 3);
+            night.Id = "proving-gp-night";
+            night.Name = "Proving Ground by Night";
+            night.Description = $"3 laps of the {night.Route.Length / 1000:0.0} km proving circuit under the stars.";
+            night.ClassLimit = PiClass.S1;
+            night.Hour = 23;
+            night.Weather = Sky.Clear;
+            list.Add(night);
+            var sp = w.Spawn;
+            var calder = FindPoi(w, "Port Calder");
+            if (calder != null)
+            {
+                var storm = Sprint(w, g, "sprint-storm", "Storm Run to Port Calder", sp.x, sp.z, calder.x, calder.z);
+                if (storm != null)
+                {
+                    storm.Description = $"{storm.Distance / 1000:0.0} km on soaked roads, through the lightning.";
+                    storm.ClassLimit = PiClass.A;
+                    storm.Hour = 17.5;
+                    storm.Weather = Sky.Storm;
+                    list.Add(storm);
+                }
+            }
+            return list;
+        }
+
+        /// <summary>Gives the island an event's sky and hour (call before measuring the grid).</summary>
+        public static void SetConditions(Simulation sim, RaceEvent ev)
+        {
+            if (ev.Hour.HasValue) sim.Clock.Set(ev.Hour.Value);
+            if (ev.Weather.HasValue) sim.Weather.Force(ev.Weather.Value, snap: true);
         }
 
         /// <summary>Every event on the island.</summary>
@@ -163,21 +218,21 @@ namespace Halcyon.Core
         {
             readonly Dictionary<string, CarAbility> map = new Dictionary<string, CarAbility>();
 
-            public CarAbility Get(string id) => Get(id, null, null, "stock");
+            public CarAbility Get(string id, double wetness = 0) => Get(id, null, null, "stock", wetness);
 
             /// <summary>
-            /// A car with a tune and parts. key names the setup (Rival.Key), so
-            /// equal setups share one measurement. Thread-safe: grids can be
-            /// measured in parallel.
+            /// A car with a tune and parts on a road this wet. key names the
+            /// setup (Rival.Key), so equal setups share one measurement.
+            /// Thread-safe: grids can be measured in parallel.
             /// </summary>
-            public CarAbility Get(string id, Tune tune, Upgrades up, string key)
+            public CarAbility Get(string id, Tune tune, Upgrades up, string key, double wetness = 0)
             {
-                string k = id + "|" + key;
+                string k = id + "|" + key + (wetness > 0 ? "|wet" + wetness.ToString("R", System.Globalization.CultureInfo.InvariantCulture) : "");
                 lock (map)
                 {
                     if (map.TryGetValue(k, out var a)) return a;
                 }
-                var m = CarAbility.Measure(Cars.ById(id), tune, up);
+                var m = CarAbility.Measure(Cars.ById(id), tune, up, wetness);
                 lock (map)
                 {
                     if (!map.ContainsKey(k)) map[k] = m;
@@ -197,11 +252,23 @@ namespace Halcyon.Core
         }
 
         /// <summary>The same, with rivals whose cars may carry parts (Rivals.Field).</summary>
+        /// <summary>The clock's rate before the race (restored by End).</summary>
+        readonly double clockRate;
+
         public RaceSession(Simulation sim, RaceEvent ev, IList<Rival> opponents, AbilityCache abilities, uint seed, bool includePlayer = true, int playerGrid = -1, RacingLine line = null)
         {
             Sim = sim;
             Event = ev;
             Line = line ?? RacingLine.Build(ev.Route);
+            // The race holds the weather, with the road wetness rounded (WetnessFor),
+            // and slows the clock to a fifth: a night race stays a night race.
+            sim.Weather.Hold = true;
+            // The roads are closed for the race.
+            sim.Traffic?.Suspend();
+            clockRate = sim.Clock.Rate;
+            sim.Clock.Rate = clockRate * 0.2;
+            sim.Weather.Wetness = Math.Round(sim.Weather.Wetness * 10) / 10;
+            double wet = WetnessFor(sim);
             // Clear any previous race's cars.
             for (int i = sim.Cars.Count - 1; i >= 0; i--) if (!sim.Cars[i].player) sim.Cars.RemoveAt(i);
             int total = opponents.Count + (includePlayer ? 1 : 0);
@@ -221,7 +288,7 @@ namespace Halcyon.Core
                     var up = Rivals.PartsKey(r.Parts) == "stock" ? null : r.Upgrades;
                     var car = sim.AddCar(r.CarId, false, r.Tune, up);
                     car.name = r.Driver.Name;
-                    var ai = new AiDriver(car, r.Driver, abilities.Get(car.specId, r.Tune, up, r.Key), seed * 7919u + (uint)slot) { Placer = Place };
+                    var ai = new AiDriver(car, r.Driver, abilities.Get(car.specId, r.Tune, up, r.Key, wet), seed * 7919u + (uint)slot) { Placer = Place };
                     e = new Entrant { Car = car, Ai = ai, Name = r.Driver.Name, Pi = r.Pi };
                 }
                 e.Grid = slot;
@@ -444,6 +511,14 @@ namespace Halcyon.Core
             e.S = s;
         }
 
+        /// <summary>
+        /// The road wetness a race on this simulation runs at, and the AI measures
+        /// its abilities at: the weather's, rounded to a tenth so measurements are
+        /// shared between races (or the simulation's override). Measure a grid in
+        /// the background at this value before constructing the session.
+        /// </summary>
+        public static double WetnessFor(Simulation sim) => sim.WetnessOverride >= 0 ? sim.WetnessOverride : Math.Round(sim.Weather.Wetness * 10) / 10;
+
         /// <summary>Remove the AI cars; the player's car stays where it is.</summary>
         public void End()
         {
@@ -454,6 +529,9 @@ namespace Halcyon.Core
             }
             if (playerRemoved && !Sim.Cars.Contains(Sim.Player)) Sim.Cars.Insert(0, Sim.Player);
             playerRemoved = false;
+            Sim.Weather.Hold = false;
+            Sim.Clock.Rate = clockRate;
+            Sim.Traffic?.Resume();
         }
 
         /// <summary>Opponents for a race: cars with a power-to-weight close to the player's, with drivers around a difficulty.</summary>

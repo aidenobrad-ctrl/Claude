@@ -29,6 +29,8 @@ namespace Halcyon
             {
                 colors[i] = Mats.Make("Festival" + i, Hex(f.colors[i]), 0.35f);
                 Mats.SetEmission(colors[i], Hex(f.colors[i]) * 0.15f);
+                // The festival lights up at night.
+                SkyDirector.Glow(colors[i], Hex(f.colors[i]) * 0.15f, Hex(f.colors[i]) * 1.4f);
             }
             Material ColorOf(int rgb)
             {

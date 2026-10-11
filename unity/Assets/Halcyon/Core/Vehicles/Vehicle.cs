@@ -247,6 +247,8 @@ namespace Halcyon.Core
         public double impact;
         /// <summary>Extra drag multiplier from drafting (set by the race/sim layer).</summary>
         public double draftFactor = 1;
+        /// <summary>How wet paved roads are, 0 dry to 1 soaked (set by the sim layer from the weather).</summary>
+        public double wetness;
         /// <summary>Distance travelled, m.</summary>
         public double odometer;
         readonly V3 prevVel = new V3();
@@ -445,7 +447,7 @@ namespace Halcyon.Core
                 tmpA.Copy(up).Scale(w.load).AddScaled(w.fwdDir, w.fx).AddScaled(w.sideDir, w.fy);
                 // Loose and soft surfaces add drag proportional to speed and load.
                 SurfaceInfo surf = Surfaces.All[w.surface];
-                double drag = surf.drag + (w.water > 0.05 ? JsMath.Min(w.water, 0.8) * 25 : 0);
+                double drag = surf.drag + (w.water > 0.05 ? JsMath.Min(w.water, 0.8) * 25 : 0) + (wetness > 0 && surf.grip == GripClass.Asphalt ? wetness * Surfaces.All[Surface.AsphaltWet].drag : 0);
                 if (drag > 0)
                 {
                     PointVelocity(w.contact, tmpB);
@@ -613,7 +615,7 @@ namespace Halcyon.Core
             w.vLong = vL;
             double wheelSpeed = w.omega * wp.radius;
             SurfaceInfo surf = Surfaces.All[w.surface];
-            double grip = wp.tire.info.surface[surf.grip] * surf.gripScale;
+            double grip = SurfaceGrip(wp.tire, surf);
             if (w.water > 0.02) grip *= JsMath.Max(0.35, 1 - w.water * 1.5);
             // Caster: a steered wheel leans as it turns, the outer one into the corner.
             double lateral = double.NaN;
@@ -955,7 +957,7 @@ namespace Halcyon.Core
                 // The tire's own peak, as in TireForce: load sensitivity (a squatting
                 // car's rear tires grip less per newton) and standing water.
                 double sens = JsMath.Max(0.6, JsMath.Min(1.25, 1 - t.info.loadSens * (w.load / t.nominalLoad - 1)));
-                double grip = t.info.surface[surf.grip] * surf.gripScale;
+                double grip = SurfaceGrip(t, surf);
                 if (w.water > 0.02) grip *= JsMath.Max(0.35, 1 - w.water * 1.5);
                 double mu = t.info.mu * sens * t.info.muLong * t.widthGrip * t.tuneGrip * grip;
                 // Limited by the driven wheel with the least grip relative to its torque share.
@@ -963,6 +965,14 @@ namespace Halcyon.Core
                 wheelTorque = wheelTorque == 0 ? perWheel : JsMath.Min(wheelTorque, perWheel);
             }
             return wheelTorque / JsMath.Max(1e-6, G * g.efficiency);
+        }
+
+        /// <summary>A tire's grip factor on a surface; paved surfaces grip like wet asphalt in proportion to the road's wetness.</summary>
+        double SurfaceGrip(TireSetup t, SurfaceInfo surf)
+        {
+            double grip = t.info.surface[surf.grip] * surf.gripScale;
+            if (wetness > 0 && surf.grip == GripClass.Asphalt) grip += (t.info.surface.wet - t.info.surface.asphalt) * surf.gripScale * wetness;
+            return grip;
         }
 
         /// <summary>Engine rpm the driven wheels imply in the given gear.</summary>

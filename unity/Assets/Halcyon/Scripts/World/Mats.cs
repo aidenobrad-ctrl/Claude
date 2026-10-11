@@ -69,6 +69,34 @@ namespace Halcyon
             return m;
         }
 
+        static Shader particles;
+        public static Shader Particles => particles != null ? particles : particles = Find("Universal Render Pipeline/Particles/Unlit", "Legacy Shaders/Particles/Alpha Blended", "Particles/Standard Unlit");
+
+        /// <summary>An unlit, alpha-blended particle material (rain, spray) in either pipeline.</summary>
+        public static Material Particle(string name, Texture2D tex, Color tint)
+        {
+            var m = new Material(Particles) { name = name };
+            m.SetTexture("_BaseMap", tex);
+            m.SetTexture("_MainTex", tex);
+            m.SetColor("_BaseColor", tint);
+            m.SetColor("_TintColor", tint);
+            m.SetColor("_Color", tint);
+            MakeTransparent(m);
+            return m;
+        }
+
+        /// <summary>An unlit, alpha-blended surface (the cloud layer) that still takes fog.</summary>
+        public static Material UnlitTransparent(string name, Texture2D tex, Color tint)
+        {
+            var m = new Material(Unlit) { name = name };
+            m.SetTexture("_BaseMap", tex);
+            m.SetTexture("_MainTex", tex);
+            m.SetColor("_BaseColor", tint);
+            m.SetColor("_Color", tint);
+            MakeTransparent(m);
+            return m;
+        }
+
         /// <summary>Transparent surface (water, glass) in either pipeline.</summary>
         public static void MakeTransparent(Material m)
         {

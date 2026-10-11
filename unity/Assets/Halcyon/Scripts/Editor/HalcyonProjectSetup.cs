@@ -1,7 +1,9 @@
 // One-time project setup when the project opens: linear colour, a URP
 // pipeline asset (with screen-space ambient occlusion) assigned to Graphics
 // and Quality settings if URP is installed and none is set, and the game
-// scene in the build settings. Also available as Halcyon > Set Up Project.
+// scene in the build settings, and reference materials so player builds
+// keep the shader variants the game uses. Also available as Halcyon > Set Up
+// Project.
 // URP types are reached by reflection so this compiles without URP.
 using System;
 using System.Collections;
@@ -44,6 +46,7 @@ namespace Halcyon.EditorTools
                 }
                 EnsureUrp(verbose);
                 EnsureScene();
+                EnsureShaderRefs();
             }
             catch (Exception e)
             {
@@ -133,6 +136,57 @@ namespace Halcyon.EditorTools
             catch (Exception e)
             {
                 Debug.Log($"Halcyon: could not set {name}: {e.Message}");
+            }
+        }
+
+        /// <summary>
+        /// The game makes its materials in code (Shader.Find, keywords switched at
+        /// runtime), but a player build keeps only the shader variants that assets
+        /// use. A material asset per shader and keyword set the game uses, in a
+        /// Resources folder, pulls those variants into builds.
+        /// </summary>
+        static void EnsureShaderRefs()
+        {
+            const string dir = "Assets/Halcyon/Art/Resources/ShaderRefs";
+            var none = new string[0];
+            var refs = new (string shader, string[] keywords, bool transparent)[]
+            {
+                ("Universal Render Pipeline/Lit", none, false),
+                ("Universal Render Pipeline/Lit", new[] { "_NORMALMAP" }, false),
+                ("Universal Render Pipeline/Lit", new[] { "_EMISSION" }, false),
+                ("Universal Render Pipeline/Lit", new[] { "_NORMALMAP", "_EMISSION" }, false),
+                ("Universal Render Pipeline/Lit", none, true),
+                ("Universal Render Pipeline/Complex Lit", new[] { "_CLEARCOAT" }, false),
+                ("Universal Render Pipeline/Unlit", none, true),
+                ("Universal Render Pipeline/Particles/Unlit", none, true),
+                ("Universal Render Pipeline/Terrain/Lit", none, false),
+                ("Skybox/Procedural", none, false),
+                ("Standard", none, false),
+                ("Legacy Shaders/Particles/Alpha Blended", none, true),
+            };
+            int made = 0;
+            for (int i = 0; i < refs.Length; i++)
+            {
+                var sh = Shader.Find(refs[i].shader);
+                if (sh == null) continue;
+                string path = $"{dir}/{refs[i].shader.Replace('/', '_').Replace(' ', '_')}_{string.Join("_", refs[i].keywords)}{(refs[i].transparent ? "_Transparent" : "")}.mat";
+                if (File.Exists(path)) continue;
+                Directory.CreateDirectory(dir);
+                var m = new Material(sh);
+                foreach (var k in refs[i].keywords) m.EnableKeyword(k);
+                if (refs[i].transparent)
+                {
+                    m.SetFloat("_Surface", 1f);
+                    m.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+                    m.renderQueue = (int)RenderQueue.Transparent;
+                }
+                AssetDatabase.CreateAsset(m, path);
+                made++;
+            }
+            if (made > 0)
+            {
+                AssetDatabase.SaveAssets();
+                Debug.Log($"Halcyon: made {made} shader reference materials in {dir} (player builds keep the variants the game uses).");
             }
         }
 

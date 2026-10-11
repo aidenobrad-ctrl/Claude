@@ -15,14 +15,14 @@ namespace Halcyon.Core
         public bool player;
     }
 
-    public enum SimEventKind { Impact, Break, Lap, Reset }
+    public enum SimEventKind { Impact, Break, Lap, Reset, Lightning }
 
     public struct SimEvent
     {
         public SimEventKind kind;
         public int carId;
         public double x, z;
-        /// <summary>Impulse (N·s) for impacts, lap time (s) for laps.</summary>
+        /// <summary>Impulse (N·s) for impacts, lap time (s) for laps, brightness (0 to 1) for lightning.</summary>
         public double value;
         public long tick;
     }
@@ -59,6 +59,23 @@ namespace Halcyon.Core
         /// <summary>The player's tune and upgrades (null: default tune, stock parts); kept across Reset.</summary>
         public Tune PlayerTune;
         public Upgrades PlayerUpgrades;
+        /// <summary>The time of day and the weather, advanced every tenth of a second; they carry on across Reset.</summary>
+        public readonly WorldClock Clock = new WorldClock();
+        public readonly Weather Weather = new Weather();
+        /// <summary>False stops the clock and the weather (the world stands still at its current look).</summary>
+        public bool WorldTime = true;
+        /// <summary>At 0 or above, replaces the weather's road wetness (tests and the test track).</summary>
+        public double WetnessOverride = -1;
+        /// <summary>How wet the paved roads are for every car's physics, 0 to 1.</summary>
+        public double Wetness => WetnessOverride >= 0 ? WetnessOverride : Weather.Wetness;
+        /// <summary>Ambient traffic (null until EnableTraffic): stepped before the cars, suspended during races.</summary>
+        public Traffic Traffic { get; private set; }
+
+        public Traffic EnableTraffic(uint seed = 0x7aff1c)
+        {
+            if (Traffic == null) Traffic = new Traffic(this, seed);
+            return Traffic;
+        }
         readonly NearestResult near = new NearestResult();
         readonly RoadHit roadScratch = new RoadHit();
         int nextId = 1;
@@ -81,6 +98,7 @@ namespace Halcyon.Core
             Tick = 0;
             Time = 0;
             Cars.Clear();
+            Traffic?.Clear();
             nextId = 1;
             Events.Clear();
             Filter.Reset();
@@ -99,6 +117,14 @@ namespace Halcyon.Core
             Lap = new LapState();
         }
 
+        /// <summary>Adds an existing vehicle (a traffic car becoming physical).</summary>
+        public SimCar AddVehicle(Vehicle v, string specId, string name)
+        {
+            var car = new SimCar { id = nextId++, name = name, specId = specId, vehicle = v, player = false };
+            Cars.Add(car);
+            return car;
+        }
+
         public SimCar AddCar(string specId, bool player = false, Tune tune = null, Upgrades up = null)
         {
             CarSpec spec = Array.Find(Halcyon.Core.Cars.All, c => c.id == specId) ?? Halcyon.Core.Cars.All[0];
@@ -114,7 +140,14 @@ namespace Halcyon.Core
             double dt = Loop.SIM_DT;
             var pv = Player.vehicle;
             pv.input = Filter.Update(c, pv, dt);
-            foreach (var car in Cars) car.vehicle.Step(dt, Ground);
+            if (WorldTime && Tick % 24 == 0) StepWorld(24 * dt);
+            Traffic?.Step(dt);
+            double wet = Wetness;
+            foreach (var car in Cars)
+            {
+                car.vehicle.wetness = wet;
+                car.vehicle.Step(dt, Ground);
+            }
             // Collisions: world first, then every pair of cars.
             foreach (var car in Cars)
             {
@@ -135,6 +168,16 @@ namespace Halcyon.Core
             UpdateLap();
             Tick++;
             Time += dt;
+        }
+
+        /// <summary>The clock and the weather; lightning becomes events for the presentation.</summary>
+        void StepWorld(double dt)
+        {
+            Clock.Advance(dt);
+            var pv = Player.vehicle;
+            Weather.Step(dt, Clock, pv.pos.x, pv.pos.z);
+            foreach (var s in Weather.Strikes) Emit(SimEventKind.Lightning, 0, s.x, s.z, s.brightness);
+            Weather.Strikes.Clear();
         }
 
         void Emit(SimEventKind kind, int carId, double x, double z, double value)

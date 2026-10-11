@@ -27,6 +27,9 @@ namespace Halcyon
         int playerPi;
         bool paid;
         int paidCredits, paidXp;
+        /// <summary>The weather before an event set its own (restored when the race ends).</summary>
+        bool weatherWasLocked;
+        Sky weatherBefore;
         GUIStyle title, item, small, big, row;
 
         static readonly Color[] Liveries =
@@ -49,7 +52,7 @@ namespace Halcyon
 
         public void OpenMenu()
         {
-            if (events == null) events = EventCatalog.All(game.Sim.World, game.Sim.Ground);
+            if (events == null) events = EventCatalog.Festival(game.Sim.World, game.Sim.Ground);
             MenuOpen = true;
             pick = Mathf.Clamp(pick, 0, events.Count - 1);
         }
@@ -91,6 +94,14 @@ namespace Halcyon
             return false;
         }
 
+        /// <summary>After an event with its own sky: back to the player's choice, or the island's own weather.</summary>
+        void RestoreWeather(RaceEvent ev)
+        {
+            if (!ev.Weather.HasValue) return;
+            if (weatherWasLocked) game.Sim.Weather.Force(weatherBefore);
+            else game.Sim.Weather.Release();
+        }
+
         static string ClassText(RaceEvent ev) => ev.ClassLimit.HasValue ? $"Class {ev.ClassLimit.Value} (PI {Performance.ClassMax(ev.ClassLimit.Value)} max)" : "Open to every car";
 
         IEnumerator Begin(RaceEvent ev)
@@ -108,12 +119,18 @@ namespace Halcyon
             var tune = me.TuneOrDefault.Clone();
             var up = me.Upgrades;
             int known = me.Pi;
+            // The event's own sky and hour, if it has them (the island's are restored after).
+            weatherWasLocked = game.Sim.Weather.Locked;
+            weatherBefore = game.Sim.Weather.State;
+            EventCatalog.SetConditions(game.Sim, ev);
+            // The road as the race will find it (the AI plans for its wetness).
+            double wet = RaceSession.WetnessFor(game.Sim);
             // Rivals matched to the player's PI, and every rival setup measured, off the main thread.
             var prepare = Task.Run(() =>
             {
                 int pi = known > 0 ? known : Performance.Measure(spec, tune, up).Pi;
                 var field = Rivals.Field(pi, ev.ClassLimit, count, d, fieldSeed, pis);
-                Parallel.ForEach(field, r => abilities.Get(r.CarId, r.Tune, Rivals.PartsKey(r.Parts) == "stock" ? null : r.Upgrades, r.Key));
+                Parallel.ForEach(field, r => abilities.Get(r.CarId, r.Tune, Rivals.PartsKey(r.Parts) == "stock" ? null : r.Upgrades, r.Key, wet));
                 return (pi, field);
             });
             while (!prepare.IsCompleted) yield return null;
@@ -121,6 +138,7 @@ namespace Halcyon
             {
                 Debug.LogError("Halcyon: could not line up the grid: " + prepare.Exception);
                 game.Career.Say("The race could not start: " + prepare.Exception?.GetBaseException().Message);
+                RestoreWeather(ev);
                 Busy = false;
                 yield break;
             }
@@ -137,7 +155,6 @@ namespace Halcyon
                 if (e.Ai == null) continue;
                 bool same = e.Car.specId == mine;
                 var rig = CarRig.Create(e.Car.vehicle, e.Car.specId, same || k % 2 == 1 ? Liveries[k % Liveries.Length] : (Color?)null);
-                rig.Headlights = true;
                 rigs.Add(rig);
                 k++;
             }
@@ -179,6 +196,7 @@ namespace Halcyon
         {
             if (Session == null) return;
             Session.End();
+            RestoreWeather(Session.Event);
             foreach (var r in rigs) Destroy(r.gameObject);
             rigs.Clear();
             Session = null;
@@ -265,7 +283,8 @@ namespace Halcyon
                 bool ok = Eligible(e, out _);
                 GUI.color = ok ? Color.white : new Color(1, 1, 1, 0.5f);
                 GUI.Label(new Rect(r.x + 24, y, w - 48, 26), e.Name, item);
-                GUI.Label(new Rect(r.x + 24, y + 24, w - 48, 22), $"{(e.Kind == RaceKind.Circuit ? "Circuit" : "Sprint")} · {ClassText(e)} · {e.Description}", small);
+                string cond = e.ConditionsText != null ? e.ConditionsText + " · " : "";
+                GUI.Label(new Rect(r.x + 24, y + 24, w - 48, 22), $"{(e.Kind == RaceKind.Circuit ? "Circuit" : "Sprint")} · {cond}{ClassText(e)} · {e.Description}", small);
                 GUI.color = Color.white;
             }
             var sel = events[pick];

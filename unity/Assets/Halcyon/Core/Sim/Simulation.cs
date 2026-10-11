@@ -177,6 +177,22 @@ namespace Halcyon.Core
             }
         }
 
+        /// <summary>Swap the player's car for another model (an id from Cars.All) at the same place and heading.</summary>
+        public void ChangePlayerCar(string specId)
+        {
+            var old = Player.vehicle;
+            double x = old.pos.x, z = old.pos.z;
+            double yaw = YawOf(old.fwd.x, old.fwd.z);
+            CarSpec spec = Array.Find(Halcyon.Core.Cars.All, c => c.id == specId) ?? Halcyon.Core.Cars.All[0];
+            var v = new Vehicle(VehicleParams.Build(spec)) { aids = old.aids };
+            PlayerCarId = spec.id;
+            Player.specId = spec.id;
+            Player.vehicle = v;
+            v.Place(x, Ground.GroundHeight(x, z), z, yaw);
+            Filter.Reset();
+            Emit(SimEventKind.Reset, Player.id, x, z, 0);
+        }
+
         public void Teleport(double x, double z, double yaw = 0, double? y = null)
         {
             if (!(M.IsFinite(x) && M.IsFinite(z) && M.IsFinite(yaw))) throw new ArgumentException("teleport: non-finite argument");

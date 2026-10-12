@@ -33,6 +33,31 @@ namespace Halcyon
 
         public static void End() => GUI.matrix = saved;
 
+        /// <summary>
+        /// Rotate what is drawn next by angle degrees (clockwise on screen) about pivot, in the
+        /// current canvas units. GUIUtility.RotateAroundPivot takes the pivot in screen pixels,
+        /// which puts it in the wrong place once Begin has scaled the canvas.
+        /// </summary>
+        public static void Rotate(float angle, Vector2 pivot)
+        {
+            GUI.matrix = GUI.matrix * Matrix4x4.TRS(pivot, Quaternion.Euler(0, 0, angle), Vector3.one) * Matrix4x4.TRS(-pivot, Quaternion.identity, Vector3.one);
+        }
+
+        /// <summary>A line from a to b, width units thick (square ends).</summary>
+        public static void Line(Vector2 a, Vector2 b, float width, Color c)
+        {
+            var d = b - a;
+            float len = d.magnitude;
+            if (len < 0.01f) return;
+            var keep = GUI.matrix;
+            var old = GUI.color;
+            Rotate(Mathf.Atan2(d.y, d.x) * Mathf.Rad2Deg, a);
+            GUI.color = c;
+            GUI.DrawTexture(new Rect(a.x - width / 2, a.y - width / 2, len + width, width), Texture2D.whiteTexture);
+            GUI.color = old;
+            GUI.matrix = keep;
+        }
+
         static GUIStyle Label(int size, Color c, FontStyle f = FontStyle.Normal, TextAnchor a = TextAnchor.UpperLeft)
         {
             var st = new GUIStyle(GUI.skin.label) { fontSize = size, fontStyle = f, alignment = a, wordWrap = false, richText = true };

@@ -302,6 +302,30 @@ namespace Halcyon
             return t;
         }
 
+        /// <summary>
+        /// The GPS ribbon: chevrons pointing up the texture (+v, the way to go) that repeat along
+        /// it, over a faint band that fades out at the sides. White: the material tints it.
+        /// </summary>
+        public static Texture2D GpsChevrons()
+        {
+            const int w = 32, h = 64;
+            var cols = new Color32[w * h];
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                {
+                    float across = Mathf.Abs((x + 0.5f) / w * 2 - 1), along = (y + 0.5f) / h;
+                    // The tip leads at the centre: the sides trail behind it.
+                    float f = Mathf.Repeat(along + across * 0.22f, 1);
+                    float chev = Mathf.SmoothStep(0, 1, f / 0.08f) * (1 - Mathf.SmoothStep(0, 1, (f - 0.38f) / 0.12f));
+                    float edge = 1 - Mathf.SmoothStep(0, 1, (across - 0.75f) / 0.25f);
+                    cols[y * w + x] = new Color(1, 1, 1, (0.28f + 0.72f * chev) * edge);
+                }
+            var t = new Texture2D(w, h, TextureFormat.RGBA32, true, false) { name = "GpsChevrons", wrapModeU = TextureWrapMode.Clamp, wrapModeV = TextureWrapMode.Repeat, filterMode = FilterMode.Trilinear, anisoLevel = 4 };
+            t.SetPixels32(cols);
+            t.Apply(true, false);
+            return t;
+        }
+
         /// <summary>A soft round puff for spray and mist.</summary>
         public static Texture2D SoftDot()
         {

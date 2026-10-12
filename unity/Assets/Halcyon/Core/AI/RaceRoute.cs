@@ -232,9 +232,13 @@ namespace Halcyon.Core
     /// <summary>Shortest routes over the island's road network (A*), as RaceRoutes.</summary>
     public static class RouteFinder
     {
-        /// <summary>The road route from (ax, az) to (bx, bz), each snapped to its nearest road; null if unreachable.</summary>
-        public static RaceRoute Find(WorldData w, IslandGround ground, double ax, double az, double bx, double bz, string name)
+        /// <summary>
+        /// The road route from (ax, az) to (bx, bz), each snapped to its nearest road; null if unreachable.
+        /// When nodes is given it receives the junctions the route passes through, in order.
+        /// </summary>
+        public static RaceRoute Find(WorldData w, IslandGround ground, double ax, double az, double bx, double bz, string name, List<int> nodes = null)
         {
+            nodes?.Clear();
             var a = Snap(w, ground, ax, az);
             var b = Snap(w, ground, bx, bz);
             if (a == null || b == null) return null;
@@ -307,6 +311,7 @@ namespace Halcyon.Core
             var chain = new List<int>();
             for (int k = bestEnd; k >= 0; k = came[k]) chain.Add(k);
             chain.Reverse();
+            nodes?.AddRange(chain);
             int first = chain[0];
             Slice(w, a.edge, sA, first == ea.a ? 0 : ea.length, xs, ys, zs, ws);
             for (int k = 1; k < chain.Count; k++)

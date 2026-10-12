@@ -312,3 +312,74 @@ Also open: the Highcrest switchbacks (about 6 m radius) are left for world v2 (M
 5. Rivals run default tunes. **Open:** auto-tuned rivals (3.6 s each, so precomputed or cached).
 
 Also open: number plates, and the close-range model items from M3.
+
+## M6: World v2 (the living island)
+
+**Tried (headless in .NET: `dotnet/Halcyon.Sim.Tests`, plus the web build in headless Chromium):**
+- The clock and the sun: sunrise, noon and sunset at the festival's latitude, the moon, daylight through dawn, the time labels.
+- The weather over 8 seeds of 24 real hours each (60 game days): how often each sky comes, how long it lasts, fog at dawn, rain only from a heavy sky, lightning only in storms, roads soaking and drying.
+- The AI on five events, dry against soaked roads, two seeds each, and soaked roads with the AI planning for dry ones (the control): 30 races.
+- The two new events with their own conditions: the Proving Ground by night and a storm run to Port Calder.
+- Traffic: ten minutes parked at the festival; a bot driving the 7.8 km Harbour Dash through it; the player stopped across a lane for eight minutes.
+- The rebuilt Highcrest pass: the route's tightest bend, and two fields of six (from the Pico to the Vanta and the pickup) racing up it on two seeds.
+- Landmarks and discoveries: placement, colliders, the Harbour Dash finding places and paying XP, the fog of war, saves (and a save from before M6), fast travel to every place found.
+- The GPS: a route from the festival to every place and landmark; a bot following one for 15.8 km to Highcrest; a car moved 400 m off the route; a car facing back along it.
+- The web build's GPS line, in a screenshot, while porting it to Unity.
+
+| # | Finding | Sev | Root cause | Fix | Retest |
+|---|---|---|---|---|---|
+| 1 | Rain kept falling from a sky that was clearing. | S3 | Rain followed the weather state's target, and the cloud eased out on its own. | Rain is capped by the cloud cover. | 0.0 s of rain under cloud cover below 0.6 in 60 game days |
+| 2 | The test of how fast rain soaks the road measured nothing. | S4 | It timed from the change of state, before any drops had fallen. | The timing starts at the first drops; the soak and dry rates were tuned with the test working. | Soaked (90%) 154 s after the rain sets in; dry 3.1–11.8 min after it stops |
+| 3 | The clock read 00:29 at half past midnight. | S3 | 0.5 h × 60 came out as 29.999… minutes and was rounded down. | A one-millionth tolerance before rounding down. | 00:30 |
+| 4 | The night race ended at dawn. | S2 | One game hour passes per real minute, so a five-minute race moved the clock five hours. | The clock runs at a fifth of its speed during races. | The Proving Ground by Night ends at 00:06, still dark |
+| 5 | The Unity race menu would have sent the AI into a wet race planning for a dry road. | S2 | It measured the cars' abilities without the road's wetness. Found by reading the code against the headless race. | Abilities are measured at the race's wetness (rounded to a tenth, so they cache). | The control shows what it saves: planning for dry roads in the wet gave 33 resets and 104 wall hits in 10 races, against 0 and 1 |
+| 6 | Traffic weaved in its lane. | S2 | The player's Standard steering assist was on for traffic and fought its lane-following controller. | Traffic drives with the assist off. | Median lane error 1.03 m → 0.25 m |
+| 7 | Stopped traffic crept backwards into the car behind. | S2 | As for the player, the brake pedal held at a standstill selects reverse. | Stopped traffic holds the handbrake. | Part of the 0 impacts between traffic cars in ten minutes |
+| 8 | Traffic drove into cars crossing at junctions. | S2 | Nothing gave way. | Cars about to enter a junction yield to cars already in it or close to it on another road. | Part of the 0 impacts in 10 minutes |
+| 9 | Cars going round a stopped car sometimes swerved into it. | S2 | The side to pass on came from the lane, not from where the stopped car stood. | They pass on the side away from it. | See 13 |
+| 10 | Rear-end hits on bends. | S2 | The gap to the car ahead was measured in a straight line, across the inside of the bend, so a car round the bend did not count as ahead. | The gap is measured along the car's own lane, every 4 m for 80 m, within 2.6 m of it. | See 12 |
+| 11 | Swerves ended before the car was past. | S2 | The swerve lasted a fixed time; at low speed that was not long enough. | A swerve lasts until the car has covered the distance past the obstacle. | See 13 |
+| 12 | Overtaking: lane changes caused 5 impacts between traffic cars in ten minutes. | S2 | A car pulled out in front of a faster car coming up the other lane. | The gap needed behind grows by 3 m for each m/s the other car is faster, and the gap ahead likewise. | 0 impacts in ten minutes, with 533 lane changes |
+| 13 | Traffic scraped a player stopped across a lane. | S2 | A car decided to swerve when it was already 0.5 m away, or when it had to move 7 m sideways in 8.8 m. | A car swerves only when the sideways move fits in 70% of the gap less 3 m. Otherwise it backs up for 2.5 s when the road behind is clear, then tries again. | 24 cars went round the player in 8 minutes, 0 impacts |
+| 14 | The Highcrest pass was a saw-tooth of hairpins (the M4 decision kept it out of the events). | S2 | The road baker's A* searched the terrain grid with no idea of heading, so it zigzagged up the slope. | Heading-aware A* on a 48 m lattice that turns at most 90° per step, with 20 m fillets, routed as one continuous road. | Tightest bend on the race route 19.2 m; the Highcrest Hill Climb is now an event |
+| 15 | Kinks where the new pass met the network: 7.9 m at the junction, 11 m at the village end. | S3 | The pass was routed in pieces, and the village node sat off the pass's line. | The pass is routed as one road, and the village node was moved onto it. | No bend on the three pass roads is tighter than 20 m, end to end |
+| 16 | AI cars flipped jumping crests on the pass: 6 to 14 resets a race. | S2 | The speed profile ignored vertical curvature. Over a crest the tyres' load falls, and the road profile had sharp crests. | The speed plan reads the crest curvature from the route's heights over ±12 m (cornering speed from v² ≤ μg/(k + μc), and at most 0.95·√(g/c) over a crest). The pass's road profile is smoothed (a 30 m box filter, twice). | 0 or 1 reset a race in four races of six |
+| 17 | A road bake silently left the old roads in place. | S4 | A duplicate declaration in the baker script. | Removed. | The bake writes the new pass |
+| 18 | The mast and the wind farm could not be found from any road. | S2 | Placement asked for the nearest road within 60 m (the reach of the ground's road query), so "no road found" read as "far enough from the roads". | A road distance over the whole network, and a landmark must be found from its nearest road. | Each landmark is 137–597 m from a road and found from it |
+| 19 | The lighthouse stood on the lake shore. | S3 | "The coast" meant any water. | The sea is told apart from lakes by its height. | By the sea, 40 m up |
+| 20 | Fast travel to the Proving Ground left the car on the access road outside. | S3 | Fast travel goes to the road nearest a place, and the circuit is not part of the road network. | The Proving Ground's paddock. | In the paddock, upright and still |
+| 21 | In the web build, the GPS chevrons pointed back at the car. | S3 | The shader's chevron offset had the wrong sign. Found while porting the line to Unity. | Flipped. | The screenshot shows them pointing the way |
+| 22 | In the web build, the GPS never said "arrived" at a waypoint more than 60 m from a road. | S3 | Arrival needed the car within 60 m of the waypoint, but the route ends at the road nearest it. Found reading the code while porting. | Arrival is at the route's end, while the car is on the route. The Unity GPS does the same. | A new browser test (`tests/browser/m2-gps.mjs`), which fails on the old build, passes |
+| 23 | In Unity, the map's player arrow would rotate about the wrong point on screens not 1080 pixels high. | S3 | `GUIUtility.RotateAroundPivot` takes its pivot in screen pixels, and the menus draw on a scaled canvas. Found by reading the code. | `Ui.Rotate` rotates in canvas units. | Compile-checked only |
+
+**Verified, no bug found:**
+- The sun rises at 5:17 and sets at 18:43 (13.4 h of day), is 70° up and due south at noon, and is 40° below the horizon at midnight under a high full moon.
+- Over 60 game days: clear 43% of the time, cloudy 29%, rain 13%, storm 3.5%, fog 11.5%. 30% of fog sets in at dawn and 5% by day. Lightning strikes every 9.8 s in storms and never otherwise.
+- The same seed gives the same weather and the same traffic, bit for bit.
+- A held weather (a race) keeps the road as wet as it was while the sky clears; released, the road dries.
+- In the wet the winners are 8–13% slower than in the dry on all five events, with no resets and one wall hit in ten races.
+- Discoveries survive a save and load bit for bit, and a save from before M6 loads with an undiscovered island.
+- The GPS finds a road route from the festival to all 15 places and landmarks. A bot following one 15.8 km to Highcrest heard all three turns counted down, was never re-routed or told to turn around, and arrived. Moved 400 m off the route, the car had a new route from where it stood after 1.5 s.
+
+**Measured:**
+- Traffic around a parked player for ten minutes: 219 cars spawned and 187 removed, 98 became physics cars and 94 went back to ghosts. At least 24 cars within 1.1 km, up to 9 physics cars at once. Lane error: median 0.26 m, 95th percentile 1.05 m. It costs 26 ms of CPU per simulated second.
+- A bot drove the Harbour Dash through traffic, 7.8 km in 4:01, past 53 physics cars: 3 contacts, 0 resets.
+- Highcrest Hill Climb (7.3 km): 4:59 in a Vanta, 5:28 in a Kyst Sport, 6:19 in the Ridgeback.
+- The Harbour Dash finds 5 places, 11.9% of the roads and 4.2% of the map, for 3,000 XP and 7,000 credits.
+
+**In Unity (compile-checked against the UnityEngine reference assemblies; not yet run in a real Editor):**
+- The sky director: the sun and moon on the clock, sky colours, clouds, ambient light, fog, a reflection probe, rain and splashes, lightning with thunder, wet road materials and glowing windows and lamps at night. Headlights come on by themselves at dusk (L to force them on or off).
+- `[` and `]` move the clock an hour, and `\` steps the weather through each sky and back to dynamic.
+- Traffic cars as pooled rigs; landmarks with a turning lighthouse beam, wind turbines and blinking mast lights.
+- The map (M): the island painted from its data, the fog of war, the roads you have driven in blue, places and landmarks, completion, a GPS route to any destination (Enter, or a click on the map; X clears it), and fast travel to places found (F twice). The minimap in the corner shows the route too.
+- The GPS on the road: violet chevrons in the right-hand lane flowing towards the destination, and a panel at the top of the screen with the next turn or fork, its distance, and the distance left.
+
+**Self-critique: the five weakest things after the first pass of M6, and what was done:**
+
+1. Traffic never overtook: on the dual carriageways a queue formed behind every slow car. **Fixed:** lane changes with gaps that grow with the closing speed, and swerves only when they fit (findings 12 and 13; 533 lane changes and 0 impacts in ten minutes).
+2. The Unity map had no GPS, though the web version has had one since M2. **Fixed:** the GPS in Core, tested headless (routes to all 15 destinations, a 15.8 km drive with every turn called, re-routing, turn around, arrival), with the route on the map, the minimap and the road, and the next turn on the HUD.
+3. "Roads driven" was a number on the map with nothing to show where. **Fixed:** the roads driven are drawn in blue on the map.
+4. None of M6's look has been seen: the sky, night, rain, wet roads, traffic rigs, landmarks, the map and the GPS line are compile-checked only. **Open:** the PC session.
+5. A traffic car stuck for 5 s is put back on its lane once the player is 60 m away, even if the player is looking at it. **Open:** let Unity tell the core what the camera can see.
+
+Also open: the weather is the same over the whole island (no passing showers); the minimap magnifies a 10 m-a-pixel texture to 900 m across, so it is soft; the GPS takes the shortest road, not the quickest; traffic has no indicators, and nothing reacts to the horn.

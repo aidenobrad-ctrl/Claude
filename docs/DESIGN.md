@@ -296,6 +296,32 @@ M5 is pure C# in Core, like the AI, so it is tested headless (`dotnet/Halcyon.Ca
   - Except for drag, the car must also keep an understeer gradient of at least max(0.25, min(stock − 0.15, 0.6)) deg/g. The steady tests reward rotation, so an unconstrained search found tail-happy setups.
   - Rear toe-out is never used. Dampers are left alone, because the steady tests cannot judge them.
 
+## The living island (M6: `unity/Assets/Halcyon/Core/World/`, `Core/AI/Traffic.cs`)
+
+Like the AI and the career, all of M6's logic is pure C# in Core, stepped by the simulation and tested headless (`dotnet/Halcyon.Sim.Tests`). Unity only draws it.
+
+- **Clock.** A festival day lasts 24 real minutes (one game hour a minute) at latitude 35° in midsummer (declination 15°): sunrise 5:17, sunset 18:43, the sun 70° up at noon. The moon is full, opposite the sun. During a race the clock runs at a fifth, so a night race stays a night race.
+- **Weather.** A seeded Markov chain over Clear, Cloudy, Rain, Storm and Fog, each spell a few minutes long. Cloud, rain, fog and wind ease towards each state's values, and rain is capped by the cloud. Fog is likelier at dawn. Lightning is a Poisson process (about every 10 s) once a storm's rain has built.
+  - **Road wetness** (0 to 1) soaks towards the rain with a time constant of 30 s divided by the rain's strength, and dries with daylight and wind (3 to 12 minutes).
+  - The physics reads it per car: the paved grip blends from asphalt to wet asphalt, and standing water adds drag, in the TypeScript and the C# together (bit-exact).
+  - A race holds the weather: the sky may change, but the road stays as wet as it was, rounded to a tenth. The AI measures its abilities at that wetness (cached per tenth).
+  - Events can carry conditions (an hour and a sky): the Proving Ground by Night, and the Storm Run to Port Calder.
+- **Traffic.** About 26 cars around the player, driving on the right. They appear out of sight, 500–1100 m away, and vanish beyond 1.4 km.
+  - Beyond about 220 m they are ghosts, posed along their lane with no physics. Within it they become physics cars, so they can be hit, and they go back to ghosts beyond 280 m.
+  - A physics car follows its lane line by pure pursuit, with the steering assist off. Its speed comes from the road class and the bends ahead.
+  - It keeps a gap (11 m at a standstill) to anything ahead along its own path, sampled every 4 m for 80 m. It yields at junctions and holds on the handbrake when stopped.
+  - On dual carriageways it pulls out to pass when the other lane is clear: the gaps it needs grow with the closing speed.
+  - It goes round a stopped car only when the sideways move fits the gap, and otherwise backs up first.
+  - A car stuck for 5 s is put back on its lane once the player is 60 m away.
+  - Races close the roads: the race suspends the traffic and resumes it afterwards.
+- **The Highcrest pass.** The road baker routes it with a heading-aware A* on a 48 m lattice (at most 90° per step, never back on itself), then rounds every corner with a 20 m fillet. The pass is one continuous road, and its height profile is box-filtered (30 m, twice) after the grade limit. The AI's speed plan also reads crest curvature from the route's heights: cornering speed satisfies v² ≤ μg/(k + μc), and over a crest the speed is at most 0.95·√(g/c).
+- **Landmarks.** Five, placed from the world data the same way every time: a radio mast on the highest summit a road reaches, a lighthouse on the eastern cape, a wind farm of six turbines on the hills above Westhaven, a stone arch in the Redmesa desert, and an observatory on the high ground above the lake. Each stands on dry land, 30–600 m from the nearest road over the whole network, far from the others, and is found from that road. Their structures are solid to the cars.
+- **Discoveries.** Places (the festival, the city, the villages, the harbour and the proving ground) and landmarks are found by driving within their radius, and pay XP (landmarks credits too). Every 4 m road sample driven is kept in a bitset, with a reward for each tenth of the network. The fog of war is a 128 × 128 grid, cleared within 280 m of wherever the player has been. Fast travel goes to any place found, onto its nearest road (the proving ground: its paddock). All of it is in the profile as compact base64, and older saves load with an undiscovered island.
+- **GPS.** A destination is a place, a landmark, or any point clicked on the map. The route is the shortest over the road network (A* by length), from the car's nearest road to the destination's.
+  - The GPS follows the car along it and plans again 1.5 s after the car strays more than 45 m from it (every 5 s when it is far from any road).
+  - It calls out junctions of three or more ways where the route turns (35° or more), and forks where it takes a gentler branch than the straightest road on.
+  - It says "turn around" after 2 s facing back along the route, and "arrived" within 30 m of the route's end, which is the road nearest the destination.
+
 ## Testing
 
 - `npm run verify` runs the typecheck, the build, the simulation tests (Node) and the browser tests (headless Chromium through Playwright with SwiftShader). `--quick` shortens the long suites.
@@ -320,3 +346,9 @@ M5 is pure C# in Core, like the AI, so it is tested headless (`dotnet/Halcyon.Ca
 - **M5 decisions:**
   - PI comes only from measurement, so a part or a tune changes it exactly as much as it changes the car.
   - The auto-tune measures instead of following rules, and it may not make a car more tail-happy than its stock understeer allows.
+- **M6:** wet roads in the shared physics, the clock and the weather, the sky, night, rain and lightning in Unity, events with their own conditions, traffic in two levels of detail, the rebuilt Highcrest pass and its hill climb, crest-aware AI, landmarks, discoveries, the map with fog of war and fast travel, and the GPS in Unity.
+- **M6 decisions:**
+  - Weather and traffic live in Core, so they are deterministic and tested headless like everything else.
+  - A race holds the weather, so the AI's plan stays true from start to finish.
+  - Traffic is a ghost when far and a physics car when near, so the island can be busy without simulating dozens of cars.
+  - The GPS arrives at the road nearest a destination, since places off the road are found from there.

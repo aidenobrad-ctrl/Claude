@@ -459,8 +459,9 @@ export class Game {
       this.computeRoute();
       return;
     }
+    // Arrived at the route's end: the road nearest the waypoint, which may lie well off the road.
     const left = this.routeS[this.routeS.length - 1] - this.routeS[bi];
-    if (left < 25 && this.waypoint && Math.hypot(this.waypoint.x - v.pos.x, this.waypoint.z - v.pos.z) < 60) {
+    if (left < 25 && Math.sqrt(best) <= 45) {
       this.hud.toast('You have arrived');
       this.clearWaypoint();
       return;

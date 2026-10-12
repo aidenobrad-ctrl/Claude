@@ -1,10 +1,12 @@
 // The island map (M, or d-pad down): the island painted from its data
 // (terrain shading, forests, desert, water, towns and the roads by class)
 // under the fog of war the player has not yet driven through, with the
-// places and landmarks found, the player's car, road and map completion,
-// and fast travel to any place found. The same picture makes a north-up
-// minimap in the corner while driving. The painting runs on a worker
-// thread at start-up; the fog overlay updates as the player explores.
+// roads already driven picked out, the places and landmarks found, the
+// player's car, road and map completion, a GPS route to any destination
+// (one from the list, or anywhere clicked on the map) and fast travel to
+// any place found. The same picture makes a north-up minimap in the
+// corner while driving, with the GPS route on it. The painting runs on a
+// worker thread at start-up; the overlays update as the player explores.
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Halcyon.Core;
@@ -16,13 +18,20 @@ namespace Halcyon
     {
         const int Size = 1024;
         HalcyonGame game;
-        Texture2D map, fogTex, dot;
+        /// <summary>Roads already driven, on the full map.</summary>
+        public static readonly Color32 DrivenColour = new Color32(92, 214, 255, 255);
+        Texture2D map, fogTex, dot, roadsTex;
         Task<Color32[]> paint;
         readonly byte[] fogBytes = new byte[Discoveries.FogN * Discoveries.FogN];
-        Color32[] fogPixels;
+        Color32[] fogPixels, roadsPixels;
+        int roadsPainted = -1;
+        Discoveries roadsFor;
         float fogAt = -10;
         int pick;
         float confirmAt = -10;
+        // The GPS route, simplified for drawing (world x, z), and the route it was made from.
+        readonly List<Vector2> routeLine = new List<Vector2>();
+        int routeVersion = -1;
         public bool Open { get; private set; }
 
         public static MapScreen Create(HalcyonGame game, Transform parent)
@@ -35,6 +44,8 @@ namespace Halcyon
             m.paint = Task.Run(() => Paint(w));
             m.fogTex = new Texture2D(Discoveries.FogN, Discoveries.FogN, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
             m.fogPixels = new Color32[Discoveries.FogN * Discoveries.FogN];
+            m.roadsTex = new Texture2D(Size, Size, TextureFormat.RGBA32, false) { name = "RoadsDriven", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
+            m.roadsPixels = new Color32[Size * Size];
             m.dot = ProceduralTextures.SoftDot();
             return m;
         }
@@ -130,7 +141,9 @@ namespace Halcyon
         {
             Open = true;
             pick = 0;
+            confirmAt = -10;
             RefreshFog();
+            RefreshRoads();
         }
 
         public void Hide() => Open = false;
@@ -169,26 +182,69 @@ namespace Halcyon
             fogTex.Apply(false);
         }
 
+        /// <summary>The roads driven, painted over a clear texture (when the map opens and something new was driven).</summary>
+        void RefreshRoads()
+        {
+            var d = game.Discover;
+            // (An imported career brings new discoveries, so the count alone is not enough.)
+            if (d == null || (d == roadsFor && d.DrivenSamples == roadsPainted)) return;
+            roadsFor = d;
+            roadsPainted = d.DrivenSamples;
+            System.Array.Clear(roadsPixels, 0, roadsPixels.Length);
+            var w = game.Sim.World;
+            double half = w.WorldHalf, mpp = 2 * half / Size;
+            foreach (var e in w.Edges)
+                for (int i = 0; i + 1 < e.n; i++)
+                    if (d.Driven(e.id, i) && d.Driven(e.id, i + 1)) Line(roadsPixels, e.x[i], e.z[i], e.x[i + 1], e.z[i + 1], half, mpp, 1.8, DrivenColour);
+            roadsTex.SetPixels32(roadsPixels);
+            roadsTex.Apply(false);
+        }
+
+        /// <summary>The places found (and the festival) then the landmarks found: where the GPS can take the player.</summary>
+        List<Place> Destinations()
+        {
+            var d = game.Discover;
+            var list = new List<Place>();
+            foreach (var p in d.Places) if (!p.Landmark && (p.Kind == "festival" || d.Found(p))) list.Add(p);
+            foreach (var p in d.Places) if (p.Landmark && d.Found(p)) list.Add(p);
+            return list;
+        }
+
         /// <summary>Keys while the map is open (called by the game after it polls the input).</summary>
         public void Tick()
         {
             var m = game.Driver.Menu;
-            var targets = game.Discover.FastTravelTargets();
             if (m.back || m.map)
             {
                 Hide();
                 return;
             }
-            if (targets.Count == 0) return;
-            if (m.up) pick = (pick + targets.Count - 1) % targets.Count;
-            if (m.down) pick = (pick + 1) % targets.Count;
-            pick = Mathf.Clamp(pick, 0, targets.Count - 1);
-            if (m.select)
+            if (m.clear && game.Gps.Active)
+            {
+                game.ClearRoute();
+                return;
+            }
+            var list = Destinations();
+            if (list.Count == 0) return;
+            if (m.up)
+            {
+                pick = (pick + list.Count - 1) % list.Count;
+                confirmAt = -10;
+            }
+            if (m.down)
+            {
+                pick = (pick + 1) % list.Count;
+                confirmAt = -10;
+            }
+            pick = Mathf.Clamp(pick, 0, list.Count - 1);
+            var p = list[pick];
+            if (m.select) game.SetRoute(p);
+            if (m.travel && !p.Landmark && !game.Racing)
             {
                 // Press twice: once to choose, again within 3 s to go.
                 if (Time.unscaledTime - confirmAt < 3f)
                 {
-                    game.FastTravel(targets[pick]);
+                    game.FastTravel(p);
                     confirmAt = -10;
                     Hide();
                 }
@@ -204,6 +260,96 @@ namespace Halcyon
             return new Vector2(r.x + (float)((x + half) / (2 * half)) * r.width, r.y + (float)((z + half) / (2 * half)) * r.height);
         }
 
+        void ToWorld(Rect r, Vector2 p, out double x, out double z)
+        {
+            double half = game.Sim.World.WorldHalf;
+            x = (p.x - r.x) / r.width * 2 * half - half;
+            z = (p.y - r.y) / r.height * 2 * half - half;
+        }
+
+        /// <summary>The GPS route as few points as draw it to within 4 m (Douglas-Peucker), made again when the route changes.</summary>
+        List<Vector2> RouteLine()
+        {
+            var gps = game.Gps;
+            if (gps.Version == routeVersion) return routeLine;
+            routeVersion = gps.Version;
+            routeLine.Clear();
+            var r = gps.Route;
+            if (r == null || r.N < 2) return routeLine;
+            var keep = new bool[r.N];
+            keep[0] = keep[r.N - 1] = true;
+            var stack = new Stack<(int, int)>();
+            stack.Push((0, r.N - 1));
+            while (stack.Count > 0)
+            {
+                var (a, b) = stack.Pop();
+                double dx = r.X[b] - r.X[a], dz = r.Z[b] - r.Z[a], len = System.Math.Sqrt(dx * dx + dz * dz);
+                int worst = -1;
+                double far = 4;
+                for (int i = a + 1; i < b; i++)
+                {
+                    double ex = r.X[i] - r.X[a], ez = r.Z[i] - r.Z[a];
+                    double off = len > 0 ? System.Math.Abs(ex * dz - ez * dx) / len : System.Math.Sqrt(ex * ex + ez * ez);
+                    if (off > far)
+                    {
+                        far = off;
+                        worst = i;
+                    }
+                }
+                if (worst < 0) continue;
+                keep[worst] = true;
+                stack.Push((a, worst));
+                stack.Push((worst, b));
+            }
+            for (int i = 0; i < r.N; i++) if (keep[i]) routeLine.Add(new Vector2((float)r.X[i], (float)r.Z[i]));
+            return routeLine;
+        }
+
+        /// <summary>Clip the segment a-b to the rectangle (Liang-Barsky); false when none of it is inside.</summary>
+        static bool Clip(Rect r, ref Vector2 a, ref Vector2 b)
+        {
+            float t0 = 0, t1 = 1;
+            var d = b - a;
+            bool Edge(float p, float q)
+            {
+                if (p == 0) return q >= 0;
+                float t = q / p;
+                if (p < 0)
+                {
+                    if (t > t1) return false;
+                    if (t > t0) t0 = t;
+                }
+                else
+                {
+                    if (t < t0) return false;
+                    if (t < t1) t1 = t;
+                }
+                return true;
+            }
+            if (!Edge(-d.x, a.x - r.xMin) || !Edge(d.x, r.xMax - a.x) || !Edge(-d.y, a.y - r.yMin) || !Edge(d.y, r.yMax - a.y)) return false;
+            var a0 = a;
+            a = a0 + d * t0;
+            b = a0 + d * t1;
+            return true;
+        }
+
+        /// <summary>The route drawn through a world-to-screen mapping, clipped to a rectangle: a dark edge, then the GPS colour.</summary>
+        void DrawRoute(System.Func<Vector2, Vector2> at, Rect clip, float width)
+        {
+            if (Event.current.type != EventType.Repaint || !game.Gps.Active) return;
+            var pts = RouteLine();
+            var dark = new Color(0.08f, 0.04f, 0.16f, 0.85f);
+            for (int pass = 0; pass < 2; pass++)
+                for (int i = 0; i + 1 < pts.Count; i++)
+                {
+                    var a = at(pts[i]);
+                    var b = at(pts[i + 1]);
+                    if (!Clip(clip, ref a, ref b)) continue;
+                    if (pass == 0) Ui.Line(a, b, width + 3, dark);
+                    else Ui.Line(a, b, width, GpsRibbon.Tint);
+                }
+        }
+
         void Marker(Vector2 p, float size, Color c)
         {
             GUI.color = c;
@@ -216,7 +362,7 @@ namespace Halcyon
             var v = game.Sim.Player.vehicle;
             float yaw = Mathf.Atan2((float)v.fwd.x, (float)-v.fwd.z) * Mathf.Rad2Deg; // 0 = north (up)
             var keep = GUI.matrix;
-            GUIUtility.RotateAroundPivot(yaw, p);
+            Ui.Rotate(yaw, p);
             Marker(p + new Vector2(0, -size * 0.35f), size * 0.55f, new Color(1f, 0.55f, 0.2f));
             Marker(p, size, new Color(1f, 0.6f, 0.25f));
             GUI.matrix = keep;
@@ -234,11 +380,28 @@ namespace Halcyon
         void DrawMap()
         {
             var d = game.Discover;
+            var gps = game.Gps;
             float side = Ui.H - 120;
             var r = new Rect(60, 60, side, side);
+            bool racing = game.Racing;
+            // A click on the map: a route to there (left), or no route (right).
+            var ev = Event.current;
+            if (ev.type == EventType.MouseDown && r.Contains(ev.mousePosition) && !racing)
+            {
+                if (ev.button == 0)
+                {
+                    ToWorld(r, ev.mousePosition, out double wx, out double wz);
+                    game.SetRoute(wx, wz, "the map marker");
+                }
+                else if (ev.button == 1) game.ClearRoute();
+                ev.Use();
+            }
             Ui.Fill(new Rect(0, 0, Ui.W, Ui.H), new Color(0.03f, 0.04f, 0.06f, 0.92f));
             GUI.DrawTexture(r, map);
+            GUI.DrawTexture(r, roadsTex);
             GUI.DrawTexture(r, fogTex);
+            DrawRoute(q => ToMap(r, q.x, q.y), r, 3.5f);
+            if (gps.Active) Marker(ToMap(r, gps.TargetX, gps.TargetZ), 26, GpsRibbon.Tint);
             // Places and landmarks found; places not yet found show as a question mark once the fog over them lifts.
             foreach (var p in d.Places)
             {
@@ -246,11 +409,11 @@ namespace Halcyon
                 bool found = d.Found(p);
                 if (!found && !d.Uncovered(p.X, p.Z)) continue;
                 Marker(at, p.Landmark ? 18 : 22, found ? (p.Landmark ? new Color(0.5f, 0.85f, 1f) : Color.white) : new Color(1, 1, 1, 0.45f));
-                GUI.Label(new Rect(at.x + 12, at.y - 12, 260, 26), found ? p.Name : "?", found ? Ui.Small : Ui.Small);
+                GUI.Label(new Rect(at.x + 12, at.y - 12, 260, 26), found ? p.Name : "?", Ui.Small);
             }
             PlayerArrow(ToMap(r, game.Sim.Player.vehicle.pos.x, game.Sim.Player.vehicle.pos.z), 22);
 
-            // The side panel: completion and fast travel.
+            // The side panel: completion, the GPS, and the destinations.
             float x = r.xMax + 40, w = Mathf.Max(360, Ui.W - x - 60);
             Ui.Panel(new Rect(x - 16, 60, w + 32, side));
             GUI.Label(new Rect(x, 76, w, 44), "Halcyon Island", Ui.Title);
@@ -264,23 +427,35 @@ namespace Halcyon
             GUI.Label(new Rect(x, 156, w, 26), $"Map uncovered  {d.MapShare * 100:0.0}%", Ui.Body);
             GUI.Label(new Rect(x, 184, w, 26), $"Places  {foundPlaces} / {places}     Landmarks  {foundMarks} / {marks}", Ui.Body);
             GUI.Label(new Rect(x, 212, w, 26), $"{game.Sim.Clock.Label} · {Weather.Name(game.Sim.Weather.State)}", Ui.Small);
-            GUI.Label(new Rect(x, 262, w, 30), "Fast travel", Ui.Sub);
-            var targets = d.FastTravelTargets();
-            float y = 300;
-            bool racing = game.Racing;
-            for (int i = 0; i < targets.Count; i++)
+            // The key: the GPS route and the roads driven.
+            Ui.Fill(new Rect(x, 252, 26, 4), GpsRibbon.Tint);
+            GUI.Label(new Rect(x + 34, 240, w - 34, 26), gps.Active ? (gps.Route != null ? $"GPS to {gps.TargetName} · {Gps.Distance(gps.Remaining)}" : $"No road leads to {gps.TargetName}") : "GPS: no route set", Ui.Small);
+            Ui.Fill(new Rect(x, 280, 26, 4), DrivenColour);
+            GUI.Label(new Rect(x + 34, 268, w - 34, 26), "Roads you have driven", Ui.Small);
+            GUI.Label(new Rect(x, 304, w, 30), "Destinations", Ui.Sub);
+            var list = Destinations();
+            float y = 340;
+            var me = game.Sim.Player.vehicle.pos;
+            for (int i = 0; i < list.Count && y < r.yMax - 100; i++)
             {
+                var p = list[i];
                 bool on = i == pick;
-                string value = on && Time.unscaledTime - confirmAt < 3f ? "Enter again to go" : null;
-                Ui.Item(new Rect(x, y, w, 34), targets[i].Name, on, value, !racing);
-                y += 38;
+                double km = System.Math.Sqrt((p.X - me.x) * (p.X - me.x) + (p.Z - me.z) * (p.Z - me.z)) / 1000;
+                string value = on && Time.unscaledTime - confirmAt < 3f ? "F again to go" : gps.Active && gps.TargetName == p.Name ? "GPS" : $"{km:0.0} km";
+                if (Ui.Item(new Rect(x, y, w, 34), p.Landmark ? p.Name + "  ◊" : p.Name, on, value, !racing))
+                {
+                    pick = i;
+                    if (!racing) game.SetRoute(p);
+                }
+                y += 36;
             }
-            GUI.Label(new Rect(x, r.yMax - 60, w, 50), racing ? "No fast travel during a race." : "↑/↓ choose · Enter twice to travel · M or Esc to close", Ui.Small);
+            GUI.Label(new Rect(x, r.yMax - 84, w, 80), racing ? "No GPS or fast travel during a race." :
+                "↑/↓ choose · Enter: GPS route · F twice: fast travel (places, not landmarks ◊) · X: clear the route · click the map: a route to there · M or Esc: close", Ui.Small);
         }
 
         void DrawMinimap()
         {
-            // North-up, 900 m across, bottom left, with the fog.
+            // North-up, 900 m across, bottom left, with the fog and the GPS route.
             const float side = 230, span = 900;
             var v = game.Sim.Player.vehicle;
             double half = game.Sim.World.WorldHalf;
@@ -291,14 +466,23 @@ namespace Halcyon
             var tc = new Rect(u - k / 2, vv - k / 2, k, k);
             GUI.DrawTextureWithTexCoords(r, map, tc);
             GUI.DrawTextureWithTexCoords(r, fogTex, tc);
+            // World (x, z) to the minimap: the car at the centre, north up.
+            float scale = side / span;
+            Vector2 At(double x, double z) => new Vector2(r.center.x + (float)(x - v.pos.x) * scale, r.center.y + (float)(z - v.pos.z) * scale);
+            var gps = game.Gps;
+            if (gps.Active && !game.Racing)
+            {
+                DrawRoute(q => At(q.x, q.y), new Rect(r.x + 2, r.y + 2, r.width - 4, r.height - 4), 4f);
+                var t = At(gps.TargetX, gps.TargetZ);
+                if (r.Contains(t)) Marker(t, 16, GpsRibbon.Tint);
+            }
             var d = game.Discover;
             foreach (var p in d.Places)
             {
                 if (!d.Found(p)) continue;
-                float px = r.x + (float)(((p.X + half) / (2 * half) - tc.x) / k) * side;
-                float py = r.y + (float)((1 - ((half - p.Z) / (2 * half) - tc.y) / k)) * side;
-                if (px < r.x || py < r.y || px > r.xMax || py > r.yMax) continue;
-                Marker(new Vector2(px, py), p.Landmark ? 10 : 12, p.Landmark ? new Color(0.5f, 0.85f, 1f) : Color.white);
+                var at = At(p.X, p.Z);
+                if (!r.Contains(at)) continue;
+                Marker(at, p.Landmark ? 10 : 12, p.Landmark ? new Color(0.5f, 0.85f, 1f) : Color.white);
             }
             PlayerArrow(r.center, 18);
         }

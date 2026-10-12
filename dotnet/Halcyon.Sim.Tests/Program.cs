@@ -47,6 +47,8 @@ static class Program
         if (only == "" || only == "highcrest") Highcrest();
         if (only == "" || only == "discover") DiscoveryTests();
         if (only == "coast") CoastDebug();
+        if (only == "" || only == "gps") GpsTests();
+        if (only == "stuntsurvey") StuntSurvey();
         Console.WriteLine($"\n{(failures == 0 ? "PASS" : $"FAIL ({failures})")} in {sw.Elapsed.TotalSeconds:0.0} s");
         return failures == 0 ? 0 : 1;
     }
@@ -455,6 +457,212 @@ static class Program
         Check(allGood, $"fast travel to each of the {targets.Count} places found lands on a road, upright and still");
     }
 
+    // --- The GPS -----------------------------------------------------------------------------------
+
+    sealed class NoField : AiDriver.IField
+    {
+        public int Count => 0;
+        public AiDriver.AiDriverView Get(int i) => default;
+    }
+
+    static double Dist(double ax, double az, double bx, double bz) => Math.Sqrt((ax - bx) * (ax - bx) + (az - bz) * (az - bz));
+
+    static void GpsTests()
+    {
+        Console.WriteLine("\nGPS: a route to every place and landmark, a bot following one, straying from it, the wrong way");
+        var w = World();
+        var sim = new Simulation(w, SpawnAt.Island) { WorldTime = false };
+        var gps = new Gps(w, sim.Ground);
+        var places = new Discoveries(w, sim.Ground, Profile.New()).Places;
+        var v = sim.Player.vehicle;
+        int routed = 0, badStart = 0, badEnd = 0, badTurns = 0;
+        Place far = null;
+        double farLength = 0;
+        foreach (var p in places)
+        {
+            if (!gps.Set(v.pos.x, v.pos.z, p.X, p.Z, p.Name))
+            {
+                Console.WriteLine($"  no route to {p.Name}");
+                continue;
+            }
+            routed++;
+            var r = gps.Route;
+            r_At(r, 0, out double x0, out double z0);
+            r_At(r, r.Length, out double x1, out double z1);
+            // The route ends at the road nearest the destination.
+            double nearest = double.PositiveInfinity;
+            foreach (var e in w.Edges)
+                for (int i = 0; i < e.n; i++) nearest = Math.Min(nearest, Dist(e.x[i], e.z[i], p.X, p.Z));
+            if (Dist(x0, z0, v.pos.x, v.pos.z) > 30) badStart++;
+            if (Dist(x1, z1, p.X, p.Z) > nearest + 10) badEnd++;
+            double lastS = -1;
+            foreach (var t in gps.Turns)
+            {
+                if (t.S <= lastS || (!t.Keep && Math.Abs(t.Angle) < Gps.TurnAngle) || (t.Keep && Math.Abs(t.Angle) >= Gps.TurnAngle) || w.Nodes[t.Node].edges.Count < 3) badTurns++;
+                lastS = t.S;
+            }
+            if (p.Kind != "track" && r.Length > farLength)
+            {
+                farLength = r.Length;
+                far = p;
+            }
+            Console.WriteLine($"  to {p.Name,-22} {Gps.Distance(r.Length),8} by road, {gps.Turns.Count(t => !t.Keep),2} turns and {gps.Turns.Count(t => t.Keep)} forks ({gps.Turns.Count(t => t.Right)} right), ends {Dist(x1, z1, p.X, p.Z):0} m from it (nearest road {nearest:0} m)");
+        }
+        Check(routed == places.Count, $"a road route from the festival to every place and landmark ({routed} of {places.Count})");
+        Check(badStart == 0 && badEnd == 0, "each route starts at the car and ends at the road nearest the destination");
+        Check(badTurns == 0, "turns and forks are called only at junctions, in order along the route");
+
+        // 2. A bot follows the GPS to the farthest place, the GPS following it.
+        gps.Set(v.pos.x, v.pos.z, far.X, far.Z, far.Name);
+        var route = gps.Route;
+        int turnsToCall = gps.Turns.Count;
+        r_At(route, 0, out double sx, out double sz);
+        route.At(0, out _, out _, out _, out double stx, out double stz);
+        sim.Player.vehicle.Place(sx - stz * 2, sim.Ground.GroundHeight(sx, sz), sz + stx * 2, Simulation.YawOf(stx, stz));
+        var ability = new RaceSession.AbilityCache().Get(sim.Player.specId);
+        var bot = new AiDriver(sim.Player, new Personality { Name = "Bot", Skill = 0.6, Aggression = 0.3, Consistency = 1, Risk = 0.3 }, ability, 3);
+        bot.SetRoute(route, RacingLine.KeepRight(route));
+        var field = new NoField();
+        double t0 = 0, worstBack = 0, lastProgress = 0;
+        bool arrived = false, wrongWay = false;
+        int called = 0, lastNode = -1, version = gps.Version;
+        double callDistance = 0;
+        var callAt = new List<double>();
+        while (t0 < 900 && !arrived)
+        {
+            bot.Update(Loop.SIM_DT, field);
+            var car = sim.Player.vehicle;
+            var c = new Controls { throttle = car.input.throttle, brake = car.input.brake, steer = car.input.steer, handbrake = car.input.handbrake, analogSteer = true, source = InputSource.Script };
+            sim.Step(c);
+            sim.Events.Clear();
+            t0 += Loop.SIM_DT;
+            if (sim.Tick % 8 != 0) continue; // the game follows the car every frame: 30 Hz is plenty here
+            arrived = gps.Update(car.pos.x, car.pos.z, car.fwd.x, car.fwd.z, 8 * Loop.SIM_DT);
+            if (arrived) break;
+            wrongWay |= gps.WrongWay;
+            worstBack = Math.Max(worstBack, lastProgress - gps.Progress);
+            lastProgress = gps.Progress;
+            // Each turn is called out before the car gets to it, counting down.
+            if (gps.NextTurn(out var turn, out double dist))
+            {
+                if (turn.Node != lastNode)
+                {
+                    if (lastNode >= 0) callAt.Add(callDistance);
+                    lastNode = turn.Node;
+                    called++;
+                    callDistance = dist;
+                }
+                else callDistance = Math.Min(callDistance, dist);
+            }
+        }
+        if (lastNode >= 0) callAt.Add(callDistance);
+        Console.WriteLine($"  the bot drove the GPS route to {far.Name} ({Gps.Distance(route.Length)}) in {t0 / 60:0}:{t0 % 60:00.0}: arrived {arrived}, {gps.Replans} new routes, {called} of {turnsToCall} turns called, the car went back along the route at most {worstBack:0.0} m");
+        Check(arrived && !gps.Active, "the GPS says it has arrived when the car gets there, and clears");
+        Check(gps.Replans == 0 && version + 1 == gps.Version, "a car following the route is never sent another way");
+        Check(called == turnsToCall && callAt.All(d => d < 40), "every turn is called out in order and counted down to the junction");
+        Check(!wrongWay && worstBack < 10, "a car driving the route is never told to turn around");
+
+        // 3. Straying: the car leaves the route for another road; the GPS plans again from there within two seconds.
+        var sim2 = new Simulation(w, SpawnAt.Island) { WorldTime = false };
+        var v2 = sim2.Player.vehicle;
+        gps.Set(v2.pos.x, v2.pos.z, far.X, far.Z, far.Name);
+        var first = gps.Route;
+        // A road sample 400 m or more from every point of the route.
+        double bx = 0, bz = 0, byaw = 0;
+        bool found = false;
+        foreach (var e in w.Edges)
+        {
+            for (int i = 0; i < e.n && !found; i += 5)
+            {
+                first.ProjectAny(e.x[i], e.z[i], out _, out _, out double away);
+                if (away < 400 || Dist(e.x[i], e.z[i], v2.pos.x, v2.pos.z) > 2500 || e.bridge[i] != 0) continue;
+                bx = e.x[i] - e.tz[i] * e.info.halfWidth * 0.5;
+                bz = e.z[i] + e.tx[i] * e.info.halfWidth * 0.5;
+                byaw = Simulation.YawOf(e.tx[i], e.tz[i]);
+                found = true;
+            }
+            if (found) break;
+        }
+        sim2.Teleport(bx, bz, byaw);
+        double waited = 0;
+        while (waited < 2.5 && gps.Replans == 0)
+        {
+            gps.Update(v2.pos.x, v2.pos.z, v2.fwd.x, v2.fwd.z, 1.0 / 30);
+            waited += 1.0 / 30;
+        }
+        r_At(gps.Route, 0, out double nx, out double nz);
+        Console.WriteLine($"  the car moved to another road 400+ m from the route: a new route after {waited:0.0} s, starting {Dist(nx, nz, v2.pos.x, v2.pos.z):0} m from the car, {Gps.Distance(gps.Route.Length)} to go");
+        Check(found && gps.Replans == 1 && waited <= 2 && Dist(nx, nz, v2.pos.x, v2.pos.z) < 30, "a car that leaves the route gets a new one from where it is within two seconds");
+
+        // 4. The wrong way: on the route but facing back along it.
+        gps.Set(v2.pos.x, v2.pos.z, far.X, far.Z, far.Name);
+        gps.Route.At(200, out double wx, out _, out double wz, out double wtx, out double wtz);
+        bool early = false;
+        for (double t = 0; t < 2.5; t += 1.0 / 30)
+        {
+            gps.Update(wx, wz, -wtx, -wtz, 1.0 / 30);
+            if (t < 1.5) early |= gps.WrongWay;
+        }
+        bool told = gps.WrongWay;
+        gps.Update(wx, wz, wtx, wtz, 1.0 / 30);
+        Check(!early && told && !gps.WrongWay, "facing back along the route for two seconds says turn around; facing along it again clears it");
+    }
+
+    /// <summary>Where the stunts could go: long straights, fast sweepers, twisty stretches, crests (exploration).</summary>
+    static void StuntSurvey()
+    {
+        var w = World();
+        Console.WriteLine($"{w.Edges.Length} edges, {w.Edges.Sum(e => e.length) / 1000:0.0} km");
+        foreach (var e in w.Edges)
+        {
+            // Horizontal curvature from the tangents 6 samples apart; vertical curvature from heights over +-12 m.
+            int n = e.n;
+            var k = new double[n];
+            var c = new double[n];
+            for (int i = 0; i < n; i++)
+            {
+                int a = Math.Max(0, i - 3), b = Math.Min(n - 1, i + 3);
+                double da = Math.Atan2(e.tz[b], e.tx[b]) - Math.Atan2(e.tz[a], e.tx[a]);
+                while (da > Math.PI) da -= 2 * Math.PI;
+                while (da < -Math.PI) da += 2 * Math.PI;
+                double ds = e.s[b] - e.s[a];
+                k[i] = ds > 0 ? Math.Abs(da) / ds : 0;
+                int a2 = Math.Max(0, i - 3), b2 = Math.Min(n - 1, i + 3);
+                double h0 = e.y[a2], h1 = e.y[i], h2 = e.y[b2];
+                double s0 = e.s[i] - e.s[a2], s1 = e.s[b2] - e.s[i];
+                c[i] = (s0 > 0 && s1 > 0) ? -2 * ((h2 - h1) / s1 - (h1 - h0) / s0) / (s0 + s1) : 0; // + = crest
+            }
+            // Longest straight (radius > 600 m).
+            double best = 0, bestAt = 0, run = 0;
+            for (int i = 1; i < n; i++)
+            {
+                if (k[i] < 1.0 / 600 && e.bridge[i] == 0) run += e.s[i] - e.s[i - 1]; else run = 0;
+                if (run > best) { best = run; bestAt = e.s[i]; }
+            }
+            // Twisty: 400 m windows with the most turning in bends of radius 25-120 m.
+            double twist = 0, twistAt = 0;
+            for (int i = 0; i < n; i++)
+            {
+                double sum = 0;
+                int j = i;
+                for (; j < n && e.s[j] - e.s[i] < 400; j++) if (k[j] > 1.0 / 120 && k[j] < 1.0 / 25) sum += k[j] * (j + 1 < n ? e.s[j + 1] - e.s[j] : 0);
+                if (j < n && sum > twist) { twist = sum; twistAt = e.s[i]; }
+            }
+            // Crests: the sharpest convex vertical curvature with a straight run-up of 150 m.
+            double crest = 0, crestAt = 0;
+            for (int i = 0; i < n; i++)
+            {
+                if (c[i] <= crest || e.bridge[i] != 0) continue;
+                bool straight = true;
+                for (int j = i; j >= 0 && e.s[i] - e.s[j] < 150; j--) if (k[j] > 1.0 / 400) straight = false;
+                if (!straight) continue;
+                crest = c[i];
+                crestAt = e.s[i];
+            }
+            Console.WriteLine($"  edge {e.id,3} {e.info.id,-8} {w.Nodes[e.a].id,-14}->{w.Nodes[e.b].id,-14} {e.length,6:0} m | straight {best,5:0} m ending {bestAt,5:0} | twist {Deg(twist),4:0} deg in 400 m at {twistAt,5:0} | crest r {(crest > 0 ? 1 / crest : 0),6:0} m (takeoff {(crest > 0 ? Math.Sqrt(9.81 / crest) * 3.6 : 0),4:0} km/h) at {crestAt,5:0}");
+        }
+    }
+
     static void CoastDebug()
     {
         var w = World();
@@ -691,12 +899,13 @@ static class Program
         lane.Sort();
         double p50 = lane.Count > 0 ? lane[lane.Count / 2] : double.NaN, p95 = lane.Count > 0 ? lane[(int)(lane.Count * 0.95)] : double.NaN;
         Console.WriteLine($"  10 min parked: {t0.Spawned} spawned, {t0.Removed} removed, {t0.Promoted} became physics cars, {t0.Demoted} went back, {t0.Rescued} put back on their lane; at least {nearMin} cars within {t0.SpawnMax:0} m, up to {physMax} physics cars at once");
-        Console.WriteLine($"  lane keeping: median {p50:0.00} m, 95th percentile {p95:0.00} m off the lane centre ({lane.Count} samples); {tt} impacts between traffic cars; {msA / 600:0.0} ms per simulated second");
+        Console.WriteLine($"  lane keeping: median {p50:0.00} m, 95th percentile {p95:0.00} m off the lane centre ({lane.Count} samples); {tt} impacts between traffic cars; {t0.LaneChanges} lane changes; {msA / 600:0.0} ms per simulated second");
         Check(finite, "no NaN, no traffic car under the ground");
         Check(nearMin >= t0.Target * 0.75, $"the island stays populated: at least {nearMin} of {t0.Target} cars around the player after the first minute");
         Check(t0.Promoted >= 5 && t0.Demoted >= 3, "cars pass the player as physics cars and go back to ghosts beyond");
         Check(p95 < 1.2, "physics traffic keeps to its lane (95% within 1.2 m of the centre)");
         Check(tt <= 6, $"traffic cars rarely touch each other ({tt} impacts in ten minutes)");
+        Check(t0.LaneChanges >= 5, $"on the dual carriageways traffic pulls out to pass and moves back ({t0.LaneChanges} lane changes)");
         var b = Parked(out double hb, out _, out _, out _, out _, out _, out _);
         Check(ha == hb, "the same seed gives the same traffic, bit for bit");
 

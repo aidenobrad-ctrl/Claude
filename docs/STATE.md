@@ -14,7 +14,7 @@ Unity (with Blender-made cars) is the main target since M2. The web version is t
 | M3 Cars v1 | **Done** headless: 12 cars validated within 10%, Blender models with 3 LODs and six-view review sheets, Unity car visuals and the garage (compile-checked). |
 | M4 AI v1 and first events | **Done** headless: racing lines, controller, personalities, racecraft, five events, tournament 98% (`dotnet/Halcyon.AI.Tests`). The Unity race menu and HUD are compile-checked only. |
 | M5 Tuning and upgrades | **Done headless; Unity compile-checked.** Measured PI and classes, parts, prices, payouts and XP, saves, share codes, the understeer test, the measured auto-tune, rivals matched by PI and class-limited events (`dotnet/Halcyon.Career.Tests`, `dotnet/Halcyon.AI.Tests`). Slip-steered launch control and caster in the shared physics. In Unity: the garage with dealer, upgrades, tuning with graphs, test track and career data, and race payouts. |
-| M6 World v2 | Not started |
+| M6 World v2 | **Done headless; Unity compile-checked.** Wet roads in the shared physics (bit-exact), the clock and the weather, events with their own conditions, traffic in two levels of detail, the rebuilt Highcrest pass and its hill climb, crest-aware AI, five landmarks, discoveries, the map with fog of war and fast travel, and the GPS (`dotnet/Halcyon.Sim.Tests`). In Unity: the sky, night, rain, lightning, wet roads, headlights, traffic rigs, landmarks, the map and minimap, and the GPS line. |
 | M7 Everything else | Not started |
 | M8 Polish and optimization | Not started |
 
@@ -26,7 +26,7 @@ Unity (with Blender-made cars) is the main target since M2. The web version is t
 npm install            # Node 22; Playwright uses the preinstalled Chromium in /opt/pw-browsers
 npm run build          # writes dist/index.html
 npm run dev            # rebuild on change, serve on http://localhost:8080
-npm run verify         # typecheck + build + sim tests + browser tests
+npm run verify         # typecheck + build + sim tests + browser tests + the .NET suites and the Unity compile check
 npm run verify -- --quick
 node tools/run-sim-tests.mjs physics --grep "0-100"   # one file, matching cases
 node tools/browser-tests.mjs m1                       # browser scenarios in files matching "m1"
@@ -40,6 +40,7 @@ cd dotnet/Halcyon.World.Tests && dotnet run -c Release         # island equivale
 cd dotnet/Halcyon.AI.Tests && dotnet run -c Release            # AI: lines, solo laps, sprints, tournament, grids, fields (~4 min)
 cd dotnet/Halcyon.AI.Tests && dotnet run -c Release -- tournament   # just the head-to-head tournament (~2 min on 4 cores)
 cd dotnet/Halcyon.Career.Tests && dotnet run -c Release      # career: PI, parts, prices, saves, share codes, auto-tune
+cd dotnet/Halcyon.Sim.Tests && dotnet run -c Release         # the living island: clock, weather, wet races, traffic, Highcrest, discoveries, GPS (~2.5 min)
 cd dotnet/Halcyon.Unity && dotnet build                        # compile every Unity script
 blender -b -P blender/build_car.py -- --car all --sheet 'blender/renders/{car}.png'   # all 12 cars + sheets; with pip bpy: python blender/build_car.py -- ...
 ```
@@ -80,7 +81,8 @@ Load `dist/index.html?test=1` for manual stepping, with no animation loop.
   - the island builders, the car rig and chase camera, input and HUD;
   - Blender car models with LODs;
   - a garage on a turntable (G or LB): your cars, the dealer, upgrades, tuning with graphs and auto-tune, the test track, and career export and import;
-  - festival events with AI rivals (T or D-pad up), with a countdown, positions, laps, gaps, wrong-way warning and results.
+  - festival events with AI rivals (T or D-pad up), with a countdown, positions, laps, gaps, wrong-way warning and results;
+  - the living island: the sky director (sun, moon, clouds, fog, rain, lightning, wet roads, night lights), headlights, traffic rigs, landmarks, the map (M) with fog of war, roads driven, fast travel and the GPS, the minimap, and the GPS line on the road.
 - **AI (C# Core):**
   - per-route racing lines and per-car abilities with stable braking;
   - per-driver speed profiles, a pure-pursuit controller and personalities with four difficulty presets;
@@ -92,6 +94,11 @@ Load `dist/index.html?test=1` for manual stepping, with no animation loop.
   - nine part categories that change the physics and unlock tuning sliders;
   - car prices from PI, payouts, XP and levels;
   - JSON saves, tune share codes, the understeer gradient and an auto-tune that measures.
+- **The living island (C# Core):**
+  - the clock and the weather, with road wetness in the physics (TypeScript and C#, bit-exact);
+  - traffic: ghosts far away, physics cars near the player, lanes, junctions, overtaking;
+  - landmarks, discoveries (places, roads driven, the fog of war), fast travel and the GPS;
+  - eight events, with the Highcrest Hill Climb, a night race and a storm.
 - **Blender:** the car generator v2 (`blender/`) for 12 cars, with review sheets in `blender/renders/`. All 12 models are in `unity/Assets/Halcyon/Art/Resources/Cars/`.
 
 ## Next steps
@@ -99,5 +106,6 @@ Load `dist/index.html?test=1` for manual stepping, with no animation loop.
 - **PC session** (`docs/UNITY-PC-BRIEF.md`): open the project in Unity 6. Then fix what only the Editor reports, play the garage and a race, and capture screenshots.
 - **Physics:** brake-force distribution (EBD) with ESC off, in TypeScript and C# together with regenerated references (playtest M4, finding 12).
 - **M5 follow-ups:** a simulated lap in the PI (equal PI is not yet equal pace), an inventory of owned parts, auto-tuned rivals, and the AI in maxed-out hypercar packs (PLAYTEST M5, self-critique).
-- **M6 world v2:** fix the Highcrest switchbacks, then add traffic, day and night, and weather.
+- **M6 follow-ups** (PLAYTEST M6, self-critique): traffic rescues only out of the camera's view, local showers, a sharper minimap, a GPS that prefers quicker roads, indicators.
+- **M7 everything else:** more event types (drift zones, speed traps, danger signs, time trials, cross-country), championships, progression, photo mode, settings and accessibility.
 - **Art:** the close-range items from the M3 review (saw-toothed arch lips, the Vanta's stepped side window), number plates, terrain textures, a water shader, Blender trees, and audio.

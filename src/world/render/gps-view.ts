@@ -22,8 +22,8 @@ void main() {
   float ahead = s - uProgress;
   float fade = smoothstep(4.0, 14.0, ahead) * (1.0 - smoothstep(uReach * 0.7, uReach, ahead));
   if (fade <= 0.001) discard;
-  // Chevrons flowing forward.
-  float f = fract((s - uTime * 9.0) / 7.0 - abs(v) * 0.22);
+  // Chevrons flowing forward, pointing the way: the tip leads at the centre, the sides trail.
+  float f = fract((s - uTime * 9.0) / 7.0 + abs(v) * 0.22);
   float chev = smoothstep(0.0, 0.08, f) * (1.0 - smoothstep(0.38, 0.5, f));
   float edge = 1.0 - smoothstep(0.75, 1.0, abs(v));
   vec3 col = vec3(0.22, 0.84, 1.0);

@@ -36,6 +36,9 @@ namespace Halcyon
         float discoverAt, discoverSaveAt;
         /// <summary>What the player has found on the island (places, landmarks, roads, the fog of war).</summary>
         public Discoveries Discover { get; private set; }
+        /// <summary>The GPS: a route to a destination set on the map, shown on the road, the maps and the HUD.</summary>
+        public Gps Gps { get; private set; }
+        GpsRibbon gpsRibbon;
         /// <summary>The corner minimap while driving.</summary>
         public bool ShowMinimap = true;
         public bool Racing => races != null && races.Racing;
@@ -145,6 +148,8 @@ namespace Halcyon
             marks.Sim = Sim;
             Discover = new Discoveries(data, Sim.Ground, Career.Profile);
             Career.BeforeSave = () => Discover?.Save();
+            Gps = new Gps(data, Sim.Ground);
+            gpsRibbon = GpsRibbon.Create(world, Gps);
             mapScreen = MapScreen.Create(this, world);
             if (Traffic)
             {
@@ -240,6 +245,8 @@ namespace Halcyon
         {
             if (!Ready) return;
             Career.Tick();
+            // The GPS line on the road: not in a race (it has its own route) nor behind the garage.
+            gpsRibbon.Show = !races.Racing && !garage.IsOpen;
             if (scripted == null && garage != null)
             {
                 input.Poll();
@@ -322,7 +329,11 @@ namespace Halcyon
             }
             PlayerRig.Apply((float)(accumulator / Loop.SIM_DT));
             traffic?.Apply((float)(accumulator / Loop.SIM_DT));
-            if (!Paused) Explore();
+            if (!Paused)
+            {
+                Explore();
+                FollowRoute(dt);
+            }
             if (races.Racing) races.Apply((float)(accumulator / Loop.SIM_DT));
         }
 
@@ -356,6 +367,84 @@ namespace Halcyon
             CameraRig.Snap();
             accumulator = 0;
             Career.Say($"Travelled to {p.Name}");
+            if (Gps.Active) Gps.Plan(x, z);
+        }
+
+        /// <summary>A GPS route to a place or landmark (the proving ground: its paddock).</summary>
+        public void SetRoute(Place p)
+        {
+            double x = p.X, z = p.Z;
+            if (p.Kind == "track")
+            {
+                x = Sim.World.Proving.spawnX;
+                z = Sim.World.Proving.spawnZ;
+            }
+            SetRoute(x, z, p.Name);
+        }
+
+        /// <summary>A GPS route over the roads from the car to (x, z), reached at the road nearest it.</summary>
+        public void SetRoute(double x, double z, string name)
+        {
+            if (Racing) return;
+            var v = Sim.Player.vehicle;
+            if (Gps.Set(v.pos.x, v.pos.z, x, z, name)) Career.Say($"GPS: {name}, {Gps.Distance(Gps.Route.Length)} by road");
+            else Career.Say($"No road leads to {name}");
+        }
+
+        public void ClearRoute()
+        {
+            if (!Gps.Active) return;
+            Gps.Clear();
+            Career.Say("GPS route cleared");
+        }
+
+        /// <summary>The GPS follows the car every frame (not while racing: races keep their own route).</summary>
+        void FollowRoute(float dt)
+        {
+            if (Gps == null || !Gps.Active || races.Racing) return;
+            var v = Sim.Player.vehicle;
+            string name = Gps.TargetName;
+            if (Gps.Update(v.pos.x, v.pos.z, v.fwd.x, v.fwd.z, dt)) Career.Say($"You have arrived at {name}");
+        }
+
+        /// <summary>The GPS at the top of the screen: the next turn and how far to it, or how far to go.</summary>
+        void DrawGps()
+        {
+            var g = Gps;
+            if (g == null || !g.Active || races.Racing || mapScreen.Open) return;
+            string head, sub;
+            if (g.Route == null)
+            {
+                head = "No road route";
+                sub = $"to {g.TargetName}";
+            }
+            else if (g.OffBy > Core.Gps.OffRoute)
+            {
+                head = "Off the route";
+                sub = $"finding a new way to {g.TargetName}";
+            }
+            else if (g.WrongWay)
+            {
+                head = "Turn around";
+                sub = $"{g.TargetName} · {Core.Gps.Distance(g.Remaining)}";
+            }
+            else if (g.NextTurn(out var t, out double d))
+            {
+                head = $"{(t.Right ? "→" : "←")}  {Core.Gps.Distance(d)}";
+                sub = $"{(t.Keep ? "Keep" : "Turn")} {(t.Right ? "right" : "left")} · {g.TargetName} {Core.Gps.Distance(g.Remaining)}";
+            }
+            else
+            {
+                head = $"↑  {Core.Gps.Distance(g.Remaining)}";
+                sub = $"to {g.TargetName}";
+            }
+            Ui.Begin();
+            float w = 380, x = Ui.W / 2 - w / 2, y = 18;
+            Ui.Panel(new Rect(x, y, w, 80), 0.55f);
+            Ui.Fill(new Rect(x, y, 5, 80), GpsRibbon.Tint);
+            GUI.Label(new Rect(x + 22, y + 4, w - 34, 46), head, Ui.Title);
+            GUI.Label(new Rect(x + 22, y + 50, w - 34, 26), sub, Ui.Small);
+            Ui.End();
         }
 
         /// <summary>
@@ -448,6 +537,7 @@ namespace Halcyon
             {
                 GUI.Label(new Rect(14, 50, 900, 22), Career.Notice, help);
             }
+            DrawGps();
             if (Paused)
             {
                 var p = new GUIStyle(big) { alignment = TextAnchor.MiddleCenter };

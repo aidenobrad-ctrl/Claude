@@ -34,7 +34,7 @@ steps.push(['island', run('Halcyon.World.Tests')]);
 if (quick) {
   steps.push(['career: saves', run('Halcyon.Career.Tests', 'save')]);
   steps.push(['career: parts', run('Halcyon.Career.Tests', 'parts')]);
-  for (const mode of ['clock', 'weather', 'sim', 'festival', 'discover', 'highcrest']) steps.push([`island life: ${mode}`, run('Halcyon.Sim.Tests', mode)]);
+  for (const mode of ['clock', 'weather', 'sim', 'festival', 'discover', 'highcrest', 'gps']) steps.push([`island life: ${mode}`, run('Halcyon.Sim.Tests', mode)]);
   steps.push(['AI: sprints', run('Halcyon.AI.Tests', 'sprint')]);
 } else {
   steps.push(['career', run('Halcyon.Career.Tests')]);

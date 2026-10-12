@@ -97,6 +97,9 @@ namespace Halcyon.Core
 
         public bool Found(Place p) => P.Found.Contains(p.Id);
 
+        /// <summary>Whether sample i of a road edge has been driven.</summary>
+        public bool Driven(int edge, int i) => Get(driven, edgeStart[edge] + i);
+
         public bool Uncovered(double x, double z)
         {
             int i = (int)Math.Floor((x + W.WorldHalf) / (2 * W.WorldHalf) * FogN), j = (int)Math.Floor((z + W.WorldHalf) / (2 * W.WorldHalf) * FogN);

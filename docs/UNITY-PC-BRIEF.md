@@ -24,10 +24,14 @@ layout and how everything was verified.
     version's 240 Hz physics. That port is bit-exact with the TypeScript.
   - **G** opens the garage on a turntable: your cars, the dealer, upgrades, tuning (graphs,
     auto-tune, share codes), the test track and career data. **T** opens festival events
-    with class limits: the Proving Ground GP and four island sprints against AI rivals
-    matched to your car's PI. Results pay credits and XP into a career saved as JSON. The
-    AI passes a 300-race head-to-head tournament headless (`dotnet/Halcyon.AI.Tests`), and
-    the career layer has its own suite (`dotnet/Halcyon.Career.Tests`).
+    with class limits: the Proving Ground GP, island sprints, the Highcrest Hill Climb, a
+    night race and a storm, against AI rivals matched to your car's PI. Results pay credits
+    and XP into a career saved as JSON. The AI passes a 300-race head-to-head tournament
+    headless (`dotnet/Halcyon.AI.Tests`), and the career layer has its own suite
+    (`dotnet/Halcyon.Career.Tests`).
+  - The island lives (M6): a 24-minute day with night lighting, weather that wets the
+    roads, traffic, landmarks, discoveries, a map (**M**) with fog of war, fast travel and
+    a GPS (`dotnet/Halcyon.Sim.Tests`).
   - Every script compiles against Unity reference assemblies, but **it has never run in a
     real Unity Editor**. That is your first job.
 - `blender/build_car.py`: generates the cars in Blender 5.1 (`--car all`). It has been
@@ -98,6 +102,21 @@ system settings or close the user's apps.
    Then race an event your car is too fast for (it should refuse with the reason), one it
    may enter, and check the payout on the results screen. Quit and restart: the career
    should come back as you left it (`%USERPROFILE%\AppData\LocalLow\<company>\<product>\halcyon-career.json`).
+6. The M6 living island, all compile-checked only so far (results headless are in
+   `docs/PLAYTEST.md`, M6):
+   - Press `]` through a whole day. Check the sunrise and sunset colours, the moon (the
+     sky's disc at night), lit windows and lamps at night, and that the headlights come on at dusk.
+   - Press `\` through the skies: clouds, rain (streaks, splashes, the sound), the wet
+     road's sheen and the spray from the wheels, a storm's lightning and thunder, and fog.
+     Drive in the rain and feel the grip drop.
+   - Drive among the traffic: cars should keep their lanes, stop behind you, go round you
+     when you stop, and pass each other on the dual carriageways.
+   - Press **M**: the fog of war, the roads you have driven (blue), places and landmarks.
+     Pick a destination and press Enter: a violet route on the map, the minimap and the
+     road, and the next turn at the top of the screen. Click the map for a route to there.
+     Fast travel (F twice) to a place you have found.
+   - Visit a landmark (the lighthouse beam turns, the turbines spin, the mast blinks).
+   - Race the Highcrest Hill Climb, the Proving Ground by Night and the Storm Run.
 
 ## Step 3 — make it look insane
 

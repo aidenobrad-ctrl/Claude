@@ -19,6 +19,9 @@ exactly, and adds Unity rendering and Blender-made cars on top.
    your cars, buy and sell at the dealer, and copy your career to the clipboard. Press
    **T** for festival events: each has a class limit, your rivals are matched to your
    car's PI, and results pay credits and XP.
+5. The island lives: a day lasts 24 minutes, the weather changes by itself (rain wets the
+   roads, and wet roads grip less), and traffic drives on the right. Press **M** for the
+   map: pick a destination for the GPS, or fast travel to a place you have found.
 
 **Controls**
 
@@ -35,10 +38,14 @@ exactly, and adds Unity rendering and Blender-made cars on top.
 | Esc | Pause |
 | G | Garage (←/→ car, ↑/↓ choose, Enter select, Esc back; in tuning, ←/→ adjust, 1-4 auto-tune, C/V copy/paste a tune code, R reset, Enter test track) |
 | T | Events (↑/↓ event, ←/→ rivals' difficulty, Enter race, Esc back); during a race hold T for a second to leave |
+| M | Map (↑/↓ destination, Enter GPS route, F twice fast travel, X clear the route, click the map for a route to there, right-click to clear, M or Esc close) |
+| [ / ] | Clock an hour back / forward |
+| \ | Weather: each sky in turn, then back to dynamic (held during races) |
 
 A gamepad works through the Input System: stick, triggers, A for handbrake, B/X to
-shift, Y for camera, LB for the garage, d-pad up for events. In menus the d-pad or stick
-moves, A picks and B goes back.
+shift, Y for camera, LB for the garage, d-pad up for events, d-pad down for the map. In
+menus the d-pad or stick moves, A picks and B goes back; on the map X fast travels and Y
+clears the route.
 
 **Screenshots** (for the playtest loop):
 
@@ -58,13 +65,17 @@ village.
 | `unity/Assets/Halcyon/Core/` | Pure C# simulation (no UnityEngine): deterministic math, ground, colliders, island loader, the car physics, the island simulation |
 | `unity/Assets/Halcyon/Core/AI/` | Race routes, racing lines, car abilities, speed profiles, the AI driver, races and the event catalogue (design in `docs/DESIGN.md`) |
 | `unity/Assets/Halcyon/Core/Career/` | The performance index, parts, prices and payouts, the player's profile and saves, tuning sliders, share codes, the test track and the auto-tune |
+| `unity/Assets/Halcyon/Core/World/Weather.cs` | The clock (sun, moon, daylight) and the weather (skies, rain, fog, wind, lightning, road wetness) |
+| `unity/Assets/Halcyon/Core/AI/Traffic.cs` | Traffic: ghosts far away, physics cars near the player, lanes, junctions, overtaking |
+| `unity/Assets/Halcyon/Core/World/Landmarks.cs`, `Discoveries.cs`, `Gps.cs` | The five landmarks; places, roads driven, the fog of war and fast travel; the GPS |
 | `unity/Assets/Halcyon/Scripts/World/` | Runtime builders, listed below |
 | `unity/Assets/Halcyon/Scripts/Driving/` | The car rig, chase camera and input, listed below |
 | `unity/Assets/Halcyon/Scripts/Game/HalcyonGame.cs` | Boots everything when Play is pressed, runs the 240 Hz loop, draws the HUD, capture mode |
 | `unity/Assets/Halcyon/Scripts/Game/Garage.cs`, `Workshop.cs` | The garage: your cars, the dealer, upgrades, tuning (graphs, auto-tune, share codes), the test track, career data |
 | `unity/Assets/Halcyon/Scripts/Game/Career.cs` | The career save in `Application.persistentDataPath`: autosave, backup, recovery, clipboard export and import |
 | `unity/Assets/Halcyon/Scripts/Game/Ui.cs` | Shared IMGUI styles, panels, rows and plots, scaled to the screen |
-| `unity/Assets/Halcyon/Scripts/Game/RaceController.cs` | The events menu with class limits, PI-matched AI grids, race HUD (countdown, position, laps, gaps, wrong way), results and payouts |
+| `unity/Assets/Halcyon/Scripts/Game/RaceController.cs` | The events menu with class limits and conditions, PI-matched AI grids, race HUD (countdown, position, laps, gaps, wrong way), results and payouts |
+| `unity/Assets/Halcyon/Scripts/Game/MapScreen.cs` | The map (fog of war, roads driven, places, the GPS route, fast travel) and the minimap |
 | `unity/Assets/Halcyon/Scripts/Editor/` | Project setup (URP, scene, build settings) and command-line builds |
 | `unity/Assets/Halcyon/Art/Resources/Cars/` | Car models from Blender (`blender/build_car.py`) |
 | `blender/` | The Blender car generator, run headless or in Blender 5.1 |
@@ -79,6 +90,11 @@ village.
 - Water: sea, lakes and rivers.
 - Trees: 185k, GPU-instanced with near and far meshes.
 - Buildings, the festival, and sun/sky/fog/post-processing.
+- `SkyDirector`: the sun and moon on the clock, sky colours, clouds, ambient light, fog, a
+  reflection probe, rain and splashes, lightning and thunder, wet road materials, and
+  lit windows and lamps at night (`ProceduralAudio` makes the rain and thunder sounds).
+- `LandmarkBuilder`: the mast with blinking lights, the lighthouse with its turning beam,
+  the wind turbines, the arch and the observatory.
 
 **Car rig, camera and input** (`Scripts/Driving/`):
 
@@ -88,6 +104,10 @@ village.
   LODGroup.
 - The chase camera is a port of the web rig.
 - Input comes from the keyboard and gamepad.
+- Headlights (with a spotlight within 180 m) come on at dusk; spray rises from the
+  wheels on wet roads.
+- `TrafficView` gives each traffic car a pooled rig in an everyday colour.
+- `GpsRibbon` draws the GPS route on the road: violet chevrons in the right-hand lane.
 
 **Checks in `dotnet/`**:
 
@@ -114,6 +134,11 @@ village.
 - `Halcyon.Career.Tests`: the PI of every car, parts and prices, payouts, a career saved
   and loaded, every slider against the physics, share codes and the auto-tune
   (`-- pi`, `-- parts`, `-- save`, `-- tune`). Results are in `docs/PLAYTEST.md` (M5).
+- `Halcyon.Sim.Tests`: the living island: the clock (`-- clock`), the weather
+  (`-- weather`), the simulation's wiring (`-- sim`), the AI in the wet (`-- wetrace`),
+  events with conditions (`-- festival`), traffic (`-- traffic`), the Highcrest hill climb
+  (`-- highcrest`), discoveries and fast travel (`-- discover`) and the GPS (`-- gps`).
+  Results are in `docs/PLAYTEST.md` (M6).
 - `Halcyon.Unity` and `Halcyon.UnityEditor`: compile every Unity script against UnityEngine
   and UnityEditor reference assemblies (`node tools/fetch-unity-ref.mjs`). The input-system
   code path compiles only in Unity.
@@ -201,6 +226,10 @@ and texture metas are left to Unity, because their import settings live there.
 - [x] 12-car roster (bit-exact physics), Blender models with LODs, garage
 - [x] AI (racing lines, controller, personalities, racecraft), races, 5 events, race HUD;
   tournament 98% headless
-- [ ] First run in a real Unity Editor: fix whatever only Unity reports, play the garage and
-  a race, then look at screenshots
+- [x] Career: measured PI, parts, tuning, the dealer, saves, PI-matched rivals (M5)
+- [x] The living island: day and night, weather and wet roads, traffic, the rebuilt
+  Highcrest pass, landmarks, discoveries, the map with fast travel, and the GPS (M6;
+  headless-tested, Unity compile-checked)
+- [ ] First run in a real Unity Editor: fix whatever only Unity reports, play the garage, a
+  race, a night and a storm, then look at screenshots
 - [ ] CC0 PBR textures, a real water shader, Blender trees, audio, more event types

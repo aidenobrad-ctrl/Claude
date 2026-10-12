@@ -43,6 +43,10 @@ namespace Halcyon.Core
         public double SwerveLeft, SwerveT, Swerve;
         /// <summary>Seconds waiting at a junction (after a while it goes anyway).</summary>
         public double Yielding;
+        /// <summary>Seconds before it may change lane again.</summary>
+        public double LaneHold;
+        /// <summary>Seconds left backing up (too close behind something to steer round it).</summary>
+        public double BackUp;
         /// <summary>For the presentation: a stable 0 to 1 number (paint).</summary>
         public double Look;
         public bool Physics => Car != null;
@@ -58,7 +62,7 @@ namespace Halcyon.Core
         public double Near = 220, Far = 280;
         public bool Suspended { get; private set; }
         /// <summary>Promotions, demotions, spawns, despawns and lane resets so far (for tests and the HUD).</summary>
-        public int Promoted, Demoted, Spawned, Removed, Rescued;
+        public int Promoted, Demoted, Spawned, Removed, Rescued, LaneChanges;
         /// <summary>Debug notes (null: off).</summary>
         public Action<string> Log;
 
@@ -381,11 +385,82 @@ namespace Halcyon.Core
             return best;
         }
 
+        /// <summary>
+        /// Two lanes each way: pull out into the passing lane (lane 0, by the centre line) to pass
+        /// something slower within 50 m, and move back to the right once the passing lane ahead is
+        /// clear. The other lane must be clear from 10 m behind to 70 m ahead; 8 s between changes.
+        /// </summary>
+        void ChooseLane(TrafficCar c, double cruise, double gap, double vAhead, double dt)
+        {
+            var e = w.Edges[c.Edge];
+            c.LaneHold -= dt;
+            if (LanesEachWay(e.info) < 2 || c.LaneHold > 0 || c.SwerveT > 0) return;
+            int other = -1;
+            if (c.Lane > 0 && gap < 50 && vAhead < cruise - 3) other = c.Lane - 1;
+            else if (c.Lane == 0 && (gap > 90 || vAhead > cruise + 1)) other = 1;
+            if (other < 0) return;
+            if (!LaneClear(c, LaneOffset(e.info, other) - LaneOffset(e.info, c.Lane))) return;
+            c.Lane = other;
+            c.LaneHold = 8;
+            LaneChanges++;
+        }
+
+        /// <summary>Nothing within 9 m behind the car (room to back up).</summary>
+        bool BehindClear(TrafficCar c)
+        {
+            var v = c.Vehicle;
+            double fx = v.fwd.x, fz = v.fwd.z;
+            foreach (var car in sim.Cars)
+            {
+                if (car.vehicle == v) continue;
+                double dx = car.vehicle.pos.x - v.pos.x, dz = car.vehicle.pos.z - v.pos.z;
+                double lon = dx * fx + dz * fz, lat = dx * -fz + dz * fx;
+                if (lon < 0 && lon > -9.5 && Math.Abs(lat) < 2.4) return false;
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Room to move into the lane offset metres to the side: nobody in it within a gap that grows
+        /// with the closing speed (behind: 8 m plus 3 s of a faster car's gain; ahead: 12 m plus 3 s of ours).
+        /// </summary>
+        bool LaneClear(TrafficCar c, double offset)
+        {
+            var v = c.Vehicle;
+            double fx = v.fwd.x, fz = v.fwd.z;
+            double mine = c.Physics ? v.vLong : c.Speed;
+            bool Blocks(Vehicle o, double speed)
+            {
+                double dx = o.pos.x - v.pos.x, dz = o.pos.z - v.pos.z;
+                double lon = dx * fx + dz * fz, lat = dx * -fz + dz * fx;
+                if (Math.Abs(lat - offset) > 2.4 || lon < -60 || lon > 90) return false;
+                if (lon < 0) return -lon < 8 + Math.Max(0, speed - mine) * 3;
+                return lon < 12 + Math.Max(0, mine - speed) * 3;
+            }
+            foreach (var car in sim.Cars)
+            {
+                if (car.vehicle == v) continue;
+                var o = car.vehicle;
+                if (Blocks(o, o.vel.x * fx + o.vel.z * fz)) return false;
+            }
+            foreach (var o in Cars)
+            {
+                if (o.Physics || o == c) continue;
+                if (Blocks(o.Vehicle, o.Speed)) return false;
+            }
+            return true;
+        }
+
         void Glide(TrafficCar c, double dt)
         {
             var v = c.Vehicle;
             LanePoint(c.Edge, c.Dir, c.Lane, c.S, out double x, out _, out double z, out double tx, out double tz);
-            double target = Math.Min(RoadSpeed(c, c.Speed), FollowSpeed(GapOnPath(c, 0, out double va, out _), va, c.Speed));
+            double gap0 = GapOnPath(c, 0, out double va, out _);
+            // Far from the player a ghost may change lane on the spot (nobody sees the jump).
+            var pv = sim.Player.vehicle;
+            if ((pv.pos.x - x) * (pv.pos.x - x) + (pv.pos.z - z) * (pv.pos.z - z) > 400 * 400)
+                ChooseLane(c, w.Edges[c.Edge].info.traffic * c.Cruise, gap0, va, dt);
+            double target = Math.Min(RoadSpeed(c, c.Speed), FollowSpeed(gap0, va, c.Speed));
             c.Speed += Math.Max(-Decel * 2 * dt, Math.Min(1.5 * dt, target - c.Speed));
             c.Speed = Math.Max(0, c.Speed);
             c.S += c.Speed * dt;
@@ -466,6 +541,7 @@ namespace Halcyon.Core
             double latNow = (v.pos.x - lx) * -ltz + (v.pos.z - lz) * ltx; // + right of the lane centre
             double target = RoadSpeed(c, speed);
             double gap = GapOnPath(c, shift, out double va, out double la);
+            ChooseLane(c, e.info.traffic * c.Cruise, gap, va, dt);
             target = Math.Min(target, FollowSpeed(gap, va, speed));
             if (heading < 0.5 || (offLane > 3 && c.SwerveT <= 0)) target = Math.Min(target, 4); // pointing the wrong way or off the road: creep back
             // Stopped behind something that is not moving: after a few seconds, go round it on
@@ -482,10 +558,30 @@ namespace Halcyon.Core
                 double first = rightOk && (!leftOk || right2 < -left2) ? right2 : left2;
                 double second = first == right2 ? left2 : right2;
                 bool secondOk = first == right2 ? leftOk : rightOk;
-                bool firstClear = (rightOk || leftOk) && Clear(c, first - latNow), secondClear = !firstClear && secondOk && Clear(c, second - latNow);
+                // Only a move the car can make before it gets there: sideways at most 0.7 of the room ahead.
+                double room = Math.Max(0, gap - 3) * 0.7;
+                bool firstClear = (rightOk || leftOk) && Math.Abs(first - latNow) <= room && Clear(c, first - latNow);
+                bool secondClear = !firstClear && secondOk && Math.Abs(second - latNow) <= room && Clear(c, second - latNow);
+                if (!firstClear && !secondClear && gap < 9 && BehindClear(c))
+                {
+                    // Too close to steer round it: back up a couple of metres first.
+                    c.BackUp = 2.5;
+                    c.Blocked = 0;
+                }
                 Log?.Invoke($"car {c.Id} blocked at ({v.pos.x:0.0},{v.pos.z:0.0}) lane {c.Lane} off {myOff:0.0} latNow {latNow:0.0} gap {gap:0.0} la {la:0.0} -> right {right2:0.0} ok {rightOk} left {left2:0.0} ok {leftOk}; first {first:0.0} clear {firstClear}, second {second:0.0} clear {secondClear}");
                 if (firstClear) Begin(first, gap);
                 else if (secondClear) Begin(second, gap);
+            }
+            if (c.BackUp > 0)
+            {
+                // Reverse on the brake pedal (the automatic box selects reverse at a standstill), straight back.
+                c.BackUp -= dt;
+                inp.steer = 0;
+                inp.throttle = 0;
+                inp.handbrake = 0;
+                inp.brake = c.BackUp > 0 && BehindClear(c) ? 0.35 : 0;
+                if (c.BackUp <= 0) inp.handbrake = 1;
+                return;
             }
             // Round it slowly: a crawl until it is half way across, then walking pace.
             if (c.SwerveT > 0) target = Math.Min(target, Math.Abs(latNow - shift) > Math.Abs(shift) / 2 ? 2.5 : 6);

@@ -75,7 +75,8 @@ export async function shot(page, name) {
   fs.mkdirSync(shotDir, { recursive: true });
   await page.evaluate(() => window.__game.render());
   const file = path.join(shotDir, `${name}.png`);
-  await page.screenshot({ path: file });
+  // SwiftShader can take a while over an ultra frame.
+  await page.screenshot({ path: file, timeout: 240000 });
   return file;
 }
 

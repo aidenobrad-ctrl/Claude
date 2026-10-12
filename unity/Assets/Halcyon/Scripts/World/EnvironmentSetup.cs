@@ -101,17 +101,58 @@ namespace Halcyon
             Param(dof, "focalLength", Mathf.Clamp(focalLength, 1f, 300f));
         }
 
-        /// <summary>A property of the URP pipeline asset in use (render scale, shadow distance, MSAA), if there is one.</summary>
+        /// <summary>
+        /// Set a property of the URP asset in use (render scale, shadow distance, MSAA), if there is one. The asset is the project's own, and
+        /// in the Editor a change to it outlasts Play mode, so the first value of each
+        /// property is kept and <see cref="RestorePipeline"/> puts them back.
+        /// </summary>
         public static void SetPipeline(string name, object value)
         {
             try
             {
-                Set(GraphicsSettings.currentRenderPipeline, name, value);
+                var rp = GraphicsSettings.currentRenderPipeline;
+                if (rp == null) return;
+                if (!pipelineBefore.ContainsKey(name))
+                {
+                    var before = Get(rp, name);
+                    if (before != null) pipelineBefore[name] = before;
+                }
+                Set(rp, name, value);
             }
             catch (Exception e)
             {
                 Debug.LogWarning($"Halcyon: could not set {name}: {e.Message}");
             }
+        }
+
+        static readonly System.Collections.Generic.Dictionary<string, object> pipelineBefore = new System.Collections.Generic.Dictionary<string, object>();
+
+        /// <summary>The URP asset's settings as they were before the game changed them (on quit, and leaving Play mode).</summary>
+        public static void RestorePipeline()
+        {
+            var rp = GraphicsSettings.currentRenderPipeline;
+            if (rp == null) return;
+            foreach (var kv in pipelineBefore)
+            {
+                try
+                {
+                    Set(rp, kv.Key, kv.Value);
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning($"Halcyon: could not restore {kv.Key}: {e.Message}");
+                }
+            }
+            pipelineBefore.Clear();
+        }
+
+        static object Get(object o, string name)
+        {
+            var t = o.GetType();
+            var p = t.GetProperty(name, BindingFlags.Public | BindingFlags.Instance);
+            if (p != null && p.CanRead) return p.GetValue(o);
+            var f = t.GetField(name, BindingFlags.Public | BindingFlags.Instance);
+            return f?.GetValue(o);
         }
 
         static void TryUrpPost(Camera cam, Transform parent)

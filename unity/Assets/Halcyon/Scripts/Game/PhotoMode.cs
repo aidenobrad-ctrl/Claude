@@ -191,6 +191,7 @@ namespace Halcyon
             {
                 lastShot = path;
                 shotAt = Time.unscaledTime;
+                GameSound.Instance?.Ui(Core.Audio.UiSound.Photo);
             }
         }
 

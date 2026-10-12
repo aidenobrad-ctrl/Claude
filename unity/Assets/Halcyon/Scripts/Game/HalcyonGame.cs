@@ -187,7 +187,15 @@ namespace Halcyon
             races = RaceController.Create(this, world);
             pause = PauseMenu.Create(this, world);
             photo = PhotoMode.Create(this, world);
-            sound = GameSound.Create(this, world);
+            try
+            {
+                sound = GameSound.Create(this, world);
+            }
+            catch (System.Exception e)
+            {
+                // No audio device, or audio disabled: the game plays silent.
+                Debug.LogWarning("Halcyon: no sound: " + e.Message);
+            }
             ApplySettings();
             // A career from before the accolades may already have some.
             CheckAccolades();
@@ -332,7 +340,11 @@ namespace Halcyon
         void OnApplicationQuit()
         {
             Career?.SaveNow();
+            EnvironmentSetup.RestorePipeline();
         }
+
+        // Leaving Play mode in the Editor destroys the game: the project's URP asset gets its settings back.
+        void OnDestroy() => EnvironmentSetup.RestorePipeline();
 
         void Update()
         {
@@ -460,7 +472,7 @@ namespace Halcyon
                     if (e.kind == SimEventKind.Impact && e.carId == Sim.Player.id)
                     {
                         CameraRig.Impact((float)System.Math.Min(1, e.value / 20000));
-                        sound.Impact(e.value);
+                        sound?.Impact(e.value);
                     }
                     else if (e.kind == SimEventKind.Lightning) sky.Lightning(e.x, e.z, e.value);
                 }
@@ -521,7 +533,7 @@ namespace Halcyon
         {
             lastStunt = r;
             lastStuntAt = Time.unscaledTime;
-            sound.Ui(r.Stars > 0 ? Core.Audio.UiSound.Reward : Core.Audio.UiSound.Checkpoint);
+            sound?.Ui(r.Stars > 0 ? Core.Audio.UiSound.Reward : Core.Audio.UiSound.Checkpoint);
             if (r.Best || r.Xp > 0) Career.MarkDirty();
             if (r.Stars > 0) CheckAccolades();
         }
@@ -702,7 +714,7 @@ namespace Halcyon
         /// </summary>
         void WorldKeys(DriverInput.MenuKeys m, bool racing)
         {
-            if (m.radio) Career.Say(GameSound.StationName(sound.CycleStation()));
+            if (m.radio && sound != null) Career.Say(GameSound.StationName(sound.CycleStation()));
             if (m.hourBack || m.hourForward)
             {
                 Sim.Clock.Set(System.Math.Floor(Sim.Clock.Hours) + (m.hourForward ? 1 : -1));

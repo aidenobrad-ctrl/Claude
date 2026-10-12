@@ -27,6 +27,8 @@ namespace Halcyon
         public bool MenuOpen { get; private set; }
         public bool Busy { get; private set; }
         int pick, difficulty = (int)Difficulty.Pro;
+        /// <summary>The rivals' difficulty of the race under way (pays its finish).</summary>
+        Difficulty raceDifficulty = Difficulty.Pro;
         int seed = 1;
         int playerPi;
         bool paid;
@@ -226,6 +228,8 @@ namespace Halcyon
             var run = c != null ? RunOf(c) : null;
             // A championship keeps its rivals: the same seed and difficulty every round.
             var d = run != null ? run.Rivals : (Difficulty)difficulty;
+            // Pay at the difficulty raced (a championship's own), not whatever the menu shows by the finish.
+            raceDifficulty = d;
             uint fieldSeed = run != null ? run.Seed : (uint)(seed * 7 + 1);
             int count = ev.Ghost ? 0 : ev.GridSize - 1;
             var limit = c != null ? c.ClassLimit : ev.ClassLimit;
@@ -342,7 +346,7 @@ namespace Halcyon
             var me = Session.PlayerEntrant;
             int pos = PlayerPlace();
             var cls = Performance.ClassOf(playerPi);
-            paidCredits = Economy.Payout(ev.Distance, pos, cls, (Difficulty)difficulty);
+            paidCredits = Economy.Payout(ev.Distance, pos, cls, raceDifficulty);
             paidXp = Economy.RaceXp(ev.Distance, pos);
             P.AddRace(paidCredits, paidXp, pos == 1);
             Accolades.RecordRace(P, ev, pos, pos == 1);
@@ -471,7 +475,8 @@ namespace Halcyon
             if (me.Finished && !finishSounded)
             {
                 finishSounded = true;
-                snd.Ui(me.Position == 1 ? Core.Audio.UiSound.Reward : Core.Audio.UiSound.Select);
+                // A time trial has no rivals: first means beating the ghost.
+                snd.Ui(PlayerPlace() == 1 ? Core.Audio.UiSound.Reward : Core.Audio.UiSound.Select);
             }
         }
 

@@ -149,9 +149,14 @@ namespace Halcyon
             rainAudio.loop = true;
             rainAudio.spatialBlend = 0;
             rainAudio.volume = 0;
+            // Ahead of the engines' many voices (GameSound): weather must not be the one Unity drops.
+            rainAudio.priority = 16;
             rainAudio.Play();
             thunderAudio = gameObject.AddComponent<AudioSource>();
             thunderAudio.spatialBlend = 0;
+            thunderAudio.priority = 16;
+            // A new output device resets Unity's audio and stops what was playing.
+            AudioSettings.OnAudioConfigurationChanged += OnAudioReset;
             thunderNear = new[] { ProceduralAudio.Thunder(11, true), ProceduralAudio.Thunder(12, true) };
             thunderFar = new[] { ProceduralAudio.Thunder(21, false), ProceduralAudio.Thunder(22, false), ProceduralAudio.Thunder(23, false) };
             Update();
@@ -441,6 +446,13 @@ namespace Halcyon
         void OnDestroy()
         {
             if (Instance == this) Instance = null;
+            AudioSettings.OnAudioConfigurationChanged -= OnAudioReset;
+        }
+
+        /// <summary>After an audio device change Unity stops every source: the rain plays on.</summary>
+        void OnAudioReset(bool deviceChanged)
+        {
+            if (rainAudio != null && !rainAudio.isPlaying) rainAudio.Play();
         }
     }
 }

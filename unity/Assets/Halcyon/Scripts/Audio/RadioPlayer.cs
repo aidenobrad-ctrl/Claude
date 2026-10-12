@@ -3,10 +3,10 @@
 // a queue, and the audio thread plays the queue through OnAudioFilterRead on
 // a source looping silence. Switching stations clears the queue and plays a
 // moment of tuning static; a new song's name reaches the HUD when it starts.
+// Played bars go back to the worker to be filled again.
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
-using System.Threading.Tasks;
 using Halcyon.Core.Audio;
 using UnityEngine;
 
@@ -17,11 +17,13 @@ namespace Halcyon
         sealed class Chunk
         {
             public float[] stereo;
+            public int frames;
             public string song;
         }
 
         readonly object gate = new object();
         readonly Queue<Chunk> queue = new Queue<Chunk>();
+        readonly Stack<Chunk> spare = new Stack<Chunk>();
         int queuedFrames;
         /// <summary>The station asked for (null: off) and a counter that changes with each ask.</summary>
         RadioStation wanted;
@@ -33,11 +35,23 @@ namespace Halcyon
         int staticLeft;
         readonly ConcurrentQueue<string> songs = new ConcurrentQueue<string>();
         readonly System.Random noise = new System.Random(7);
-        Task worker;
+        Thread worker;
         int rate = 48000;
+        AudioSource carrier;
 
         public float Volume { set => volume = value; }
+        /// <summary>A new song's "station · artist – title", on the main thread.</summary>
         public System.Action<string> OnNewSong;
+
+        /// <summary>The output's sample rate (48 kHz if Unity reports none, as with audio disabled).</summary>
+        public static int OutputRate
+        {
+            get
+            {
+                int r = AudioSettings.outputSampleRate;
+                return r > 0 ? r : 48000;
+            }
+        }
 
         public static RadioPlayer Create(Transform parent)
         {
@@ -47,30 +61,43 @@ namespace Halcyon
             src.spatialBlend = 0;
             src.loop = true;
             src.playOnAwake = false;
-            int sr = AudioSettings.outputSampleRate;
-            // A second of silence to loop: the filter below writes the music over it.
-            src.clip = AudioClip.Create("Radio carrier", sr, 2, sr, false);
-            src.clip.SetData(new float[sr * 2], 0);
+            // The radio is the one sound that must never be dropped for another voice.
+            src.priority = 0;
+            // A second of silence to loop: the filter below writes the music over it (at the output's rate, whatever the clip's).
+            src.clip = AudioClip.Create("Radio carrier", 48000, 2, 48000, false);
+            src.clip.SetData(new float[48000 * 2], 0);
             var r = go.AddComponent<RadioPlayer>();
-            r.rate = sr;
+            r.carrier = src;
             src.Play();
             return r;
+        }
+
+        /// <summary>After Unity's audio reset (a new output device) the carrier has stopped: play it again (then tune again at the new rate).</summary>
+        public void Restart()
+        {
+            if (carrier != null && !carrier.isPlaying) carrier.Play();
         }
 
         /// <summary>Tune to a station (null: off).</summary>
         public void Play(StationId? station, int sampleRate)
         {
-            rate = sampleRate;
+            if (sampleRate <= 0) sampleRate = 48000;
             lock (gate)
             {
-                queue.Clear();
+                rate = sampleRate;
+                while (queue.Count > 0) spare.Push(queue.Dequeue());
+                if (current != null) spare.Push(current);
                 queuedFrames = 0;
                 current = null;
                 wanted = station.HasValue ? new RadioStation(station.Value, sampleRate, System.Environment.TickCount) : null;
                 epoch++;
                 staticLeft = station.HasValue ? (int)(sampleRate * 0.28) : 0;
             }
-            if (worker == null) worker = Task.Run(Render);
+            if (worker == null)
+            {
+                worker = new Thread(Render) { IsBackground = true, Name = "Halcyon radio" };
+                worker.Start();
+            }
         }
 
         /// <summary>The worker: keep about three seconds of the station rendered ahead.</summary>
@@ -78,39 +105,63 @@ namespace Halcyon
         {
             RadioStation station = null;
             int seen = -1;
+            bool broken = false;
             while (running)
             {
                 bool need;
                 int mine;
+                Chunk chunk = null;
                 lock (gate)
                 {
                     if (seen != epoch)
                     {
                         station = wanted;
                         seen = epoch;
+                        broken = false;
                     }
                     mine = epoch;
-                    need = station != null && queuedFrames < rate * 3;
+                    need = station != null && !broken && queuedFrames < rate * 3;
+                    if (need && spare.Count > 0) chunk = spare.Pop();
                 }
                 if (!need)
                 {
                     Thread.Sleep(40);
                     continue;
                 }
-                var bar = station.RenderBar();
-                var stereo = new float[bar.l.Length * 2];
-                for (int i = 0; i < bar.l.Length; i++)
+                RadioBar bar;
+                try
+                {
+                    bar = station.RenderBar();
+                }
+                catch (System.Exception e)
+                {
+                    // A station that fails goes quiet (said once); the next tune starts afresh.
+                    broken = true;
+                    Debug.LogWarning("Halcyon: the radio stopped: " + e.Message);
+                    if (chunk != null) lock (gate) spare.Push(chunk);
+                    continue;
+                }
+                int frames = bar.l.Length;
+                chunk ??= new Chunk();
+                if (chunk.stereo == null || chunk.stereo.Length < frames * 2) chunk.stereo = new float[frames * 2];
+                var stereo = chunk.stereo;
+                for (int i = 0; i < frames; i++)
                 {
                     stereo[2 * i] = bar.l[i];
                     stereo[2 * i + 1] = bar.r[i];
                 }
-                var chunk = new Chunk { stereo = stereo, song = bar.newSong && !bar.ident ? $"{station.Info.name} · {bar.artist} – {bar.title}" : null };
+                chunk.frames = frames;
+                chunk.song = bar.newSong && !bar.ident ? $"{station.Info.name} · {bar.artist} – {bar.title}" : null;
                 lock (gate)
                 {
                     // The station changed while this bar rendered: drop it.
-                    if (mine != epoch) continue;
+                    if (mine != epoch)
+                    {
+                        spare.Push(chunk);
+                        continue;
+                    }
                     queue.Enqueue(chunk);
-                    queuedFrames += bar.l.Length;
+                    queuedFrames += frames;
                 }
             }
         }
@@ -136,13 +187,14 @@ namespace Halcyon
                         r += n;
                         staticLeft--;
                     }
-                    if (current == null || pos >= current.stereo.Length)
+                    if (current == null || pos >= current.frames * 2)
                     {
+                        if (current != null) spare.Push(current);
                         current = queue.Count > 0 ? queue.Dequeue() : null;
                         pos = 0;
                         if (current != null)
                         {
-                            queuedFrames -= current.stereo.Length / 2;
+                            queuedFrames -= current.frames;
                             if (current.song != null) songs.Enqueue(current.song);
                         }
                     }

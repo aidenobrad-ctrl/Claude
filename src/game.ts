@@ -29,10 +29,32 @@ import { CarView } from './vehicles/render/car-view';
 import { CARS } from './vehicles/cars';
 import { Hud } from './ui/hud';
 import { TouchControls } from './ui/touch';
-import { HelpCard, PauseMenu } from './ui/menus';
+import { HelpCard, PauseMenu, type QualityChoice } from './ui/menus';
 import { Sim } from './sim';
+import { GameAudio } from './audio/audio';
 
 export { fovForAspect } from './engine/render/fov';
+
+const QUALITY_KEY = 'halcyon-quality';
+const CAR_KEY = 'halcyon-car';
+
+/** The graphics preset chosen in the pause menu, if any ('auto' when left to the device). */
+export function savedQuality(): QualityChoice | null {
+  try {
+    const q = typeof localStorage !== 'undefined' ? localStorage.getItem(QUALITY_KEY) : null;
+    return q === 'auto' || (q !== null && q in QUALITY) ? (q as QualityChoice) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveQuality(q: QualityChoice): void {
+  try {
+    localStorage.setItem(QUALITY_KEY, q);
+  } catch {
+    /* private mode: this visit only */
+  }
+}
 
 export function isMobileDevice(): boolean {
   if (typeof navigator === 'undefined') return false;
@@ -60,6 +82,8 @@ export interface GameOptions {
   touch?: boolean;
   quality?: QualityName;
   time?: TimeOfDay;
+  /** Sound in test mode (tests of the audio itself). */
+  audio?: boolean;
 }
 
 const tmpVel = new THREE.Vector3();
@@ -84,6 +108,7 @@ export class Game {
   readonly touch: TouchControls;
   readonly pause: PauseMenu;
   readonly help: HelpCard;
+  readonly audio: GameAudio;
   readonly terrain: TerrainView;
   readonly tiles: TileSource;
   readonly vegetation: Vegetation;
@@ -109,6 +134,9 @@ export class Game {
   units: 'kmh' | 'mph' = 'kmh';
   /** Maximum internal render pixels; quality presets change this. */
   pixelBudget = 1280 * 720;
+  /** Dynamic resolution: a linear scale on the pixel budget, moved by the frame time. */
+  resScale = 1;
+  private resTimer = 0;
   fatalError: Error | null = null;
   /** True until the island around the player has streamed in (normal play). */
   loading = true;
@@ -194,6 +222,22 @@ export class Game {
     patchTree(this.scene);
 
     this.hud = new Hud(this.uiRoot);
+    // Sound starts on the first key, click or touch (browsers require a gesture); tests stay silent.
+    this.audio = new GameAudio(!opts.test || !!opts.audio);
+    this.audio.onNowPlaying = (text) => this.hud.toast(text, 4);
+    this.audio.setCar(this.sim.player.specId);
+    if (!opts.test) {
+      let saved: string | null = null;
+      try {
+        saved = localStorage.getItem(CAR_KEY);
+      } catch {
+        /* private mode */
+      }
+      if (saved && CARS.some((c) => c.id === saved) && saved !== this.sim.player.specId) {
+        this.sim.changePlayerCar(saved);
+        this.rebuildCarViews();
+      }
+    }
     // A quick coarse map now; a finer one from the worker when it is ready.
     const circuit = this.sim.track.road;
     const mapBase = paintBaseMap(this.sim.world, terrainRasterQuick(this.sim.world, opts.test ? 160 : 96), opts.test ? 160 : 96, circuit);
@@ -211,6 +255,18 @@ export class Game {
       setUnits: (u) => (this.units = u),
       getTouch: () => this.touch.visible,
       setTouch: (v) => this.setTouchVisible(v),
+      getCars: () => CARS.map((c) => ({ id: c.id, name: `${c.make} ${c.model}`, info: `${c.drivetrain} · ${Math.round(Math.max(...c.engine.torque.map(([rpm, nm]) => (rpm * nm) / 9549)))} kW` })),
+      getCar: () => this.sim.player.specId,
+      setCar: (id) => this.changeCar(id),
+      getQuality: () => savedQuality() ?? 'auto',
+      setQuality: (q) => {
+        saveQuality(q);
+        const want = q === 'auto' ? autoQuality(this.mobile, navigator.hardwareConcurrency ?? 4, (navigator as Navigator & { deviceMemory?: number }).deviceMemory) : q;
+        return want !== this.quality.name;
+      },
+      getAudio: () => this.audio.settings,
+      setAudio: (a) => this.audio.setSettings(a),
+      click: () => this.audio.ui('move'),
     });
     this.help = new HelpCard(this.uiRoot);
     this.help.setVisible(!this.test && !this.mobile);
@@ -260,6 +316,22 @@ export class Game {
       return view;
     });
     if (this.views[0] && this.reflections) this.reflections.track(this.views[0].root);
+    this.audio?.setCar(this.sim.player.specId);
+  }
+
+  /** Drive another car where you stand (the pause menu's car picker); remembered for next time. */
+  changeCar(id: string): void {
+    if (id === this.sim.player.specId) return;
+    this.sim.changePlayerCar(id);
+    this.rebuildCarViews();
+    this.rig.snap();
+    this.stepper.reset();
+    try {
+      if (!this.test) localStorage.setItem(CAR_KEY, id);
+    } catch {
+      /* private mode */
+    }
+    this.hud.toast(CARS.find((c) => c.id === id)?.model ?? id);
   }
 
   setTouchVisible(v: boolean): void {
@@ -379,6 +451,9 @@ export class Game {
       case 'map':
         this.toggleMap();
         break;
+      case 'radio':
+        this.hud.toast(this.audio.stationName(this.audio.cycleStation()));
+        break;
       default:
         this.input.tap(a);
     }
@@ -396,12 +471,14 @@ export class Game {
     if (c.pressed.reset) this.resetCar();
     if (c.pressed.lights) for (const v of this.views) v.headlightsOn = !v.headlightsOn;
     if (c.pressed.horn) this.help.setVisible(this.help.el.style.display === 'none');
+    if (c.pressed.radio) this.hud.toast(this.audio.stationName(this.audio.cycleStation()));
     this.rig.lookBack = c.held.lookBack;
   }
 
   /** Open or close the full map; the world pauses while it is open. */
   toggleMap(open = !this.fullmap.visible): void {
     if (open === this.fullmap.visible) return;
+    this.audio.ui(open ? 'select' : 'back');
     if (open) {
       const v = this.sim.player.vehicle;
       this.fullmap.open({ x: v.pos.x, z: v.pos.z, yaw: Math.atan2(-v.fwd.x, -v.fwd.z) }, this.route, this.waypoint);
@@ -416,6 +493,7 @@ export class Game {
   /** Route from the car to (x, z) over the roads; shown on the maps and as the GPS line. */
   setWaypoint(x: number, z: number): void {
     this.waypoint = { x, z };
+    this.audio.ui('checkpoint');
     this.computeRoute();
     this.fullmap.setRoute(this.route);
     if (this.route) this.hud.toast(`Route set · ${(this.route.length / 1000).toFixed(1)} km`);
@@ -477,6 +555,7 @@ export class Game {
   }
 
   setPaused(p: boolean): void {
+    if (p !== this.paused) this.audio.ui(p ? 'select' : 'back');
     this.paused = p;
     if (p) this.pause.show();
     else this.pause.hide();
@@ -490,6 +569,8 @@ export class Game {
     for (const v of this.views) v.update(alpha);
     this.drainEvents();
     this.updateEffects(dt);
+    this.audio.update(dt, this.sim.player.vehicle, { paused: this.paused || this.mapPaused || this.loading || this.hidden, inside: this.rig.mode === 'bonnet' });
+    this.updateResolution(dt);
     const pv = this.views[0];
     const veh = this.sim.player.vehicle;
     const p = veh.params;
@@ -547,9 +628,11 @@ export class Game {
       if (e.kind === 'impact' && e.carId === this.sim.player.id) {
         const s = Math.min(1, e.value / 12000);
         this.rig.impact(s);
+        this.audio.impact(e.value);
         if (this.touch.visible) this.touch.buzz(Math.round(20 + s * 60));
       } else if (e.kind === 'lap') {
         this.hud.toast(`Lap ${(e.value / 60) | 0}:${(e.value % 60).toFixed(2).padStart(5, '0')}`, 2.5);
+        this.audio.ui('checkpoint');
       }
     }
     this.sim.events.length = 0;
@@ -627,7 +710,8 @@ export class Game {
   resize(): void {
     const w = this.canvas.clientWidth || window.innerWidth;
     const h = this.canvas.clientHeight || window.innerHeight;
-    const pr = pixelRatioForBudget(w, h, window.devicePixelRatio || 1, this.pixelBudget);
+    // The preset's pixel budget, then the dynamic resolution's scale on top (never under half a pixel per CSS pixel).
+    const pr = Math.max(0.5, pixelRatioForBudget(w, h, window.devicePixelRatio || 1, this.pixelBudget) * this.resScale);
     this.renderer.setPixelRatio(pr);
     this.renderer.setSize(w, h, false);
     this.pipeline?.setSize(w, h, pr);
@@ -637,8 +721,31 @@ export class Game {
     document.body.classList.toggle('portrait', h > w);
   }
 
+  /**
+   * Dynamic resolution: below 60 frames a second the internal resolution
+   * steps down (to 55% of the preset's at most, in each direction); with
+   * headroom it climbs back. Changes are at least 1.5 s apart so the picture
+   * does not pump.
+   */
+  private updateResolution(dt: number): void {
+    if (this.test || this.loading || this.paused || this.hidden || dt <= 0) return;
+    this.resTimer += dt;
+    if (this.resTimer < 1.5) return;
+    const ms = this.perf.frameMs;
+    const target = 1000 / 60;
+    let next = this.resScale;
+    if (ms > target * 1.12) next = Math.max(0.55, this.resScale * 0.9);
+    else if (ms < target * 0.8) next = Math.min(1, this.resScale * 1.05);
+    if (Math.abs(next - this.resScale) > 0.005) {
+      this.resScale = next;
+      this.resTimer = 0;
+      this.resize();
+    } else this.resTimer = 1;
+  }
+
   private onVisibility(): void {
     this.hidden = document.hidden;
+    this.audio.setHidden(this.hidden);
     // Do not simulate the time spent in the background.
     this.lastT = performance.now();
     this.stepper.reset();

@@ -150,6 +150,18 @@ export class Sim {
     this.lap = { laps: 0, start: 0, last: NaN, best: NaN, sector: 0, s: 0 };
   }
 
+  /** Put the player in another car where they stand, keeping the assists. */
+  changePlayerCar(specId: string): void {
+    const old = this.player.vehicle;
+    const spec = CARS.find((c) => c.id === specId) ?? CARS[0];
+    const v = new Vehicle(buildParams(spec));
+    v.aids = { ...old.aids };
+    v.place(old.pos.x, this.groundHeight(old.pos.x, old.pos.z), old.pos.z, datan2(-old.fwd.x, -old.fwd.z));
+    this.player.vehicle = v;
+    this.player.specId = spec.id;
+    this.filter.reset();
+  }
+
   addCar(specId: string, player = false): SimCar {
     const spec = CARS.find((c) => c.id === specId) ?? CARS[0];
     const v = new Vehicle(buildParams(spec));

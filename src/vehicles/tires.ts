@@ -71,6 +71,19 @@ export const COMPOUNDS: Record<Compound, CompoundInfo> = {
   },
 };
 
+/**
+ * Loose ground (dirt, gravel, sand, grass, snow, mud) gives way under the
+ * tread instead of tearing it: grip peaks at larger slip and holds up past
+ * the peak (the tire ploughs), which is what lets a car be driven sideways
+ * on it. The peak slips are scaled by LOOSE_PEAK, and the sliding ratio
+ * moves this share of the way toward 1.
+ */
+export const LOOSE_PEAK = 1.5;
+export const LOOSE_SLIDE = 0.5;
+export function looseCurveFor(info: CompoundInfo): Curve {
+  return makeCurve(info.slide + (1 - info.slide) * LOOSE_SLIDE, info.E);
+}
+
 /** Magic formula coefficients normalized so the peak is at x = 1. */
 export interface Curve {
   B: number;
@@ -120,6 +133,8 @@ export interface TireSetup {
   compound: Compound;
   info: CompoundInfo;
   curve: Curve;
+  /** The curve on loose ground: peak further out and a flatter fall past it. */
+  looseCurve: Curve;
   /** Grip multiplier from tire width relative to load (wider = more grip). */
   widthGrip: number;
   /** Grip multiplier from camber, pressure and other tuning. */
@@ -148,7 +163,7 @@ export interface TireResult {
  * vLong, vLat: contact patch velocity along the wheel's forward and right axes.
  * wheelSpeed: omega * radius (m/s). Fz: load, N. surfaceGrip: multiplier.
  */
-export function tireForce(t: TireSetup, Fz: number, vLong: number, vLat: number, wheelSpeed: number, surfaceGrip: number, out: TireResult, lateral?: number): TireResult {
+export function tireForce(t: TireSetup, Fz: number, vLong: number, vLat: number, wheelSpeed: number, surfaceGrip: number, out: TireResult, lateral?: number, loose = false): TireResult {
   if (Fz <= 0) {
     out.fx = 0;
     out.fy = 0;
@@ -162,8 +177,11 @@ export function tireForce(t: TireSetup, Fz: number, vLong: number, vLat: number,
   const slipVx = wheelSpeed - vLong; // + when driving (wheel faster than ground)
   const kappa = slipVx / vDen;
   const tanA = vLat / vDen;
-  const sx = kappa / t.kappaPeak;
-  const sy = tanA / t.tanAlphaPeak;
+  const peak = loose ? LOOSE_PEAK : 1;
+  const kappaPeak = t.kappaPeak * peak;
+  const curve = loose ? t.looseCurve : t.curve;
+  const sx = kappa / kappaPeak;
+  const sy = tanA / (t.tanAlphaPeak * peak);
   const s = Math.sqrt(sx * sx + sy * sy);
   // Load sensitivity: the friction coefficient falls as load rises.
   const loadRatio = Fz / t.nominalLoad;
@@ -172,21 +190,21 @@ export function tireForce(t: TireSetup, Fz: number, vLong: number, vLat: number,
   const muX = mu * t.info.muLong;
   const muY = mu * (lateral ?? t.tuneLateral);
   if (s < 1e-9) {
-    const slope0 = mfSlope(t.curve, 0);
+    const slope0 = mfSlope(curve, 0);
     out.fx = 0;
     out.fy = 0;
-    out.dFxdV = (muX * Fz * slope0) / (t.kappaPeak * vDen);
+    out.dFxdV = (muX * Fz * slope0) / (kappaPeak * vDen);
     out.slip = 0;
     return out;
   }
-  const m = mf(t.curve, s);
-  const ms = Math.max(0, mfSlope(t.curve, s));
+  const m = mf(curve, s);
+  const ms = Math.max(0, mfSlope(curve, s));
   const nx = sx / s;
   const ny = sy / s;
   out.fx = muX * Fz * m * nx;
   out.fy = -muY * Fz * m * ny;
   // dFx/dsx = muX*Fz*[ (m/s)*ny^2 + m'(s)*nx^2 ], and dsx/dslipVx = 1/(kappaPeak*vDen).
-  out.dFxdV = (muX * Fz * ((m / s) * ny * ny + ms * nx * nx)) / (t.kappaPeak * vDen);
+  out.dFxdV = (muX * Fz * ((m / s) * ny * ny + ms * nx * nx)) / (kappaPeak * vDen);
   out.slip = s;
   return out;
 }

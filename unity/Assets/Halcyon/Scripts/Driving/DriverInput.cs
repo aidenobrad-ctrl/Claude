@@ -32,7 +32,7 @@ namespace Halcyon
         /// <summary>Menu keys (the garage): true on the frame they go down.</summary>
         public struct MenuKeys
         {
-            public bool left, right, up, down, select, back, garage, events, hourBack, hourForward, weather, map, travel, clear, photo;
+            public bool left, right, up, down, select, back, garage, events, hourBack, hourForward, weather, map, travel, clear, photo, radio;
         }
 
         /// <summary>A free camera's turn this frame, degrees (x round, y up): the mouse with its right button held, the right stick, J/L and I/K.</summary>
@@ -84,6 +84,7 @@ namespace Halcyon
                 travel = m.travel && !menuHeld.travel,
                 clear = m.clear && !menuHeld.clear,
                 photo = m.photo && !menuHeld.photo,
+                radio = m.radio && !menuHeld.radio,
             };
             menuHeld = m;
             Look = Vector2.zero;
@@ -125,6 +126,7 @@ namespace Halcyon
             m.travel |= Key(KeyCode.F);
             m.clear |= Key(KeyCode.X) || Key(KeyCode.Delete);
             m.photo |= Key(KeyCode.P);
+            m.radio |= Key(KeyCode.N);
         }
 
         void ReadLookLegacy(float dt)
@@ -193,6 +195,7 @@ namespace Halcyon
                 m.travel |= kb.fKey.isPressed;
                 m.clear |= kb.xKey.isPressed || kb.deleteKey.isPressed;
                 m.photo |= kb.pKey.isPressed;
+                m.radio |= kb.nKey.isPressed;
             }
             var gp = Gamepad.current;
             if (gp != null)
@@ -210,6 +213,7 @@ namespace Halcyon
                 m.travel |= gp.buttonWest.isPressed;
                 m.clear |= gp.buttonNorth.isPressed;
                 m.photo |= gp.rightStickButton.isPressed;
+                m.radio |= gp.dpad.right.isPressed && !gp.leftStick.IsActuated();
             }
         }
 

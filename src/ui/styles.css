@@ -523,3 +523,16 @@ body.touch-mode .minimap {
   vertical-align: middle;
   border-radius: 2px;
 }
+.panel select.car-pick {
+  min-height: 40px;
+  max-width: 62%;
+  padding: 0 10px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: #eef2f7;
+  font: 600 13px system-ui, sans-serif;
+}
+.panel select.car-pick option {
+  background: #11161f;
+}

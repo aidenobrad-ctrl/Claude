@@ -1,6 +1,6 @@
 // The Unity side's checks for npm run verify: compile every Unity script
 // against the UnityEngine reference assemblies, then the headless .NET
-// suites (physics bit-exact with the TypeScript, the island, the career,
+// suites (physics bit-exact with the TypeScript, the sound, the island, the career,
 // the living island of M6 with the stunts, events and progression of M7,
 // and the AI). --quick runs shorter subsets.
 // Skips (with a message) when dotnet is not installed.
@@ -30,7 +30,7 @@ if (fs.existsSync(path.join(root, '.cache/unityref/UnityEngine.CoreModule.dll'))
   steps.push(['Unity editor scripts compile', ['build', 'dotnet/Halcyon.UnityEditor', '-v', 'q', '-nologo']]);
 }
 const run = (project, ...args) => ['run', '-c', 'Release', '--project', `dotnet/${project}`, ...(args.length ? ['--', ...args] : [])];
-steps.push(['physics (bit-exact)', run('Halcyon.Core.Tests')]);
+steps.push(['physics (bit-exact) and sound (matches the web)', run('Halcyon.Core.Tests')]);
 steps.push(['island', run('Halcyon.World.Tests')]);
 if (quick) {
   steps.push(['career: saves', run('Halcyon.Career.Tests', 'save')]);

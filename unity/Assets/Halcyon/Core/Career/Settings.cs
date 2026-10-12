@@ -14,6 +14,9 @@ namespace Halcyon.Core
     /// <summary>The racing line on the road in races: none, only where to brake, or all of it.</summary>
     public enum LineAssist { Off, Braking, Full }
 
+    /// <summary>The radio: off or one of the three stations (Core/Audio's RadioStation).</summary>
+    public enum StationChoice { Off, Pulse, Coast, Redline }
+
     /// <summary>The HUD's palette: the usual greens and reds, or one that reads with a colour-vision deficiency.</summary>
     public enum ColourVision { Normal, Deuteranopia, Protanopia, Tritanopia }
 
@@ -45,8 +48,9 @@ namespace Halcyon.Core
         /// <summary>The chase camera's field of view at rest, degrees (50 to 80).</summary>
         public double Fov = 60;
 
-        // Sound, 0 to 1.
-        public double Master = 0.8, Engine = 1, Effects = 1, Ambience = 1;
+        // Sound, 0 to 1, and the radio.
+        public double Master = 0.8, Engine = 1, Effects = 1, Ambience = 1, Music = 0.55;
+        public StationChoice Station = StationChoice.Pulse;
 
         /// <summary>The assists as the physics takes them.</summary>
         public Aids Aids() => new Aids { abs = Abs, tcs = Tcs, esc = Esc, steering = Steering, gearbox = Gearbox };
@@ -89,6 +93,8 @@ namespace Halcyon.Core
             ["engine"] = Engine,
             ["effects"] = Effects,
             ["ambience"] = Ambience,
+            ["music"] = Music,
+            ["station"] = Station.ToString(),
         };
 
         public string ToJson() => JsonWriter.Write(ToDict());
@@ -127,6 +133,8 @@ namespace Halcyon.Core
             s.Engine = Num(d, "engine", s.Engine, 0, 1);
             s.Effects = Num(d, "effects", s.Effects, 0, 1);
             s.Ambience = Num(d, "ambience", s.Ambience, 0, 1);
+            s.Music = Num(d, "music", s.Music, 0, 1);
+            s.Station = Enum(d, "station", s.Station);
             return s;
         }
     }

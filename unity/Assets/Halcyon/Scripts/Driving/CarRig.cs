@@ -6,6 +6,7 @@
 // dawn, fog, heavy rain) unless the driver chooses, with a real spotlight
 // near the camera; on wet roads the tyres throw spray.
 using Halcyon.Core;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Halcyon
@@ -34,10 +35,18 @@ namespace Halcyon
         /// <summary>The L key: from automatic to the opposite of what the lights are doing now, and back to automatic.</summary>
         public void ToggleLights() => LightsOverride = LightsOverride.HasValue ? (bool?)null : !Headlights;
 
+        /// <summary>Every car rig alive (the player, racers, traffic, ghosts): the sound gives the nearest a voice.</summary>
+        public static readonly List<CarRig> All = new List<CarRig>();
+        /// <summary>Makes no engine sound (a ghost).</summary>
+        public bool Silent;
+
+        void OnDestroy() => All.Remove(this);
+
         public static CarRig Create(Vehicle v, string specId, Color? paint = null)
         {
             var go = new GameObject("Car_" + specId);
             var rig = go.AddComponent<CarRig>();
+            All.Add(rig);
             rig.Vehicle = v;
             rig.SpecId = specId;
             rig.Build(specId, paint);

@@ -635,6 +635,9 @@ const SCENARIOS: Scenario[] = [
   { name: 'lanechange-esc.test-fwd-na', driver: 'lanechange', cars: [{ car: 'test-fwd-na' }], aids: { steering: 'off' }, args: { speed: 30, seconds: 4 } },
   { name: `handbrake.${H}`, driver: 'handbrake', cars: [{ car: H }], aids: { esc: false, tcs: false, steering: 'off' }, args: { speed: 17, seconds: 3 } },
   { name: 'handbrake.test-awd-turbo', driver: 'handbrake', cars: [{ car: 'test-awd-turbo' }], aids: { esc: false, tcs: false, steering: 'off' }, args: { speed: 17, seconds: 3 } },
+  // Loose ground: the tire's loose curve, the declutching handbrake and an upshift held by wheelspin.
+  { name: `handbrake-gravel.${H}`, driver: 'handbrake', cars: [{ car: H }], aids: { esc: false, tcs: false, steering: 'off' }, ground: { type: 'slope', grade: 0, surface: SURFACE.gravel }, args: { speed: 17, seconds: 5 } },
+  { name: 'handbrake-dirt.test-awd-turbo', driver: 'handbrake', cars: [{ car: 'test-awd-turbo' }], aids: { esc: false, steering: 'standard' }, ground: { type: 'slope', grade: 0, surface: SURFACE.dirt }, args: { speed: 17, seconds: 5 } },
   { name: `surfaces.${H}`, driver: 'surfaces', cars: [{ car: H }], ground: { type: 'stripes' }, args: { speed: 12, seconds: 6, brakeAt: 4.5 } },
   { name: 'surfaces-snowtires.test-awd-turbo', driver: 'surfaces', cars: [{ car: 'test-awd-turbo', up: compoundUp('snow') }], aids: { tcs: false }, ground: { type: 'stripes' }, args: { speed: 10, seconds: 6, brakeAt: 4 } },
   { name: `surfaces-dragtires.${H}`, driver: 'surfaces', cars: [{ car: H, up: compoundUp('drag') }], aids: { tcs: false, esc: false }, ground: { type: 'stripes' }, args: { speed: 14, seconds: 5, brakeAt: 3.5 } },

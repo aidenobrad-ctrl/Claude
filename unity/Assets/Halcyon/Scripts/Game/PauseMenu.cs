@@ -96,7 +96,11 @@ namespace Halcyon
                 new Row { Name = "Key hints", Value = () => OnOff(S().KeyHints), Step = d => S().KeyHints = !S().KeyHints },
                 new Row { Name = "Sound" },
                 new Row { Name = "Master volume", Value = () => Pct(S().Master), Step = d => S().Master = Step(S().Master, d, 0.1, 0, 1) },
+                new Row { Name = "Engines", Value = () => Pct(S().Engine), Step = d => S().Engine = Step(S().Engine, d, 0.1, 0, 1) },
+                new Row { Name = "Effects", Value = () => Pct(S().Effects), Step = d => S().Effects = Step(S().Effects, d, 0.1, 0, 1), Help = "Tires, wind, impacts and the engines." },
                 new Row { Name = "Weather sounds", Value = () => Pct(S().Ambience), Step = d => S().Ambience = Step(S().Ambience, d, 0.1, 0, 1) },
+                new Row { Name = "Radio", Value = () => GameSound.StationName(S().Station), Step = d => S().Station = Cycle(S().Station, d), Help = "Three stations that write their own music. N (or the d-pad right) changes station while driving." },
+                new Row { Name = "Music volume", Value = () => Pct(S().Music), Step = d => S().Music = Step(S().Music, d, 0.1, 0, 1) },
             };
             return rows;
         }

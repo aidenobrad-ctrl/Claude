@@ -136,6 +136,18 @@ system settings or close the user's apps.
    - Press **P** in a race and on the road: orbit, zoom, depth of field on the car, the
      filters and the hour, and save a photo (it lands in `...\LocalLow\<company>\<product>\Photos`).
 
+8. M8, compile-checked only (the synthesis itself is tested against the web version):
+   - Listen: drive each class of car (the Aster GT's six, the Ironside's V8 burble, the
+     Saetta's flat-plane V8, the Vanta's motors) through the gears, lift at high rpm (the
+     crackle and the blow-off valve on turbo cars), slide on asphalt and gravel (squeal,
+     crunch), hit a wall (three weights of impact), and check the bonnet camera muffles the
+     car. Race beside other cars: the four nearest have engines in 3D.
+   - Press **N** through the stations: tuning static, the station's jingle, then music;
+     the song's name appears on screen. Change the music volume in the menu.
+   - Drift: ESC and traction control off, a pull of the handbrake into a bend, then hold
+     the slide on the throttle (rear-driven) or with the throttle pinned and dabs of the
+     handbrake (AWD). The automatic box should shift up in a long slide.
+
 ## Step 3 — make it look insane
 
 Work through these, highest value first. Shoot screenshots and look at them after each.

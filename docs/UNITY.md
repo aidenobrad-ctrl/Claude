@@ -27,6 +27,9 @@ exactly, and adds Unity rendering and Blender-made cars on top.
 6. Stunts are on the roads: speed traps, speed zones, drift zones and danger signs (jumps),
    each with three stars to earn. **Esc** opens the menu: settings and accessibility,
    your accolades, the controls. **P** is photo mode.
+7. Everything you hear is synthesized as you play: each car's engine from its firing
+   order and exhaust, tires on every surface, wind, impacts, and three radio stations that
+   write their own music. **N** changes station.
 
 **Controls**
 
@@ -40,6 +43,7 @@ exactly, and adds Unity rendering and Blender-made cars on top.
 | C | Camera (chase, far, bonnet) |
 | B | Look back |
 | L | Lights |
+| N | Radio: off, Halcyon Pulse, Coastline FM, Redline Radio |
 | Esc | Menu: resume, settings and accessibility, accolades, photo mode, controls, quit |
 | P | Photo mode (right mouse or J/L, I/K to orbit; wheel or U/O to zoom; ↑/↓ ←/→ the settings; Enter save a PNG; X hide the panel; Esc back) |
 | G | Garage (←/→ car, ↑/↓ choose, Enter select, Esc back; in tuning, ←/→ adjust, 1-4 auto-tune, C/V copy/paste a tune code, R reset, Enter test track) |
@@ -50,7 +54,7 @@ exactly, and adds Unity rendering and Blender-made cars on top.
 
 A gamepad works through the Input System: stick, triggers, A for handbrake, B/X to
 shift, Y for camera, LB for the garage, d-pad up for events, d-pad down for the map, the
-right stick click for photo mode. In menus the d-pad or stick moves, A picks and B goes
+right stick click for photo mode, d-pad right for the radio. In menus the d-pad or stick moves, A picks and B goes
 back; on the map X fast travels and Y clears the route. In photo mode the right stick
 orbits and the triggers zoom.
 
@@ -240,6 +244,11 @@ and texture metas are left to Unity, because their import settings live there.
 - [x] Everything else (M7): stunts, drag, rally, head-to-head, the ghost time trial,
   championships, levels and accolades, settings and accessibility, photo mode, the racing
   line (headless-tested, Unity compile-checked)
+- [x] Polish (M8): drifting in the shared physics (the handbrake declutches, the automatic
+  box upshifts in a long slide, loose ground), sound (engines, tires, wind, impacts, UI,
+  three generative radio stations; the same synthesis as the web, tested against it), and
+  a bug bash of the scripts (compile-checked, not yet heard or run)
 - [ ] First run in a real Unity Editor: fix whatever only Unity reports, play the garage, a
-  race, a night and a storm, a championship round and photo mode, then look at screenshots
-- [ ] CC0 PBR textures, a real water shader, Blender trees, audio (M8)
+  race, a night and a storm, a championship round and photo mode, listen to the cars and
+  the radio, then look at screenshots
+- [ ] CC0 PBR textures, a real water shader, Blender trees

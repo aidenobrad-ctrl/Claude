@@ -33,23 +33,26 @@ function checkSelfContained(html) {
   if (bad) throw new Error(`dist/index.html references remote resources: ${bad.join(', ')}`);
 }
 
-// The tile worker is bundled first and inlined into the main bundle as a
-// string; the game starts it from a Blob URL, so it stays one HTML file.
-async function buildWorker() {
+// The workers (tiles, audio) are bundled first and inlined into the main
+// bundle as strings; the game starts them from Blob URLs, so it stays one
+// HTML file.
+async function buildWorker(entry = 'src/world/tile-worker.ts') {
   const r = await esbuild.build({
-    entryPoints: [path.join(root, 'src/world/tile-worker.ts')],
+    entryPoints: [path.join(root, entry)],
     bundle: true,
     write: false,
     format: 'iife',
     target: ['es2020', 'safari15'],
     minify: !dev,
     legalComments: 'none',
-    define: { __DEV__: dev ? 'true' : 'false', __BUILD_TIME__: '""', __TILE_WORKER__: '""' },
+    define: { __DEV__: dev ? 'true' : 'false', __BUILD_TIME__: '""', __TILE_WORKER__: '""', __AUDIO_WORKER__: '""' },
     logLevel: 'warning',
   });
   return r.outputFiles[0].text;
 }
 const workerSource = await buildWorker();
+// The audio worker renders engine loops, sound beds and radio bars the same way.
+const audioWorkerSource = await buildWorker('src/audio/audio-worker.ts');
 
 const buildOptions = {
   entryPoints: [path.join(root, 'src/main.ts')],
@@ -65,6 +68,7 @@ const buildOptions = {
     __DEV__: dev ? 'true' : 'false',
     __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
     __TILE_WORKER__: JSON.stringify(workerSource),
+    __AUDIO_WORKER__: JSON.stringify(audioWorkerSource),
   },
   logLevel: 'warning',
   metafile: true,

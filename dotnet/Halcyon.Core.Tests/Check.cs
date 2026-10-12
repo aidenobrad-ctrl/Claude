@@ -70,6 +70,26 @@ namespace Halcyon.Core.Tests
             return false;
         }
 
+        /// <summary>
+        /// Within an absolute tolerance: the audio port (float32 samples from two runtimes'
+        /// sin and exp, which may differ in the last bit). Counted as matching when within it.
+        /// </summary>
+        public void Near(double expected, double actual, double tol, Func<string> where)
+        {
+            Values++;
+            double abs = Math.Abs(expected - actual);
+            if (double.IsNaN(abs)) abs = double.PositiveInfinity;
+            if (abs > MaxAbs) MaxAbs = abs;
+            double m = Math.Max(Math.Abs(expected), Math.Abs(actual));
+            if (m > 0 && abs / m > MaxRel && abs > tol) MaxRel = abs / m;
+            if (abs <= tol)
+            {
+                Exact++;
+                return;
+            }
+            Problem($"{where()}: expected {R(expected)}, got {R(actual)} (tolerance {R(tol)})");
+        }
+
         public void Str(string expected, string actual, string where)
         {
             Values++;

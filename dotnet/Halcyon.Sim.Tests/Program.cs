@@ -683,13 +683,16 @@ static class Program
         {
             Graphics = GraphicsPreset.Low, Imperial = true, Abs = false, Steering = SteeringAssist.Off, Gearbox = GearboxMode.Manual, Line = LineAssist.Full,
             HudScale = 1.25, Colours = ColourVision.Tritanopia, Shake = 0.3, MotionBlur = false, ReduceFlashes = true, Minimap = false, KeyHints = false, Fov = 70, Master = 0.5, Ambience = 0.2,
+            Music = 0.3, Station = StationChoice.Redline, Engine = 0.6, Effects = 0.7,
         };
         var st2 = Settings.FromJson(st.ToJson());
         Check(st2.Graphics == GraphicsPreset.Low && st2.Imperial && !st2.Abs && st2.Tcs && st2.Steering == SteeringAssist.Off && st2.Gearbox == GearboxMode.Manual && st2.Line == LineAssist.Full &&
-              st2.HudScale == 1.25 && st2.Colours == ColourVision.Tritanopia && st2.Shake == 0.3 && !st2.MotionBlur && st2.ReduceFlashes && !st2.Minimap && !st2.KeyHints && st2.Fov == 70 && st2.Master == 0.5 && st2.Ambience == 0.2,
-            "settings survive a save and load");
-        var bad = Settings.FromJson("{\"hudScale\":9,\"fov\":-4,\"graphics\":\"Insane\",\"colours\":7,\"master\":\"loud\",\"shake\":0.5}");
-        Check(bad.HudScale == 1.5 && bad.Fov == 50 && bad.Graphics == GraphicsPreset.High && bad.Colours == ColourVision.Normal && bad.Master == 0.8 && bad.Shake == 0.5,
+              st2.HudScale == 1.25 && st2.Colours == ColourVision.Tritanopia && st2.Shake == 0.3 && !st2.MotionBlur && st2.ReduceFlashes && !st2.Minimap && !st2.KeyHints && st2.Fov == 70 && st2.Master == 0.5 && st2.Ambience == 0.2 &&
+              st2.Music == 0.3 && st2.Station == StationChoice.Redline && st2.Engine == 0.6 && st2.Effects == 0.7,
+            "settings survive a save and load (the radio and volumes too)");
+        var bad = Settings.FromJson("{\"hudScale\":9,\"fov\":-4,\"graphics\":\"Insane\",\"colours\":7,\"master\":\"loud\",\"shake\":0.5,\"station\":\"Jazz\",\"music\":3}");
+        Check(bad.HudScale == 1.5 && bad.Fov == 50 && bad.Graphics == GraphicsPreset.High && bad.Colours == ColourVision.Normal && bad.Master == 0.8 && bad.Shake == 0.5 &&
+              bad.Station == StationChoice.Pulse && bad.Music == 1,
             "settings out of range are clamped, and unknown values take their defaults");
         Check(Settings.FromJson("not json").Line == LineAssist.Braking && Settings.FromJson("").Graphics == GraphicsPreset.High, "a broken settings file gives the defaults");
         var aids = st.Aids();

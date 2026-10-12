@@ -35,6 +35,7 @@ namespace Halcyon
         GraphicsPreset? appliedGraphics;
         PauseMenu pause;
         PhotoMode photo;
+        GameSound sound;
         VegetationRenderer veg;
         /// <summary>Photo mode hides the HUD (the race HUD, the maps, the GPS line, the racing line and the stunt panels).</summary>
         public bool HideHud => photo != null && photo.Active;
@@ -186,6 +187,7 @@ namespace Halcyon
             races = RaceController.Create(this, world);
             pause = PauseMenu.Create(this, world);
             photo = PhotoMode.Create(this, world);
+            sound = GameSound.Create(this, world);
             ApplySettings();
             // A career from before the accolades may already have some.
             CheckAccolades();
@@ -455,7 +457,11 @@ namespace Halcyon
                 // contact between the player and an AI car carries the player's id).
                 foreach (var e in Sim.Events)
                 {
-                    if (e.kind == SimEventKind.Impact && e.carId == Sim.Player.id) CameraRig.Impact((float)System.Math.Min(1, e.value / 20000));
+                    if (e.kind == SimEventKind.Impact && e.carId == Sim.Player.id)
+                    {
+                        CameraRig.Impact((float)System.Math.Min(1, e.value / 20000));
+                        sound.Impact(e.value);
+                    }
                     else if (e.kind == SimEventKind.Lightning) sky.Lightning(e.x, e.z, e.value);
                 }
                 Sim.Events.Clear();
@@ -515,6 +521,7 @@ namespace Halcyon
         {
             lastStunt = r;
             lastStuntAt = Time.unscaledTime;
+            sound.Ui(r.Stars > 0 ? Core.Audio.UiSound.Reward : Core.Audio.UiSound.Checkpoint);
             if (r.Best || r.Xp > 0) Career.MarkDirty();
             if (r.Stars > 0) CheckAccolades();
         }
@@ -538,6 +545,7 @@ namespace Halcyon
                 if (accoladeAt > 0) accoladeQueue.RemoveAt(0);
                 accoladeAt = accoladeQueue.Count > 0 ? Time.unscaledTime : -10;
                 if (accoladeQueue.Count == 0) return;
+                sound?.Ui(Core.Audio.UiSound.Reward);
             }
             var a = accoladeQueue[0];
             float t = Time.unscaledTime - accoladeAt;
@@ -694,6 +702,7 @@ namespace Halcyon
         /// </summary>
         void WorldKeys(DriverInput.MenuKeys m, bool racing)
         {
+            if (m.radio) Career.Say(GameSound.StationName(sound.CycleStation()));
             if (m.hourBack || m.hourForward)
             {
                 Sim.Clock.Set(System.Math.Floor(Sim.Clock.Hours) + (m.hourForward ? 1 : -1));
@@ -771,7 +780,7 @@ namespace Halcyon
             float y = 10;
             if (Settings.KeyHints && !InMenu)
             {
-                GUI.Label(new Rect(14, y, Ui.W - 28, 22), "W/S throttle & brake · A/D steer · Space handbrake · E/Q shift · R reset · C camera · B look back · L lights · G garage · T events · M map · P photo · [ ] time · \\ weather · Esc menu", help);
+                GUI.Label(new Rect(14, y, Ui.W - 28, 22), "W/S throttle & brake · A/D steer · Space handbrake · E/Q shift · R reset · C camera · B look back · L lights · N radio · G garage · T events · M map · P photo · [ ] time · \\ weather · Esc menu", help);
                 y += 22;
             }
             var car = Career.Profile.CurrentCar;

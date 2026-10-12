@@ -65,13 +65,25 @@ const SPLAT_MAP = /* glsl */ `
   vec2 uB = mat2(0.8, -0.6, 0.6, 0.8) * p.xz * 0.037;
   float far = smoothstep(40.0, 260.0, dist);
   vec4 g = mix(texture2D(tGrass, uA), texture2D(tGrass, uB), 0.35 + 0.4 * far);
-  // Meadow variation: dry straw-coloured swathes and lush darker hollows.
+  // Meadow variation: dry straw-coloured swathes and lush darker hollows,
+  // in broad fields (1.4 km), patches (380 m) and tufts (95 m), so a view
+  // across the island reads as farmland and pasture, not one green.
   float mA = texture2D(tMacro, p.xz / 380.0 + 0.13).r;
   float mB = texture2D(tMacro, p.xz / 95.0 + 0.61).r;
-  float dryness = smoothstep(0.42, 0.78, mA * 0.7 + mB * 0.3);
-  float lush = smoothstep(0.55, 0.25, mA * 0.6 + mB * 0.4);
-  g.rgb = mix(g.rgb, g.rgb * vec3(1.32, 1.14, 0.72), dryness * 0.75);
-  g.rgb = mix(g.rgb, g.rgb * vec3(0.78, 0.92, 0.82), lush * 0.6);
+  float mC = texture2D(tMacro, p.xz / 1400.0 + 0.29).r;
+  // The noise sits in a narrow band around 0.5 (and averaging three narrows it
+  // further), so stretch it before choosing dry and lush ground.
+  float dv = (mA * 0.5 + mB * 0.18 + mC * 0.32 - 0.5) * 2.6 + 0.5;
+  float lv = (mA * 0.45 + mB * 0.3 + mC * 0.25 - 0.5) * 2.6 + 0.5;
+  float dryness = smoothstep(0.5, 0.88, dv);
+  float lush = smoothstep(0.46, 0.12, lv);
+  // Gentle slopes facing the low sun dry out first; hollows stay green.
+  dryness = clamp(dryness + 0.25 * smoothstep(0.92, 0.6, n.y) * (1.0 - lush), 0.0, 1.0);
+  g.rgb = mix(g.rgb, g.rgb * vec3(1.42, 1.2, 0.66), dryness * 0.85);
+  g.rgb = mix(g.rgb, g.rgb * vec3(0.72, 0.9, 0.78), lush * 0.7);
+  // Wildflower meadows: a faint warm speckle in the lush patches, close up only.
+  float flowers = smoothstep(0.82, 0.9, texture2D(tMacro, p.xz / 7.0 + 0.5).r) * lush * (1.0 - far);
+  g.rgb = mix(g.rgb, vec3(0.95, 0.82, 0.45), flowers * 0.35);
   vec4 d = mix(texture2D(tDirt, uA * 0.8), texture2D(tDirt, uB), 0.35 + 0.4 * far);
   vec4 s = mix(texture2D(tSand, uA * 0.6), texture2D(tSand, uB), 0.3 + 0.4 * far);
   vec4 sn = mix(texture2D(tSnow, uA), texture2D(tSnow, uB), 0.4);

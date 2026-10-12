@@ -3,7 +3,7 @@
 // this file; docs/DESIGN.md lists them.
 import { V3, clamp } from '../engine/math';
 import { dtan } from '../engine/dmath';
-import { COMPOUNDS, makeCurve, type TireSetup } from './tires';
+import { COMPOUNDS, looseCurveFor, makeCurve, type TireSetup } from './tires';
 import type { CarSpec, DiffSpec, Drivetrain } from './spec';
 import type { Compound } from './tires';
 
@@ -253,6 +253,7 @@ export function buildParams(spec: CarSpec, tune: Tune = defaultTune(spec), up: U
   const compound: Compound = up.compound ?? spec.tires.compound;
   const info = COMPOUNDS[compound];
   const curve = makeCurve(info.slide, info.E);
+  const looseCurve = looseCurveFor(info);
   const staticF = (mass * GRAVITY * wf) / 2;
   const staticR = (mass * GRAVITY * (1 - wf)) / 2;
   const mkTire = (width: number, load: number, pressure: number, camberDeg: number): TireSetup => {
@@ -264,6 +265,7 @@ export function buildParams(spec: CarSpec, tune: Tune = defaultTune(spec), up: U
       compound,
       info,
       curve,
+      looseCurve,
       widthGrip,
       tuneGrip: pressureGrip(pressure) * camberLongGrip(camberDeg),
       tuneLateral: camberLateralGrip(camberDeg) / camberLongGrip(camberDeg),

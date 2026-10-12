@@ -22,7 +22,7 @@ export const VIEWPORTS = {
 export async function launchBrowser() {
   return chromium.launch({
     headless: true,
-    args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
+    args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'],
   });
 }
 
@@ -92,7 +92,7 @@ export async function importSrc(rel) {
     bundle: true,
     platform: 'node',
     format: 'esm',
-    define: { __DEV__: 'true', __BUILD_TIME__: '"test"', __TILE_WORKER__: '""' },
+    define: { __DEV__: 'true', __BUILD_TIME__: '"test"', __TILE_WORKER__: '""', __AUDIO_WORKER__: '""' },
     loader: { '.css': 'text', '.glsl': 'text' },
     logLevel: 'warning',
   });

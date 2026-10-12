@@ -1,5 +1,5 @@
 import css from './ui/styles.css';
-import { Game } from './game';
+import { Game, savedQuality } from './game';
 import { installDebugApi } from './debug';
 
 const style = document.createElement('style');
@@ -29,8 +29,10 @@ if (!hasWebGL2()) {
     canvas,
     ui,
     test: params.has('test'),
+    audio: params.has('audio'),
     seed: Number(params.get('seed') ?? 1) || 1,
-    quality: (['low', 'medium', 'high', 'ultra'] as const).find((q) => q === params.get('q')),
+    // ?q= wins; then the preset saved from the pause menu; else Auto picks from the device.
+    quality: (['low', 'medium', 'high', 'ultra'] as const).find((q) => q === (params.get('q') ?? savedQuality())),
     time: (['morning', 'noon', 'golden', 'sunset', 'night'] as const).find((t) => t === params.get('time')),
   });
   installDebugApi(game);

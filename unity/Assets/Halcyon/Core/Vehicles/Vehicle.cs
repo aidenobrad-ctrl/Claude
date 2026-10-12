@@ -207,6 +207,8 @@ namespace Halcyon.Core
         public double boost;
         /// <summary>True while the rev limiter cuts the throttle.</summary>
         public bool limiterCut;
+        /// <summary>How long the auto gearbox has wanted an upshift that wheelspin held back, s (leaky).</summary>
+        public double upshiftHeld;
         /// <summary>Throttle the engine actually receives after aids, launch governor and shift cuts, 0 .. 1.</summary>
         public double throttleEff;
         /// <summary>Throttle cut by traction control and by stability control, 0 .. 1.</summary>
@@ -322,6 +324,7 @@ namespace Halcyon.Core
             boost = 0;
             tcsCut = escCut = 0;
             launchTrim = 1;
+            upshiftHeld = 0;
             steerAngle = 0;
             airTime = 0;
             UpdateAxes();
@@ -645,7 +648,7 @@ namespace Halcyon.Core
                 double lean = (wp.left ? 1 : -1) * p.casterDelta * DMath.Sin(w.steer);
                 lateral = VehicleParams.CamberLateralGrip(camber + lean) / VehicleParams.CamberLongGrip(camber);
             }
-            Tires.TireForce(wp.tire, w.load, vL, vS, wheelSpeed, grip, tireRes, lateral);
+            Tires.TireForce(wp.tire, w.load, vL, vS, wheelSpeed, grip, tireRes, lateral, surf.loose);
             w.fx = tireRes.fx;
             w.fy = tireRes.fy;
             // Static friction at a standstill. A braked tire whose patch has all but
@@ -695,6 +698,9 @@ namespace Halcyon.Core
             w.slideSpeed = Math.Sqrt(sx * sx + vS * vS);
         }
 
+        /// <summary>How much further out a wheel's grip peaks on the ground under it (loose ground).</summary>
+        double PeakScale(int i) => Surfaces.All[wheels[i].surface].loose ? Tires.LoosePeak : 1;
+
         void UpdateAids(double dt, double throttleIn, double brakeIn)
         {
             VehicleParams p = Params;
@@ -706,7 +712,7 @@ namespace Halcyon.Core
             {
                 if (p.wheels[i].driveWeight <= 0 || !wheels[i].grounded) continue;
                 kMax = JsMath.Max(kMax, gear == -1 ? -wheels[i].slipRatio : wheels[i].slipRatio);
-                kPeak = p.wheels[i].tire.kappaPeak;
+                kPeak = p.wheels[i].tire.kappaPeak * PeakScale(i);
             }
             double tcsTarget = a.tcs && input.handbrake < 0.5 ? M.Clamp((kMax - kPeak) / (kPeak * 0.7), 0, 0.92) : 0;
             if (launching)
@@ -754,7 +760,7 @@ namespace Halcyon.Core
                 double target = 1;
                 if (a.abs && brakeIn > 0.05 && w.grounded && Math.Abs(w.vLong) > 1.5)
                 {
-                    double kp = p.wheels[i].tire.kappaPeak;
+                    double kp = p.wheels[i].tire.kappaPeak * PeakScale(i);
                     double lockSlip = w.vLong > 0 ? -w.slipRatio : w.slipRatio;
                     target = M.Clamp(1 - (lockSlip - kp * 1.05) / (kp * 0.9), 0.05, 1);
                 }
@@ -954,6 +960,7 @@ namespace Halcyon.Core
             shiftTotal = Params.gearbox.shiftTime;
             shiftTimer = shiftTotal;
             timeSinceShift = 0;
+            upshiftHeld = 0;
         }
 
         /// <summary>
@@ -1050,12 +1057,18 @@ namespace Halcyon.Core
                 if (aids.gearbox == GearboxMode.Auto)
                 {
                     double wheelRpm = WheelRpm(gear);
+                    // Wheelspin holds the gear, so a launch does not upshift on spinning
+                    // wheels, but only for half a second at the shift point: in a long
+                    // slide the next gear is what keeps the driven wheels turning.
+                    bool want = gear < n && wheelRpm > g.upshiftRpm[gear] && inp.throttle > 0.05;
+                    upshiftHeld = want ? upshiftHeld + dt : JsMath.Max(0, upshiftHeld - 2 * dt);
                     bool slipping = tcsCut > 0.3;
                     for (int i = 0; i < wheels.Length && !slipping; i++)
                     {
                         if (p.wheels[i].driveWeight > 0 && wheels[i].slipRatio > 0.35) slipping = true;
                     }
-                    if (timeSinceShift > 0.4 && gear < n && wheelRpm > g.upshiftRpm[gear] && inp.throttle > 0.05 && !slipping)
+                    slipping = slipping && upshiftHeld < 0.5;
+                    if (timeSinceShift > 0.4 && want && !slipping)
                     {
                         ShiftTo(gear + 1);
                     }
@@ -1129,7 +1142,9 @@ namespace Halcyon.Core
                 }
             }
             if (!launching) launchTrim = 1;
-            if (inp.handbrake > 0.5 && Math.Abs(vLong) < 7) engage = 0;
+            // The handbrake declutches, as in a drift car: the engine cannot fight
+            // it, and an AWD car's rear wheels lock free of the front ones.
+            if (inp.handbrake > 0.5) engage = 0;
             engage *= 1 - M.Clamp(inp.clutch, 0, 1);
             clutchEngage = engage;
         }
@@ -1153,7 +1168,7 @@ namespace Halcyon.Core
                 {
                     if (p.wheels[i].driveWeight <= 0 || !wheels[i].grounded) continue;
                     kAxle = JsMath.Min(kAxle, gear == -1 ? -wheels[i].slipRatio : wheels[i].slipRatio);
-                    kPeak = p.wheels[i].tire.kappaPeak;
+                    kPeak = p.wheels[i].tire.kappaPeak * PeakScale(i);
                 }
                 if (!double.IsPositiveInfinity(kAxle)) kMax = JsMath.Max(kMax, kAxle);
             }

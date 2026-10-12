@@ -149,3 +149,24 @@ Deviations are measured minus reference, rounded. Every value is within 10%.
 ## Models
 
 Every car has a Blender model made by `blender/build_car.py` (see `docs/UNITY.md`). Each model has three LODs, and each LOD keeps cleanly cut glass, lights, grilles and panel gaps. Review sheets with six views per car are in `blender/renders/`.
+
+## How each car drifts (M8)
+
+`tools/dev/drift-probe.ts` throws each car into a slide at 60 km/h (a pull of the handbrake while turning in) and then drives it for 8 s, aiming for 20°, 30° and 40° of slip, with ESC and traction control off and the standard steering assist. The numbers are the seconds held within 10° of the target; "spun" means the slip passed 75°. Two kinds of driver: one who works the throttle and the steering (the way to drift a rear-driven car), and one who keeps the throttle pinned and dabs the handbrake (the way to slide an AWD or front-driven car). The driver is a simple controller: a person does better, but the spread between cars is real.
+
+| Car | Drive | Throttle driver, asphalt: 20° / 30° / 40° | Handbrake driver, asphalt | Handbrake driver, gravel |
+|---|---|---|---|---|
+| Halden Aster GT | RWD | 7.8 / 7.9 / 1.9 | 7.7 / spun / spun | 3.6 / spun / spun |
+| Aurelle Pico | FWD | 0.6 / 0.9 / 0.8 | 5.1 / 3.7 / 2.3 | 4.9 / 4.5 / 2.4 |
+| Aurelle Vif R | FWD | 0.8 / 1.0 / 1.0 | 5.9 / 2.7 / 1.5 | 4.1 / 2.9 / 2.0 |
+| Hoshida Kiri RS | AWD | 1.0 / 1.1 / 1.4 | 7.6 / 4.5 / 2.4 | 7.7 / 4.9 / 2.2 |
+| Halden 280 Sprint | RWD | 6.6 / 6.8 / spun | 7.7 / spun / spun | spun |
+| Stallworth Ironside 454 | RWD | 7.9 / 5.3 / spun | spun | spun |
+| Nordvik Kyst Sport | AWD | 1.0 / 1.2 / 1.5 | 7.6 / 6.8 / 3.4 | 6.4 / 5.2 / 5.1 |
+| Orsini Saetta | RWD | 8.0 / 7.9 / spun | spun | spun |
+| Arcline Vanta | AWD | 1.9 / 1.0 / 1.1 | 5.5 / 4.4 / 3.9 | 4.8 / 3.9 / 3.5 |
+| Ironbark Ridgeback | AWD | 1.2 / 1.6 / 0.5 | 7.7 / 5.1 / 3.1 | 7.7 / 4.8 / 2.7 |
+| Stallworth Prairie | AWD | 4.8 / 1.6 / 0.6 | 8.0 / 5.7 / 3.0 | 8.0 / 4.8 / 2.7 |
+| Nordvik Varg | AWD | 1.0 / 1.2 / 1.4 | 7.6 / 5.3 / 2.7 | 6.9 / 5.1 / 4.5 |
+
+Rear-driven cars hold 20–30° on the throttle (the 280 Sprint's open differential and 127 kW run out at 30°); pinning the throttle in them spins, as it should. AWD cars slide on power with the handbrake to bring the tail round; a front-driver holds a slide on the handbrake. With the physics as it was before M8, the same drivers held 68.4 s and 62.6 s of the 288 in all (AWD cars barely slid: at speed their rear wheels did not lock under the handbrake); now 91.5 s and 134.3 s.

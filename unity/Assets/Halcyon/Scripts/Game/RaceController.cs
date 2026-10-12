@@ -298,6 +298,7 @@ namespace Halcyon
                 ghostY = ghostCar.pos.y;
                 ghostZ = ghostCar.pos.z;
                 ghostRig = CarRig.Create(ghostCar, ghost.CarId, GhostTint);
+                ghostRig.Silent = true;
                 ghostRig.MakeGhost(GhostTint);
                 ghostRig.Snap();
             }
@@ -418,6 +419,7 @@ namespace Halcyon
         public void TickRace()
         {
             if (Session == null) return;
+            RaceSounds();
             var m = game.Driver.Menu;
             bool done = Session.State == RaceState.Finished && Session.SinceFinish > 1.5;
             if (done && m.select)
@@ -434,6 +436,44 @@ namespace Halcyon
         }
 
         float leaveHold;
+
+        // The race's sounds: the countdown beeps, GO, each lap and the finish.
+        RaceSession soundSession;
+        int lastBeep, lastLaps;
+        bool finishSounded;
+
+        void RaceSounds()
+        {
+            var s = Session;
+            var snd = GameSound.Instance;
+            if (snd == null) return;
+            if (s != soundSession)
+            {
+                soundSession = s;
+                lastBeep = 99;
+                lastLaps = 0;
+                finishSounded = false;
+            }
+            int beep = s.Clock < 0 ? Mathf.CeilToInt((float)-s.Clock) : 0;
+            if (beep != lastBeep)
+            {
+                if (beep > 0 && beep <= 3) snd.Ui(Core.Audio.UiSound.Count);
+                else if (beep == 0 && lastBeep != 99) snd.Ui(Core.Audio.UiSound.Go);
+                lastBeep = beep;
+            }
+            var me = s.PlayerEntrant;
+            if (me == null) return;
+            if (me.LapsDone > lastLaps)
+            {
+                lastLaps = me.LapsDone;
+                if (!me.Finished) snd.Ui(Core.Audio.UiSound.Checkpoint);
+            }
+            if (me.Finished && !finishSounded)
+            {
+                finishSounded = true;
+                snd.Ui(me.Position == 1 ? Core.Audio.UiSound.Reward : Core.Audio.UiSound.Select);
+            }
+        }
 
         static string Time(double t) => double.IsNaN(t) ? "--:--.--" : $"{(int)(t / 60)}:{t % 60:00.00}";
 

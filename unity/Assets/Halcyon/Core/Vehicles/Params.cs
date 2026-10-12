@@ -349,6 +349,7 @@ namespace Halcyon.Core
             Compound compound = up.compound ?? spec.tires.compound;
             CompoundInfo info = Tires.Info(compound);
             Curve curve = Tires.MakeCurve(info.slide, info.E);
+            Curve looseCurve = Tires.LooseCurveFor(info);
             double staticF = (mass * GRAVITY * wf) / 2;
             double staticR = (mass * GRAVITY * (1 - wf)) / 2;
             TireSetup MkTire(double width, double load, double pressure, double camberDeg)
@@ -362,6 +363,7 @@ namespace Halcyon.Core
                     compound = compound,
                     info = info,
                     curve = curve,
+                    looseCurve = looseCurve,
                     widthGrip = widthGrip,
                     tuneGrip = PressureGrip(pressure) * CamberLongGrip(camberDeg),
                     tuneLateral = CamberLateralGrip(camberDeg) / CamberLongGrip(camberDeg),

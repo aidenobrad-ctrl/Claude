@@ -54,7 +54,7 @@ Given the same seed and the same inputs, the simulation produces bit-identical r
 
 ### Rendering budget
 
-- **Pixel budget.** The internal resolution is capped by a pixel budget rather than a fixed device pixel ratio: 1280×720 on mobile and 1920×1080 on desktop by default (`pixelRatioForBudget`). A DPR-3 phone in portrait renders about 0.92 MP instead of 2.1 MP. The quality presets in M8 adjust the budget, and dynamic resolution scales within it.
+- **Pixel budget.** The internal resolution is capped by a pixel budget rather than a fixed device pixel ratio: 1280×720 on mobile and 1920×1080 on desktop by default (`pixelRatioForBudget`). A DPR-3 phone in portrait renders about 0.92 MP instead of 2.1 MP. The presets (Low 960×540, Medium 1280×720, High 1920×1080, Ultra 2560×1440, Auto picking from the device) set the budget and the rest of the quality (post-processing, shadows, grass, scenery and tree distances); the pause menu saves the choice, which applies on a reload. Dynamic resolution (M8) then scales the pixel ratio: below 60 frames a second it steps down by 10% (to 55% at most), with headroom it climbs back by 5%, never more often than every 1.5 s.
 - **Field of view.** The camera keeps at least 72° of horizontal FOV, with vertical FOV capped at 100°, so phones in portrait still see around the car.
 
 ### Robustness
@@ -75,6 +75,7 @@ Each car is a 6-DOF rigid body on four raycast suspension struts, stepped at 240
   - Load sensitivity: μ·(1 − k·(Fz/Fz0 − 1)).
   - Below 3 m/s the slip denominator has a floor, so forces become a stiff viscous friction.
   - A braked tire at rest is anchored to the ground by a tread spring (1.2e5 N/m) with damping, capped at μ·Fz, so parked cars don't creep.
+  - Loose ground (dirt, gravel, sand, grass, snow, mud) gives way under the tread instead of tearing it: grip peaks at 1.5× the slip (κ and tan α), and the sliding ratio moves halfway to 1 (a second curve per tire, `looseCurve`). Cars slide on it progressively. ABS, traction control and launch control aim at the loose peak; the steering assist keeps the paved window, which is steadier (M8).
 - **Compounds and surfaces.** Each compound (eco, street, sport, semi-slick, slick, rally, off-road, snow, drag) has peak μ, μ_long, α_peak, κ_peak, a sliding ratio and a grip table per surface class. Surfaces (`world/surfaces.ts`) add rolling resistance, viscous drag (sand, mud, water) and deterministic small-scale bumps (gravel and grass feel rough).
 - **Drivetrain**, solved implicitly in one step. Each wheel's tire reaction is linearized, X + K·Δω, with K = r²·∂Fx/∂(slip velocity).
   - The engine, clutch and open differentials form one constraint, ω_engine = G·Σwᵢωᵢ, where wᵢ are torque shares: RWD (0, 0, ½, ½), FWD, or AWD with a front split.
@@ -85,6 +86,7 @@ Each car is a 6-DOF rigid body on four raycast suspension struts, stepped at 240
 - **Engine.** A torque curve sampled every 100 rpm, closed-throttle engine braking proportional to rpm, an idle governor and a hysteresis rev limiter. Turbo cars build boost with a first-order lag above a spool rpm, and torque scales as (1 − share + share·boost). Electric motors have no idle or clutch and a smooth limiter.
 - **Gearbox.** Shift points come from the torque curves: upshift where the next gear gives more wheel torque at the same road speed. Downshift low enough to land below the lower gear's upshift point, with throttle-dependent hysteresis and a minimum time between shifts.
   - Upshifts cut ignition so the engine drops to the new gear's speed; downshifts blip to match revs. M1 found that without this, every upshift flared the engine and spun the tires.
+  - Wheelspin holds the gear, so a launch does not upshift on spinning wheels, but only for half a second at the shift point (a leaky timer): in a long slide the next gear is what keeps the driven wheels turning. Before M8 an automatic car in a drift sat on the limiter in first.
   - Manual mode refuses downshifts that would over-rev.
   - Reverse: hold the brake at a standstill for 0.35 s. Pedals swap in reverse, and throttle returns to first.
 - **Launch.** Like launch control or a torque converter's stall speed:
@@ -99,6 +101,7 @@ Each car is a 6-DOF rigid body on four raycast suspension struts, stepped at 240
   - ABS releases pressure per wheel when the lock slip exceeds κ_peak.
   - TCS cuts throttle when a driven wheel's slip exceeds κ_peak (during a launch the clutch cap does this instead).
   - ESC compares yaw rate with a bicycle-model target, v·δ/(L·(1 + 0.0022·v²)), clamped to 0.85·μ·g/v. It brakes the outer front wheel and cuts throttle on oversteer, and cuts throttle when sideslip passes 0.1 rad. The handbrake bypasses it so you can drift.
+  - The handbrake declutches at any speed, as in a drift car (and in Forza): the engine cannot fight it, and an AWD car's rear wheels lock free of the front ones. Released with the engine revved, the clutch bites like a clutch kick. Before M8 it only declutched under 7 m/s, and an AWD car's rears barely slowed under it.
   - The steering assist maps the full stick range onto the useful range: around the direction the front axle is actually traveling, within ±1.2·α_peak. Full lock at speed therefore stays near peak grip, and countersteer is always available. "Assisted" also centers the wheels on the travel direction (auto countersteer). Off is raw steering.
   - The steering rack moves at up to 5.5 rad/s. Partial Ackermann (60%). Static toe is added per wheel.
 
@@ -159,6 +162,7 @@ Lap timing requires passing all three sectors in order, so reversing over the li
   - **Details:** lights, plates, valances and lips are placed by raycasting onto the generated body, so they sit on the real surface for any style.
   - **Materials:** clear-coat paint, and dielectric glass with a clearcoat layer. M1 found that metallic dark glass rendered black, because reflections are tinted by the base color.
 - **Effects:** skid marks are a ring buffer of quads with vertex alpha, darker on asphalt and light ruts on loose ground. Smoke, dust and spray are one point cloud with per-particle size and alpha.
+- **Terrain colour (M8 art pass):** meadows are tinted dry or lush by noise at three scales (1.4 km fields, 380 m patches, 95 m tufts), stretched to use its full range (the noise sits in a narrow band around 0.5); sun-facing slopes dry out first; lush patches carry a faint speckle of wildflowers up close. A view across the island reads as pasture and farmland instead of one green.
 
 ## Unity and Blender
 
@@ -344,6 +348,16 @@ Like the AI and the career, all of M6's logic is pure C# in Core, stepped by the
 - **Accessibility in Unity:** HUD size 75–150%, palettes that keep good and bad apart with red-green or blue-yellow colour blindness (the HUD, the gaps and the racing line), camera shake from none to full, motion blur off, field of view 50–80°, lightning at a quarter brightness, the minimap and key hints off, and mph and miles.
 - **The racing line** in Unity is the AI's line for the route, coloured from the player's own car: its speed profile (with a little more margin than the AI's) against the speed now, and the braking each point asks for.
 
+## Sound (M8: `src/audio/`, `unity/Assets/Halcyon/Core/Audio/`, `Scripts/Audio/`)
+
+Everything is synthesized; there are no recordings. The synthesis is sample code (no Web Audio graph inside it), written once in TypeScript and ported to C#, where it renders the same samples (checked: engine loops and beds bit-exact, one-shots within one float ulp, the radio within 1e-12; `AudioChecks.cs`).
+
+- **Engines** (`engine-synth`). Each firing of a cylinder is an exhaust pulse (a smooth bump plus a burst of combustion noise), timed by the firing order with a little jitter per cycle. The pulses go through each bank's exhaust: a boom (55–150 Hz, lower for bigger engines), a honk (300–620 Hz), a rasp (1.5–3 kHz, louder on sporty cars) and a muffler, then a little saturation. The firing pattern carries the character: an inline four's even buzz, a six's wail, a cross-plane V8's uneven banks (L R R L R L L R: the burble; V8s that rev past 7500 are flat-plane), a V6's two banks. Loops are rendered at a ladder of speeds about 900 rpm apart, on and off the throttle, each a whole number of engine cycles and rendered three periods over so the filters settle and the seam is clean. At run time the two loops either side of the rpm play, pitched to it and crossfaded with equal power, and the on- and off-load sets blend with the throttle (the rev limiter's cut gives the "brap"). Electric motors are a stack of motor harmonics and a gear whine.
+- **Beds and one-shots** (`beds`). Looping beds pitched and faded each frame: tire squeal (narrow, wandering bands near 1 kHz) from the slip on paved surfaces, road roar with speed, gravel crunch, grass swish, snow crunch and spray on loose or wet ground, wind with speed squared, intake noise with throttle and rpm, and a turbo whistle with boost. One-shots: three weights of impact (a thump, ringing metal and crunch), the blow-off valve on a lift at boost, overrun crackle on sporty engines, the gear shift, and UI blips (move, select, back, countdown, go, checkpoint, reward, photo).
+- **The radio** (`radio`). Three stations compose endless songs from a seed: a key, a tempo, a progression from a station's set, an arrangement of sections with an energy each, a two-bar motif fitted to each chord, bass and drum patterns. Halcyon Pulse is synthwave (four on the floor, gated saw pads, arpeggios), Coastline FM is lo-fi (swung drums, an FM electric piano's seventh chords, vinyl crackle), Redline Radio is rock (power chords through a driven amp, crashes and fills). Bars are rendered with a small reverb, a ping-pong delay and a limiter, about 25 times faster than real time; every other song the station says its name with a jingle.
+- **Web.** A worker renders the loops, beds and bars (the main thread only plays buffers and moves gains and playback rates). Nothing starts until the first key, click or touch (browsers require it). Settings: master, effects and music volume, the station (N, the FM touch button or the pause menu); saved in the browser.
+- **Unity.** Loops and beds render on worker threads and become clips on the main thread. The player's car is 2D; the four nearest other cars (racers and traffic) get 3D engine voices. The radio renders bars on a worker thread into a queue that `OnAudioFilterRead` plays. The bonnet camera muffles the car. Settings add engine, effects, music and station to the master and weather volumes.
+
 ## Testing
 
 - `npm run verify` runs the typecheck, the build, the simulation tests (Node) and the browser tests (headless Chromium through Playwright with SwiftShader). `--quick` shortens the long suites.
@@ -380,3 +394,9 @@ Like the AI and the career, all of M6's logic is pure C# in Core, stepped by the
   - Yumps are built into the road profile: real crests were too few and too messy to rely on.
   - Roads that share pavement must share a height: the baker makes junctions where roads touch, and the profiles stay level where pavements overlap.
   - Settings live outside the career save.
+- **M8:** drifting (the handbrake declutches, the automatic box upshifts in a long slide, loose ground grips like loose ground), procedural sound in both versions (engines from firing pulses, tires, wind, impacts, UI and three generative radio stations), graphics presets in the web pause menu and dynamic resolution, an art pass on the meadows, a bug bash of the never-run Unity code, and the FM button on the touch controls.
+- **M8 decisions:**
+  - Drift feel came from the drivetrain and the controls, not the tire curve: the post-peak curve was already gentle (10% down at four times the peak slip). A probe drove every car with three kinds of driver (`tools/dev/drift-probe.ts`).
+  - The sound is synthesized sample code, the same in TypeScript and C#, so the web and Unity sound alike and the port is tested like the physics.
+  - Engines are played like recorded loops (pitch and crossfade between rpm points), not synthesized live: a few native sources per car instead of DSP in a script, on the web and in Unity.
+  - No heavy mobile work: the player's phone is a current flagship; presets, the pixel budget and dynamic resolution cover the rest.

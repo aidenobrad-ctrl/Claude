@@ -10,7 +10,7 @@ import { V3, Quat, clamp, lerp, moveTowards, smoothstep } from '../engine/math';
 import { datan, datan2, dcos, dsin, dtan } from '../engine/dmath';
 import { newHit, type Ground, type GroundHit } from '../world/ground';
 import { SURFACES, SURFACE, type SurfaceId, type SurfaceInfo } from '../world/surfaces';
-import { tireForce, type TireResult, type TireSetup } from './tires';
+import { LOOSE_PEAK, tireForce, type TireResult, type TireSetup } from './tires';
 import { AIR_DENSITY, GRAVITY, camberLateralGrip, camberLongGrip, curveTorque, type VehicleParams } from './params';
 
 export interface DriverInput {
@@ -115,6 +115,8 @@ export class Vehicle {
   clutchLocked = false;
   boost = 0;
   limiterCut = false;
+  /** How long the auto gearbox has wanted an upshift that wheelspin held back, s (leaky). */
+  upshiftHeld = 0;
   throttleEff = 0;
   tcsCut = 0;
   escCut = 0;
@@ -187,6 +189,7 @@ export class Vehicle {
     this.boost = 0;
     this.tcsCut = this.escCut = 0;
     this.launchTrim = 1;
+    this.upshiftHeld = 0;
     this.steerAngle = 0;
     this.airTime = 0;
     this.updateAxes();
@@ -471,7 +474,7 @@ export class Vehicle {
       const lean = (wp.left ? 1 : -1) * p.casterDelta * dsin(w.steer);
       lateral = camberLateralGrip(camber + lean) / camberLongGrip(camber);
     }
-    tireForce(wp.tire, w.load, vL, vS, wheelSpeed, grip, tireRes, lateral);
+    tireForce(wp.tire, w.load, vL, vS, wheelSpeed, grip, tireRes, lateral, surf.loose);
     w.fx = tireRes.fx;
     w.fy = tireRes.fy;
     // Static friction at a standstill. A braked tire whose patch has all but
@@ -517,6 +520,11 @@ export class Vehicle {
     w.slideSpeed = Math.sqrt(sx * sx + vS * vS);
   }
 
+  /** How much further out a wheel's grip peaks on the ground under it (loose ground). */
+  private peakScale(i: number): number {
+    return SURFACES[this.wheels[i].surface].loose ? LOOSE_PEAK : 1;
+  }
+
   private updateAids(dt: number, throttleIn: number, brakeIn: number): void {
     const p = this.params;
     const aids = this.aids;
@@ -526,7 +534,7 @@ export class Vehicle {
     for (let i = 0; i < 4; i++) {
       if (p.wheels[i].driveWeight <= 0 || !this.wheels[i].grounded) continue;
       kMax = Math.max(kMax, this.gear === -1 ? -this.wheels[i].slipRatio : this.wheels[i].slipRatio);
-      kPeak = p.wheels[i].tire.kappaPeak;
+      kPeak = p.wheels[i].tire.kappaPeak * this.peakScale(i);
     }
     const tcsTarget = aids.tcs && this.input.handbrake < 0.5 ? clamp((kMax - kPeak) / (kPeak * 0.7), 0, 0.92) : 0;
     if (this.launching) {
@@ -567,7 +575,7 @@ export class Vehicle {
       const w = this.wheels[i];
       let target = 1;
       if (aids.abs && brakeIn > 0.05 && w.grounded && Math.abs(w.vLong) > 1.5) {
-        const kp = p.wheels[i].tire.kappaPeak;
+        const kp = p.wheels[i].tire.kappaPeak * this.peakScale(i);
         const lock = w.vLong > 0 ? -w.slipRatio : w.slipRatio;
         target = clamp(1 - (lock - kp * 1.05) / (kp * 0.9), 0.05, 1);
       }
@@ -739,6 +747,7 @@ export class Vehicle {
     this.shiftTotal = this.params.gearbox.shiftTime;
     this.shiftTimer = this.shiftTotal;
     this.timeSinceShift = 0;
+    this.upshiftHeld = 0;
   }
 
   /**
@@ -824,8 +833,14 @@ export class Vehicle {
     } else if (this.gear >= 1) {
       if (this.aids.gearbox === 'auto') {
         const wheelRpm = this.wheelRpm(this.gear);
-        const slipping = this.tcsCut > 0.3 || this.wheels.some((w, i) => p.wheels[i].driveWeight > 0 && w.slipRatio > 0.35);
-        if (this.timeSinceShift > 0.4 && this.gear < n && wheelRpm > g.upshiftRpm[this.gear] && inp.throttle > 0.05 && !slipping) {
+        // Wheelspin holds the gear, so a launch does not upshift on spinning
+        // wheels, but only for half a second at the shift point: in a long
+        // slide the next gear is what keeps the driven wheels turning.
+        const want = this.gear < n && wheelRpm > g.upshiftRpm[this.gear] && inp.throttle > 0.05;
+        this.upshiftHeld = want ? this.upshiftHeld + dt : Math.max(0, this.upshiftHeld - 2 * dt);
+        const slipping =
+          (this.tcsCut > 0.3 || this.wheels.some((w, i) => p.wheels[i].driveWeight > 0 && w.slipRatio > 0.35)) && this.upshiftHeld < 0.5;
+        if (this.timeSinceShift > 0.4 && want && !slipping) {
           this.shiftTo(this.gear + 1);
         } else if (this.timeSinceShift > 0.6 && this.gear > 1) {
           const thr = inp.throttle;
@@ -884,7 +899,9 @@ export class Vehicle {
       }
     }
     if (!this.launching) this.launchTrim = 1;
-    if (inp.handbrake > 0.5 && Math.abs(this.vLong) < 7) engage = 0;
+    // The handbrake declutches, as in a drift car: the engine cannot fight
+    // it, and an AWD car's rear wheels lock free of the front ones.
+    if (inp.handbrake > 0.5) engage = 0;
     engage *= 1 - clamp(inp.clutch, 0, 1);
     this.clutchEngage = engage;
   }
@@ -905,7 +922,7 @@ export class Vehicle {
       for (let i = a; i < a + 2; i++) {
         if (p.wheels[i].driveWeight <= 0 || !this.wheels[i].grounded) continue;
         kAxle = Math.min(kAxle, this.gear === -1 ? -this.wheels[i].slipRatio : this.wheels[i].slipRatio);
-        kPeak = p.wheels[i].tire.kappaPeak;
+        kPeak = p.wheels[i].tire.kappaPeak * this.peakScale(i);
       }
       if (kAxle !== Infinity) kMax = Math.max(kMax, kAxle);
     }

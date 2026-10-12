@@ -73,6 +73,8 @@ namespace Halcyon.Core
         public Compound compound;
         public CompoundInfo info;
         public Curve curve;
+        /// <summary>The curve on loose ground: peak further out and a flatter fall past it.</summary>
+        public Curve looseCurve;
         /// <summary>Grip multiplier from tire width relative to load (wider = more grip).</summary>
         public double widthGrip;
         /// <summary>Grip multiplier from camber, pressure and other tuning.</summary>
@@ -131,6 +133,18 @@ namespace Halcyon.Core
         public static CompoundInfo Info(Compound c) => Compounds[(int)c];
 
         /// <summary>
+        /// Loose ground (dirt, gravel, sand, grass, snow, mud) gives way under the
+        /// tread instead of tearing it: grip peaks at larger slip and holds up past
+        /// the peak (the tire ploughs), which is what lets a car be driven sideways
+        /// on it. The peak slips are scaled by LoosePeak, and the sliding ratio
+        /// moves this share of the way toward 1.
+        /// </summary>
+        public const double LoosePeak = 1.5;
+        public const double LooseSlide = 0.5;
+
+        public static Curve LooseCurveFor(CompoundInfo info) => MakeCurve(info.slide + (1 - info.slide) * LooseSlide, info.E);
+
+        /// <summary>
         /// Build a normalized curve with the given sliding ratio and curvature.
         /// C follows from the asymptote sin(C*pi/2) = slide; B is solved so that
         /// the peak, where C*atan(phi(x)) = pi/2, lands at x = 1.
@@ -178,7 +192,7 @@ namespace Halcyon.Core
         /// wheelSpeed: omega * radius (m/s). Fz: load, N. surfaceGrip: multiplier.
         /// Writes into and returns <paramref name="result"/>; allocation-free.
         /// </summary>
-        public static TireResult TireForce(TireSetup t, double Fz, double vLong, double vLat, double wheelSpeed, double surfaceGrip, TireResult result, double lateral = double.NaN)
+        public static TireResult TireForce(TireSetup t, double Fz, double vLong, double vLat, double wheelSpeed, double surfaceGrip, TireResult result, double lateral = double.NaN, bool loose = false)
         {
             if (Fz <= 0)
             {
@@ -194,8 +208,11 @@ namespace Halcyon.Core
             double slipVx = wheelSpeed - vLong; // + when driving (wheel faster than ground)
             double kappa = slipVx / vDen;
             double tanA = vLat / vDen;
-            double sx = kappa / t.kappaPeak;
-            double sy = tanA / t.tanAlphaPeak;
+            double peak = loose ? LoosePeak : 1;
+            double kappaPeak = t.kappaPeak * peak;
+            Curve curve = loose ? t.looseCurve : t.curve;
+            double sx = kappa / kappaPeak;
+            double sy = tanA / (t.tanAlphaPeak * peak);
             double s = Math.Sqrt(sx * sx + sy * sy);
             // Load sensitivity: the friction coefficient falls as load rises.
             double loadRatio = Fz / t.nominalLoad;
@@ -205,21 +222,21 @@ namespace Halcyon.Core
             double muY = mu * (double.IsNaN(lateral) ? t.tuneLateral : lateral);
             if (s < 1e-9)
             {
-                double slope0 = MfSlope(t.curve, 0);
+                double slope0 = MfSlope(curve, 0);
                 result.fx = 0;
                 result.fy = 0;
-                result.dFxdV = (muX * Fz * slope0) / (t.kappaPeak * vDen);
+                result.dFxdV = (muX * Fz * slope0) / (kappaPeak * vDen);
                 result.slip = 0;
                 return result;
             }
-            double m = Mf(t.curve, s);
-            double ms = JsMath.Max(0, MfSlope(t.curve, s));
+            double m = Mf(curve, s);
+            double ms = JsMath.Max(0, MfSlope(curve, s));
             double nx = sx / s;
             double ny = sy / s;
             result.fx = muX * Fz * m * nx;
             result.fy = -muY * Fz * m * ny;
             // dFx/dsx = muX*Fz*[ (m/s)*ny^2 + m'(s)*nx^2 ], and dsx/dslipVx = 1/(kappaPeak*vDen).
-            result.dFxdV = (muX * Fz * ((m / s) * ny * ny + ms * nx * nx)) / (t.kappaPeak * vDen);
+            result.dFxdV = (muX * Fz * ((m / s) * ny * ny + ms * nx * nx)) / (kappaPeak * vDen);
             result.slip = s;
             return result;
         }

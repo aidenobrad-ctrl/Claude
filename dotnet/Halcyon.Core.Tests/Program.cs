@@ -115,6 +115,21 @@ namespace Halcyon.Core.Tests
                 }
             }
             if (Want("alloc")) checks.Add(Guard("alloc", "allocations", AllocationChecks.Run));
+            if (Want("audio"))
+            {
+                // The audio port: within 1e-4 of the web version's renders (see AudioChecks.cs).
+                string audioRef = Path.Combine(Path.GetDirectoryName(refDir), "audio", "audio-ref.json");
+                try
+                {
+                    checks.AddRange(AudioChecks.All(RefJson.Load(audioRef)));
+                }
+                catch (Exception e)
+                {
+                    var c = new Check("audio", "audio");
+                    c.Fail($"exception: {e.GetType().Name}: {e.Message}");
+                    checks.Add(c);
+                }
+            }
 
             // --- Report ---------------------------------------------------------
             Console.WriteLine($"Halcyon.Core vehicle port vs TypeScript reference ({refDir})");

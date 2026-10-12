@@ -16,7 +16,7 @@ Unity (with Blender-made cars) is the main target since M2. The web version is t
 | M5 Tuning and upgrades | **Done headless; Unity compile-checked.** Measured PI and classes, parts, prices, payouts and XP, saves, share codes, the understeer test, the measured auto-tune, rivals matched by PI and class-limited events (`dotnet/Halcyon.Career.Tests`, `dotnet/Halcyon.AI.Tests`). Slip-steered launch control and caster in the shared physics. In Unity: the garage with dealer, upgrades, tuning with graphs, test track and career data, and race payouts. |
 | M6 World v2 | **Done headless; Unity compile-checked.** Wet roads in the shared physics (bit-exact), the clock and the weather, events with their own conditions, traffic in two levels of detail, the rebuilt Highcrest pass and its hill climb, crest-aware AI, five landmarks, discoveries, the map with fog of war and fast travel, and the GPS (`dotnet/Halcyon.Sim.Tests`). In Unity: the sky, night, rain, lightning, wet roads, headlights, traffic rigs, landmarks, the map and minimap, and the GPS line. |
 | M7 Everything else | **Done headless; Unity compile-checked.** Stunts (speed traps, speed zones, drift zones, danger signs on yumps), drag, a rally on dirt, a head-to-head and a ghost time trial, three championships, festival levels and 26 accolades, settings (`dotnet/Halcyon.Sim.Tests`). The road network rerouted with headings and level junctions. In Unity: stunt boards and panels, the festival menu with championships, the ghost car, the pause menu with settings and accessibility, the accolades page, photo mode and the racing line. No cross-country event. |
-| M8 Polish and optimization | Not started |
+| M8 Polish and optimization | **Done; the sound and the Unity side unheard and unrun.** Drifting in the shared physics (the handbrake declutches, the automatic box upshifts in a long slide, loose ground grips like loose ground; bit-exact, references regenerated, all suites pass). Procedural sound in both versions: engines from firing pulses, tires, wind, impacts, UI and three generative radio stations, with the C# rendering the same samples as the web (`AudioChecks.cs`). In the web version: graphics presets and the car in the pause menu, dynamic resolution, an FM button on the touch controls, and an art pass on the meadows. A review of the never-run Unity scripts. |
 
 **Not verified:** nothing has run in a real Unity Editor yet: the island build, the garage, races, rendering and performance. Unity can't be downloaded in the build container. `docs/UNITY-PC-BRIEF.md` is the brief for a session on the user's PC.
 
@@ -70,6 +70,8 @@ Load `dist/index.html?test=1` for manual stepping, with no animation loop.
 ## Tools
 
 - `node tools/car-review.mjs [carId]` renders each car from six angles, plus a contact sheet, into `artifacts/cars/`.
+- `node tools/run-ts.mjs tools/dev/drift-probe.ts [sim|standard] [rally] [surface=gravel] [lock=N] [awd=0.3]` scores how long every car holds a drift; `tools/dev/drift-trace.ts <car> <deg> [standard|rally] [surface]` traces one run.
+- `node tools/run-ts.mjs tools/dev/audio-check.ts [outDir]` checks every car's engine loops (and writes a WAV sweep per car); `tools/dev/radio-check.ts [outDir] [seconds]` renders the three stations; `tools/dev/audio-ref.ts` writes the C# sound references (`dotnet/ref/audio/`).
 
 ## What exists
 
@@ -105,6 +107,8 @@ Load `dist/index.html?test=1` for manual stepping, with no animation loop.
   - twelve events, with the Highcrest Hill Climb, a night race, a storm, a drag race, a rally, a head-to-head and a time trial.
 - **M7 (C# Core):** the stunts and their tracker, the ghost recorder, championships, accolades, festival levels, and settings with units.
 - **Blender:** the car generator v2 (`blender/`) for 12 cars, with review sheets in `blender/renders/`. All 12 models are in `unity/Assets/Halcyon/Art/Resources/Cars/`.
+- **Sound (M8):** `src/audio/` (synthesis, a worker, the Web Audio player) and its C# port in `unity/Assets/Halcyon/Core/Audio/`, played in Unity by `Scripts/Audio/GameSound.cs` and `RadioPlayer.cs`.
+- **Web version extras (M8):** the car picker, graphics presets, sound settings and the radio in the pause menu; dynamic resolution; the FM touch button. The web version is free roam on the island and the proving ground: the AI, events, stunts, traffic, weather and career are in the C# Core and Unity only.
 
 ## Next steps
 
@@ -112,6 +116,7 @@ Load `dist/index.html?test=1` for manual stepping, with no animation loop.
 - **Physics:** brake-force distribution (EBD) with ESC off, in TypeScript and C# together with regenerated references (playtest M4, finding 12).
 - **M5 follow-ups:** a simulated lap in the PI (equal PI is not yet equal pace), an inventory of owned parts, auto-tuned rivals, and the AI in maxed-out hypercar packs (PLAYTEST M5, self-critique).
 - **M6 follow-ups** (PLAYTEST M6, self-critique): traffic rescues only out of the camera's view, local showers, a sharper minimap, a GPS that prefers quicker roads, indicators.
-- **M7 follow-ups** (PLAYTEST M7, self-critique): a cross-country event, drift-friendly breakaway in the physics (M8 driving feel), engine and impact sounds and their volumes in Unity, the last 0.35 m step at a shallow fork.
-- **M8 polish:** mobile profiling and presets, audio, an art pass, a bug bash and the docs.
-- **Art:** the close-range items from the M3 review (saw-toothed arch lips, the Vanta's stepped side window), number plates, terrain textures, a water shader, Blender trees, and audio.
+- **M7 follow-ups** (PLAYTEST M7, self-critique): a cross-country event, the last 0.35 m step at a shallow fork.
+- **The full game on the web** (the version that runs on a phone today): port the AI, races and events, stunts, traffic, weather and the career from the C# Core to TypeScript, tested against the C# the way the C# was tested against the TypeScript physics.
+- **M8 follow-ups** (PLAYTEST M8, self-critique): listen to the sound (only measured so far), AWD cars that slide on the throttle alone, the Unity side in a real Editor.
+- **Art:** the close-range items from the M3 review (saw-toothed arch lips, the Vanta's stepped side window), number plates, terrain textures, a water shader, Blender trees.

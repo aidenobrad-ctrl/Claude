@@ -1,5 +1,10 @@
 // Pause menu and keyboard help for the driving slice.
 import type { Aids, SteeringAssist } from '../vehicles/vehicle';
+import type { QualityName } from '../engine/render/quality';
+import type { AudioSettings, RadioChoice } from '../audio/audio';
+import { STATIONS } from '../audio/radio';
+
+export type QualityChoice = 'auto' | QualityName;
 
 export interface PauseHandlers {
   resume(): void;
@@ -10,7 +15,21 @@ export interface PauseHandlers {
   setUnits(u: 'kmh' | 'mph'): void;
   getTouch(): boolean;
   setTouch(v: boolean): void;
+  /** The cars to choose from (id, name, class line) and the one being driven. */
+  getCars(): { id: string; name: string; info: string }[];
+  getCar(): string;
+  setCar(id: string): void;
+  getQuality(): QualityChoice;
+  /** Saves the preset; true when it needs a reload to take effect. */
+  setQuality(q: QualityChoice): boolean;
+  getAudio(): AudioSettings;
+  setAudio(s: Partial<AudioSettings>): void;
+  /** A click for the menu (optional). */
+  click?(): void;
 }
+
+/** Set by the pause menu so every segment button clicks. */
+let segClick: (() => void) | undefined;
 
 function seg<T extends string>(label: string, options: [T, string][], current: T, onPick: (v: T) => void): HTMLDivElement {
   const row = document.createElement('div');
@@ -28,6 +47,7 @@ function seg<T extends string>(label: string, options: [T, string][], current: T
       for (const x of s.querySelectorAll('button')) x.classList.remove('on');
       b.classList.add('on');
       onPick(v);
+      segClick?.();
     };
     s.appendChild(b);
   }
@@ -54,8 +74,28 @@ export class PauseMenu {
     const aids = this.h.getAids();
     const p = document.createElement('div');
     p.className = 'panel';
-    p.innerHTML = '<h2>Paused</h2><p class="sub">Halcyon Proving Ground · driving setup</p>';
+    p.innerHTML = '<h2>Paused</h2><p class="sub">Halcyon Roads · car, assists, graphics and sound</p>';
     const onOff: [string, string][] = [['on', 'On'], ['off', 'Off']];
+    // The car: a native picker (a long list reads best in the phone's own wheel).
+    const carRow = document.createElement('div');
+    carRow.className = 'row';
+    const carLabel = document.createElement('span');
+    carLabel.textContent = 'Car';
+    const pick = document.createElement('select');
+    pick.className = 'car-pick';
+    for (const c of this.h.getCars()) {
+      const o = document.createElement('option');
+      o.value = c.id;
+      o.textContent = `${c.name} · ${c.info}`;
+      pick.appendChild(o);
+    }
+    pick.value = this.h.getCar();
+    pick.onchange = () => {
+      this.h.setCar(pick.value);
+      this.h.click?.();
+    };
+    carRow.append(carLabel, pick);
+    p.append(carRow);
     const set = (k: 'abs' | 'tcs' | 'esc') => (v: string) => this.h.setAids({ ...this.h.getAids(), [k]: v === 'on' });
     p.append(
       seg('ABS', onOff, aids.abs ? 'on' : 'off', set('abs')),
@@ -66,6 +106,29 @@ export class PauseMenu {
       seg<'kmh' | 'mph'>('Units', [['kmh', 'km/h'], ['mph', 'mph']], this.h.getUnits(), (v) => this.h.setUnits(v)),
       seg('Touch controls', onOff, this.h.getTouch() ? 'on' : 'off', (v) => this.h.setTouch(v === 'on')),
     );
+    // Graphics and sound.
+    const note = document.createElement('p');
+    note.className = 'sub';
+    note.style.display = 'none';
+    const reload = document.createElement('button');
+    reload.type = 'button';
+    reload.textContent = 'Reload now';
+    reload.onclick = () => location.reload();
+    note.append('The new graphics preset applies after a reload. ', reload);
+    const audio = this.h.getAudio();
+    const steps: [string, string][] = [['0', 'Off'], ['0.25', '25'], ['0.5', '50'], ['0.75', '75'], ['1', '100']];
+    const nearest = (x: number): string => steps.reduce((a, b) => (Math.abs(+b[0] - x) < Math.abs(+a[0] - x) ? b : a))[0];
+    p.append(
+      seg<QualityChoice>('Graphics', [['auto', 'Auto'], ['low', 'Low'], ['medium', 'Medium'], ['high', 'High'], ['ultra', 'Ultra']], this.h.getQuality(), (v) => {
+        note.style.display = this.h.setQuality(v) ? '' : 'none';
+      }),
+      note,
+      seg<RadioChoice>('Radio', [['off', 'Off'], ...STATIONS.map((st): [RadioChoice, string] => [st.id, st.name.split(' ')[0]])], audio.station, (v) => this.h.setAudio({ station: v })),
+      seg('Master volume', steps, nearest(audio.master), (v) => this.h.setAudio({ master: +v })),
+      seg('Effects volume', steps, nearest(audio.effects), (v) => this.h.setAudio({ effects: +v })),
+      seg('Music volume', steps, nearest(audio.music), (v) => this.h.setAudio({ music: +v })),
+    );
+    segClick = this.h.click;
     const actions = document.createElement('div');
     actions.className = 'actions';
     const resume = document.createElement('button');
@@ -108,7 +171,8 @@ export class HelpCard {
       ['C', 'Change camera'],
       ['B', 'Look back'],
       ['R', 'Back to the road'],
-      ['Esc / P', 'Pause and assists'],
+      ['N', 'Next radio station'],
+      ['Esc / P', 'Pause, assists, sound and graphics'],
       ['H', 'Hide this help'],
     ];
     this.el.innerHTML = `<div class="panel" style="width:auto;max-width:340px;margin-top:64px;padding:14px 16px;background:rgba(17,22,31,0.82)"><div class="keys">${rows

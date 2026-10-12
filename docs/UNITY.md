@@ -17,11 +17,16 @@ exactly, and adds Unity rendering and Blender-made cars on top.
    and the Halden Aster GT, and saves itself as you play.
 4. Press **G** for the garage on the festival stage: drive, upgrade, tune, test and paint
    your cars, buy and sell at the dealer, and copy your career to the clipboard. Press
-   **T** for festival events: each has a class limit, your rivals are matched to your
-   car's PI, and results pay credits and XP.
+   **T** for the festival: circuits, sprints, a drag race, a rally, a head-to-head with
+   the festival's rival and a time trial against her ghost, and three championships. Each
+   has a class limit and a festival level; your rivals are matched to your car's PI, and
+   results pay credits, XP and accolades.
 5. The island lives: a day lasts 24 minutes, the weather changes by itself (rain wets the
    roads, and wet roads grip less), and traffic drives on the right. Press **M** for the
    map: pick a destination for the GPS, or fast travel to a place you have found.
+6. Stunts are on the roads: speed traps, speed zones, drift zones and danger signs (jumps),
+   each with three stars to earn. **Esc** opens the menu: settings and accessibility,
+   your accolades, the controls. **P** is photo mode.
 
 **Controls**
 
@@ -35,17 +40,19 @@ exactly, and adds Unity rendering and Blender-made cars on top.
 | C | Camera (chase, far, bonnet) |
 | B | Look back |
 | L | Lights |
-| Esc | Pause |
+| Esc | Menu: resume, settings and accessibility, accolades, photo mode, controls, quit |
+| P | Photo mode (right mouse or J/L, I/K to orbit; wheel or U/O to zoom; ↑/↓ ←/→ the settings; Enter save a PNG; X hide the panel; Esc back) |
 | G | Garage (←/→ car, ↑/↓ choose, Enter select, Esc back; in tuning, ←/→ adjust, 1-4 auto-tune, C/V copy/paste a tune code, R reset, Enter test track) |
-| T | Events (↑/↓ event, ←/→ rivals' difficulty, Enter race, Esc back); during a race hold T for a second to leave |
+| T | Festival (↑/↓ event or championship, ←/→ rivals' difficulty, Enter race, X abandon a championship, Esc back); during a race hold T for a second to leave |
 | M | Map (↑/↓ destination, Enter GPS route, F twice fast travel, X clear the route, click the map for a route to there, right-click to clear, M or Esc close) |
 | [ / ] | Clock an hour back / forward |
 | \ | Weather: each sky in turn, then back to dynamic (held during races) |
 
 A gamepad works through the Input System: stick, triggers, A for handbrake, B/X to
-shift, Y for camera, LB for the garage, d-pad up for events, d-pad down for the map. In
-menus the d-pad or stick moves, A picks and B goes back; on the map X fast travels and Y
-clears the route.
+shift, Y for camera, LB for the garage, d-pad up for events, d-pad down for the map, the
+right stick click for photo mode. In menus the d-pad or stick moves, A picks and B goes
+back; on the map X fast travels and Y clears the route. In photo mode the right stick
+orbits and the triggers zoom.
 
 **Screenshots** (for the playtest loop):
 
@@ -230,6 +237,9 @@ and texture metas are left to Unity, because their import settings live there.
 - [x] The living island: day and night, weather and wet roads, traffic, the rebuilt
   Highcrest pass, landmarks, discoveries, the map with fast travel, and the GPS (M6;
   headless-tested, Unity compile-checked)
+- [x] Everything else (M7): stunts, drag, rally, head-to-head, the ghost time trial,
+  championships, levels and accolades, settings and accessibility, photo mode, the racing
+  line (headless-tested, Unity compile-checked)
 - [ ] First run in a real Unity Editor: fix whatever only Unity reports, play the garage, a
-  race, a night and a storm, then look at screenshots
-- [ ] CC0 PBR textures, a real water shader, Blender trees, audio, more event types
+  race, a night and a storm, a championship round and photo mode, then look at screenshots
+- [ ] CC0 PBR textures, a real water shader, Blender trees, audio (M8)

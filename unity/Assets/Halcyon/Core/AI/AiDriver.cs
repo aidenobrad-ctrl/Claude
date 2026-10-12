@@ -112,6 +112,10 @@ namespace Halcyon.Core
 
         readonly Rng rng;
         double laneTarget, reverseT, stuckT, offT, flipT, wrongT, lastResetS = double.NaN;
+        // Headway: the furthest point along the route lately, and how long since the car got 4 m past it.
+        double headS = double.NaN, headT;
+        /// <summary>Held up by a car close ahead that is barely moving (last step): waiting, not stuck.</summary>
+        bool queued;
         double mistakeT, mistakeSpeed = 1, mistakeLane;
         double wobble, wobbleRate;
         int passSide, passId = -1;
@@ -334,8 +338,12 @@ namespace Halcyon.Core
                     brake = Math.Max(brake, Math.Abs(beta) > 0.10 ? 0.25 : 0.6);
                 }
             }
+            // Stopped behind a car (on the grid, in a jam): held on the handbrake. The brake pedal held
+            // at a standstill selects reverse, and the car would back into the one behind it.
+            bool hold = brake > 0 && throttle == 0 && Math.Abs(Car.vehicle.vLong) < 0.8;
             inp.throttle = throttle;
-            inp.brake = brake;
+            inp.brake = hold ? 0 : brake;
+            if (hold) inp.handbrake = 1;
             inp.shiftUp = false;
             inp.shiftDown = false;
         }
@@ -454,6 +462,7 @@ namespace Halcyon.Core
             }
 
             // --- Following, and deciding to pass ---------------------------------------------------
+            queued = false;
             if (haveAhead)
             {
                 double gap = best - (Ability.Length + ahead.length) * 0.5;
@@ -461,6 +470,7 @@ namespace Halcyon.Core
                 double aheadV = Math.Max(0, ahead.speed);
                 double closing = speed - aheadV;
                 double follow = 2.5 + Math.Max(0, speed) * (0.17 - 0.08 * P.Aggression);
+                queued = gap < follow + 4 && aheadV < 2;
                 double profileHere = Profile.At(S + best);
                 bool faster = profileHere > aheadV + 0.5 || closing > 1.0;
                 // Stay on the line until close (about half a second), then go for the gap; on a
@@ -502,6 +512,10 @@ namespace Halcyon.Core
                 {
                     double tts = gap / Math.Max(0.1, closing);
                     if (tts < 1.2) vT = Math.Min(vT, aheadV - 1);
+                    // A much slower car in the way (traffic, a car that spun): no faster than lets the car
+                    // brake to its speed by the following distance, at three quarters of what it can brake.
+                    double room = Math.Max(0, gap - follow);
+                    vT = Math.Min(vT, Math.Sqrt(aheadV * aheadV + 2 * 0.75 * Ability.BrakeMax(Math.Max(0, speed)) * room));
                 }
             }
             if (passT > 0) passT -= dt;
@@ -532,14 +546,22 @@ namespace Halcyon.Core
             double along = v.fwd.x * tx + v.fwd.z * tz;
             if (along < -0.2 && speed < 6) wrongT += dt;
             else wrongT = 0;
-            // Not moving while it should.
-            if (Math.Abs(speed) < 0.8 && reverseT <= 0) stuckT += dt;
+            // Not moving while it should (waiting behind a car that is barely moving is not stuck: no reversing).
+            if (Math.Abs(speed) < 0.8 && reverseT <= 0 && !queued) stuckT += dt;
             else if (reverseT <= 0) stuckT = Math.Max(0, stuckT - dt * 2);
             StuckTime = Math.Abs(speed) < 0.8 ? StuckTime + dt : 0;
             if (StuckTime > MaxStuck) MaxStuck = StuckTime;
-            if (flipT > 1.5 || offT > 4 || stuckT > 3.8 || wrongT > 3)
+            // Wedged against a car or a wall, rocking back and forth without getting anywhere: no
+            // headway along the route for 8 s (the stuck test above wants a car standing still).
+            if (double.IsNaN(headS) || Route.Delta(headS, S) > 4)
             {
-                OnEvent?.Invoke($"reset ({(flipT > 1.5 ? "flipped" : offT > 4 ? "off the road" : stuckT > 4.5 ? "stuck" : "wrong way")}) at s {S:0}, lateral {Lateral:0.0}, speed {speed:0.0}");
+                headS = S;
+                headT = 0;
+            }
+            else headT += dt;
+            if (flipT > 1.5 || offT > 4 || stuckT > 3.8 || wrongT > 3 || headT > 8)
+            {
+                OnEvent?.Invoke($"reset ({(flipT > 1.5 ? "flipped" : offT > 4 ? "off the road" : stuckT > 3.8 ? "stuck" : wrongT > 3 ? "wrong way" : "no headway")}) at s {S:0}, lateral {Lateral:0.0}, speed {speed:0.0}");
                 ResetToRoute();
                 return true;
             }
@@ -573,13 +595,14 @@ namespace Halcyon.Core
             bool again = Resets > 0 && Math.Abs(Route.Delta(lastResetS, S)) < 40;
             lastResetS = S;
             double s = Route.Wrap(S - (again ? 30 : 8));
-            Route.At(s, out double x, out _, out double z, out double tx, out double tz);
+            Route.At(s, out double x, out double y, out double z, out double tx, out double tz);
             double off = again ? 0 : Line.OffsetAt(s);
             x -= tz * off;
             z += tx * off;
-            Placer?.Invoke(v, x, z, Simulation.YawOf(tx, tz));
+            Placer?.Invoke(v, x, y, z, Simulation.YawOf(tx, tz));
             Resets++;
-            flipT = offT = stuckT = wrongT = reverseT = 0;
+            flipT = offT = stuckT = wrongT = reverseT = headT = 0;
+            headS = s;
             StuckTime = 0;
             Lane = 0;
             S = s;
@@ -597,8 +620,8 @@ namespace Halcyon.Core
         /// <summary>Largest distance beyond the drivable edge so far, m.</summary>
         public double MaxOff;
 
-        /// <summary>Puts the car down at (x, z, yaw) on the ground (set by the race).</summary>
-        public Action<Vehicle, double, double, double> Placer;
+        /// <summary>Puts the car down at (x, z, yaw) on the road at the route's height y there (set by the race).</summary>
+        public Action<Vehicle, double, double, double, double> Placer;
 
         static double Clamp(double x, double lo, double hi) => x < lo ? lo : x > hi ? hi : x;
     }

@@ -347,9 +347,10 @@ namespace Halcyon.Core
             }
             double best = double.PositiveInfinity;
             RoadHit found = null;
+            // Every sample, the last of each road too (a destination off the end of a road is nearest its end).
             foreach (var e in w.Edges)
             {
-                for (int i = 0; i + 1 < e.n; i += 4)
+                for (int i = 0; i < e.n; i++)
                 {
                     double d = (e.x[i] - x) * (e.x[i] - x) + (e.z[i] - z) * (e.z[i] - z);
                     if (d < best)

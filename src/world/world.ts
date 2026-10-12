@@ -2,7 +2,7 @@
 // terrain (base terrain plus road cut and fill), a cached 4 m heightfield
 // the physics samples, surfaces and water. Pure simulation code.
 import { clamp, lerp, smoothstep } from '../engine/math';
-import { dsin } from '../engine/dmath';
+import { dcos, dsin } from '../engine/dmath';
 import { Island, LAKE, PLATEAUS, PROVING_ORIGIN, REGION, WORLD_HALF, newSample, type RegionId, type TerrainSample } from './island';
 import { ROAD_CLASSES, ROAD_SHOULDER, PARAPET_W, CURB_H, type RoadClass, type RoadClassId } from './road-classes';
 import type { Colliders } from './colliders';
@@ -33,6 +33,8 @@ export interface NetEdge {
   bridge: Uint8Array;
   /** Base terrain height under each sample (before cut and fill). */
   base: Float32Array;
+  /** How far from each end the profile stays level for its junction (0 where it could not: a short link). */
+  flat: [number, number];
 }
 
 export interface RoadHit {
@@ -70,6 +72,8 @@ export class World {
   readonly island: Island;
   readonly nodes: NetNode[] = [];
   readonly edges: NetEdge[] = [];
+  /** The yumps (crests built into dirt tracks and country roads for jumps): edge and arc length. */
+  readonly yumps: { edge: number; s: number }[] = [];
   private grid = new Map<number, number[]>(); // packed (edge << 16 | i) per cell
   private readonly cell = 64;
   private readonly reach = 60;
@@ -126,14 +130,21 @@ export class World {
       if (this.s.water > -Infinity) h = Math.max(h, this.s.water + 4.5);
       this.nodes.push({ id, x, z, y: h, edges: [] });
     }
-    ROAD_EDGES.forEach(([ci, a, b, mid], id) => {
-      const cls = ROAD_CLASS_ORDER[ci] as RoadClassId;
-      const info = ROAD_CLASSES[cls];
+    // The roads' lines first, then how far from each junction a road shares pavement with
+    // another road leaving it (so its profile can stay level there), then the profiles.
+    const lines = ROAD_EDGES.map(([ci, a, b, mid]) => {
+      const info = ROAD_CLASSES[ROAD_CLASS_ORDER[ci] as RoadClassId];
       const ctrl: RoadPoint[] = [{ x: this.nodes[a].x, y: 0, z: this.nodes[a].z }];
       for (let k = 0; k < mid.length; k += 2) ctrl.push({ x: mid[k], y: 0, z: mid[k + 1] });
       ctrl.push({ x: this.nodes[b].x, y: 0, z: this.nodes[b].z });
       const pts = ctrl.length >= 2 ? sampleSpline(ctrl, false, 4) : ctrl;
-      const road = new Road(pts, { closed: false, halfWidth: info.halfWidth });
+      return new Road(pts, { closed: false, halfWidth: info.halfWidth });
+    });
+    const shared = junctionOverlaps(lines, ROAD_EDGES.map(([ci, a, b]) => [a, b, ROAD_CLASSES[ROAD_CLASS_ORDER[ci] as RoadClassId].halfWidth]));
+    ROAD_EDGES.forEach(([ci, a, b], id) => {
+      const cls = ROAD_CLASS_ORDER[ci] as RoadClassId;
+      const info = ROAD_CLASSES[cls];
+      const road = lines[id];
       const n = road.n;
       const base = new Float32Array(n);
       const water = new Float32Array(n).fill(-Infinity);
@@ -145,22 +156,29 @@ export class World {
       // Profile: smooth the base heights, keep bridges above water, limit grade.
       const y = smoothProfile(base, road.s, info.smooth, this.nodes[a].y, this.nodes[b].y);
       for (let i = 0; i < n; i++) if (water[i] > -Infinity) y[i] = Math.max(y[i], water[i] + 4.5);
-      // Approaches to a crossing rise at the class grade.
-      gradeLimit(y, road.s, info.maxGrade, this.nodes[a].y, this.nodes[b].y);
+      // Approaches to a crossing rise at the class grade, from a flat junction: every road
+      // leaving a node stays within 1% of level for its first 25 m, and on for as far as it
+      // shares pavement with another road leaving there, so the roads meet at one height.
+      const jf = { ...JUNCTION_FLAT, flatA: Math.max(JUNCTION_FLAT.flat, shared[id][0] + 8), flatB: Math.max(JUNCTION_FLAT.flat, shared[id][1] + 8) };
+      const level = gradeLimit(y, road.s, info.maxGrade, this.nodes[a].y, this.nodes[b].y, jf);
       if (cls === 'pass') {
         // The grade limit leaves kinks (from +12% to -11% in 20 m throws a car into the air on a
         // mountain pass). Two short box filters round them into vertical curves; averaging never
         // steepens a profile, so the limit still holds. Bridges stay clear of the water.
         for (let k = 0; k < 2; k++) boxSmooth(y, road.s, 30);
         for (let i = 0; i < n; i++) if (water[i] > -Infinity) y[i] = Math.max(y[i], water[i] + 4.5);
-        gradeLimit(y, road.s, info.maxGrade, this.nodes[a].y, this.nodes[b].y);
+        gradeLimit(y, road.s, info.maxGrade, this.nodes[a].y, this.nodes[b].y, jf);
+      }
+      if (cls === 'dirt' || cls === 'main') {
+        const at = addYump(road, y, base, water, cls, info.maxGrade);
+        if (at >= 0) this.yumps.push({ edge: id, s: at });
       }
       const bridge = new Uint8Array(n);
       for (let i = 0; i < n; i++) bridge[i] = y[i] - base[i] > 5.5 || water[i] > -Infinity ? 1 : 0;
       // Close tiny gaps in bridge runs.
       for (let i = 1; i + 1 < n; i++) if (!bridge[i] && bridge[i - 1] && bridge[i + 1]) bridge[i] = 1;
       for (let i = 0; i < n; i++) road.y[i] = y[i];
-      const e: NetEdge = { id, cls, info, a, b, road, bridge, base };
+      const e: NetEdge = { id, cls, info, a, b, road, bridge, base, flat: level ? [jf.flatA, jf.flatB] : [0, 0] };
       this.edges.push(e);
       this.nodes[a].edges.push(id);
       this.nodes[b].edges.push(id);
@@ -188,9 +206,12 @@ export class World {
 
   /**
    * Nearest road surface point within `maxDist` of the centerline edge
-   * (lateral beyond the half width). Returns false if none.
+   * (lateral beyond the half width). Returns false if none. With yMax, roads
+   * whose surface there is higher are passed over: where two roads overlap (the
+   * legs of a hairpin on a hillside), a wheel on the lower one is not given the
+   * upper one's surface, a wall.
    */
-  nearestRoad(x: number, z: number, maxDist: number, out: RoadHit): boolean {
+  nearestRoad(x: number, z: number, maxDist: number, out: RoadHit, yMax = Infinity): boolean {
     const list = this.grid.get(Math.floor(x / this.cell) * 100003 + Math.floor(z / this.cell));
     if (!list) return false;
     let best = Infinity;
@@ -212,6 +233,7 @@ export class World {
       // Compare by distance beyond each road's own edge.
       const score = d - this.edges[e].info.halfWidth;
       if (score < best) {
+        if (yMax < Infinity && r.y[i] + (r.y[i + 1] - r.y[i]) * t > yMax) continue;
         best = score;
         const len = Math.sqrt(l2) || 1;
         out.edge = e;
@@ -655,6 +677,62 @@ function surfaceFor(l: Layers, region: RegionId): SurfaceId {
   }
 }
 
+/**
+ * Yumps: on the longest flat, straight stretch of a dirt track or country main road (well clear of
+ * its junctions, water and cuttings) the road rises over a smooth crest, a raised cosine 2.2 m high
+ * and 64 m long on dirt (1.3 m and 52 m on a main road, within its 9% grade). Taken flat out a car
+ * flies from it (above about 110 km/h on dirt, 115 on tarmac): the island's danger signs. One per
+ * road at most, from the layout alone, so the same everywhere.
+ */
+const YUMP = { dirt: { h: 2.2, half: 32 }, main: { h: 1.3, half: 26 } } as const;
+function addYump(road: Road, y: Float64Array, base: Float32Array, water: Float32Array, cls: 'dirt' | 'main', maxGrade: number): number {
+  const { h, half } = YUMP[cls];
+  // The hump's own steepest slope, and what the road may have under it to stay within its class.
+  const grade = maxGrade - (h * Math.PI) / (2 * half) - 0.003;
+  const n = road.n;
+  const s = road.s;
+  const L = s[n - 1];
+  if (L < 700) return -1;
+  const reach = 100;
+  let best = -1;
+  let bestScore = Infinity;
+  for (let i = 0; i < n; i++) {
+    if (s[i] < 250 || s[i] > L - 250) continue;
+    let ok = true;
+    let bend = 0;
+    for (let k = i; k >= 0 && s[i] - s[k] <= reach && ok; k--) {
+      bend = Math.max(bend, Math.abs(road.curvature[k]));
+      if (water[k] > -Infinity || Math.abs(y[k] - base[k]) > 1.6) ok = false;
+    }
+    for (let k = i; k < n && s[k] - s[i] <= reach && ok; k++) {
+      bend = Math.max(bend, Math.abs(road.curvature[k]));
+      if (water[k] > -Infinity || Math.abs(y[k] - base[k]) > 1.6) ok = false;
+    }
+    if (!ok || bend * 350 > 1) continue;
+    // Flat (sample to sample) over the hump and its run-out.
+    let lo = i;
+    let hi = i;
+    while (lo > 0 && s[i] - s[lo] < half + 20) lo--;
+    while (hi < n - 1 && s[hi] - s[i] < half + 20) hi++;
+    let g = 0;
+    for (let k = lo; k < hi; k++) g = Math.max(g, Math.abs(y[k + 1] - y[k]) / Math.max(0.1, s[k + 1] - s[k]));
+    if (g > grade) continue;
+    // The straightest, then the nearest the middle of the road.
+    const score = bend * 1e4 + Math.abs(s[i] - L / 2) / L;
+    if (score < bestScore) {
+      bestScore = score;
+      best = i;
+    }
+  }
+  if (best < 0) return -1;
+  const s0 = s[best];
+  for (let i = 0; i < n; i++) {
+    const d = Math.abs(s[i] - s0);
+    if (d < half) y[i] += (h * (1 + dcos((Math.PI * d) / half))) / 2;
+  }
+  return s0;
+}
+
 /** Moving-average smoothing over a window in meters, endpoints pinned. */
 function smoothProfile(base: Float32Array, s: Float64Array, window: number, y0: number, y1: number): Float64Array {
   const n = base.length;
@@ -695,23 +773,91 @@ function boxSmooth(y: Float64Array, s: Float64Array, window: number): void {
   }
 }
 
-/** Enforce a maximum grade with forward and backward passes, endpoints pinned. */
-function gradeLimit(y: Float64Array, s: Float64Array, g: number, y0: number, y1: number): void {
+/** A junction's flat: the grade within this far of a node, and how far the full grade takes to come in after it. */
+const JUNCTION_FLAT = { grade: 0.01, flat: 25, ramp: 35 };
+type JunctionFlat = typeof JUNCTION_FLAT & { flatA?: number; flatB?: number };
+
+/**
+ * For each road, how far from its start and from its end (m) its centreline passes over the pavement of
+ * another road leaving the same junction (where two roads leave at a shallow angle, a long way).
+ */
+function junctionOverlaps(lines: Road[], ends: [number, number, number][]): [number, number][] {
+  const out: [number, number][] = lines.map(() => [0, 0]);
+  const byNode = new Map<number, number[]>();
+  ends.forEach(([a, b], id) => {
+    for (const nd of [a, b]) {
+      if (!byNode.has(nd)) byNode.set(nd, []);
+      byNode.get(nd)!.push(id);
+    }
+  });
+  for (const [nd, ids] of byNode) {
+    for (const e of ids) {
+      const r = lines[e];
+      const fromA = ends[e][0] === nd;
+      for (const f of ids) {
+        if (f === e) continue;
+        const o = lines[f];
+        const oFromA = ends[f][0] === nd;
+        const reach = ends[e][2] + ends[f][2];
+        // Walk out from the junction along e while f's line is within reach of it (over 200 m at most).
+        for (let k = 0; k < r.n; k++) {
+          const i = fromA ? k : r.n - 1 - k;
+          const d = fromA ? r.s[i] : r.length - r.s[i];
+          if (d > 200) break;
+          let near = Infinity;
+          for (let q = 0; q < o.n; q++) {
+            const j = oFromA ? q : o.n - 1 - q;
+            const dj = oFromA ? o.s[j] : o.length - o.s[j];
+            if (dj > 260) break;
+            const dx = o.x[j] - r.x[i];
+            const dz = o.z[j] - r.z[i];
+            near = Math.min(near, Math.sqrt(dx * dx + dz * dz));
+          }
+          if (near < reach) out[e][fromA ? 0 : 1] = Math.max(out[e][fromA ? 0 : 1], d);
+        }
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Enforce a maximum grade with forward and backward passes, endpoints pinned. With a junction flat
+ * the limit near each end is lower, rising to g over the ramp after the flat.
+ */
+/** Returns whether the junction flats were kept. */
+function gradeLimit(y: Float64Array, s: Float64Array, g: number, y0: number, y1: number, jf?: JunctionFlat): boolean {
   const n = y.length;
+  const L = s[n - 1];
+  const flatLim = (i: number): number => {
+    // Each end's own flat (the start's and the end's), the tighter where they meet.
+    const ta = clamp((s[i] - (jf!.flatA ?? jf!.flat)) / jf!.ramp, 0, 1);
+    const tb = clamp((L - s[i] - (jf!.flatB ?? jf!.flat)) / jf!.ramp, 0, 1);
+    return Math.min(g, jf!.grade + (g - jf!.grade) * Math.min(ta, tb));
+  };
+  // A road too short to climb from one node's height to the other's with flats at both ends
+  // (a short link between junctions) keeps the plain limit.
+  let reach = 0;
+  if (jf) for (let i = 1; i < n; i++) reach += Math.min(flatLim(i), flatLim(i - 1)) * (s[i] - s[i - 1]);
+  const flats = jf !== undefined && Math.abs(y1 - y0) < 0.9 * reach;
+  const lim = (i: number): number => (flats ? flatLim(i) : g);
   y[0] = y0;
   y[n - 1] = y1;
   for (let pass = 0; pass < 3; pass++) {
     for (let i = 1; i < n; i++) {
       const ds = s[i] - s[i - 1];
-      y[i] = clamp(y[i], y[i - 1] - g * ds, y[i - 1] + g * ds);
+      const gi = Math.min(lim(i), lim(i - 1));
+      y[i] = clamp(y[i], y[i - 1] - gi * ds, y[i - 1] + gi * ds);
     }
     y[n - 1] = y1;
     for (let i = n - 2; i >= 0; i--) {
       const ds = s[i + 1] - s[i];
-      y[i] = clamp(y[i], y[i + 1] - g * ds, y[i + 1] + g * ds);
+      const gi = Math.min(lim(i), lim(i + 1));
+      y[i] = clamp(y[i], y[i + 1] - gi * ds, y[i + 1] + gi * ds);
     }
     y[0] = y0;
   }
+  return flats;
 }
 
 /** Ground for the island: road decks, terrain, water; the proving ground stays flat. */
@@ -731,7 +877,7 @@ export class WorldGround implements Ground {
     const hit = this.hit;
     // Bridge decks run out to the parapets and city streets have raised
     // sidewalks; elsewhere the shoulder is terrain.
-    if (this.world.nearestRoad(x, z, ROAD_SHOULDER, hit) && hit.y <= yRef + 1.6) {
+    if (this.world.nearestRoad(x, z, ROAD_SHOULDER, hit, yRef + 1.6)) {
       const info = this.world.edges[hit.edge].info;
       const paved = hit.dist <= hit.halfWidth;
       // Behind a guardrail the shoulder is a retaining-wall deck out to the rail.

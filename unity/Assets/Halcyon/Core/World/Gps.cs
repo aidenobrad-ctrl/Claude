@@ -228,6 +228,10 @@ namespace Halcyon.Core
         }
 
         /// <summary>A distance for the HUD: "350 m" (to the nearest 10 m) or "4.2 km".</summary>
-        public static string Distance(double m) => m < 1000 ? $"{Math.Max(10, Math.Round(m / 10) * 10):0} m" : $"{m / 1000:0.0} km";
+        public static string Distance(double m)
+        {
+            if (Units.Imperial) return m < 160.9344 ? $"{Math.Max(50, Math.Round(m / 0.3048 / 50) * 50):0} ft" : $"{m / 1609.344:0.0} mi";
+            return m < 1000 ? $"{Math.Max(10, Math.Round(m / 10) * 10):0} m" : $"{m / 1000:0.0} km";
+        }
     }
 }

@@ -87,6 +87,46 @@ test('trees and buildings keep off the roads', () => {
   assert(blocked === 0, `${blocked} building corners sit on roads`);
 });
 
+test('roads that share pavement (at junctions) meet at one height, within half a metre', () => {
+  // Points across each road's pavement; where another road's pavement covers the same point, the
+  // difference in their heights. Shallow junctions overlap a long way out: their profiles stay level there.
+  const grid = (world as unknown as { grid: Map<number, number[]>; cell: number }).grid;
+  const cell = (world as unknown as { cell: number }).cell;
+  let worst = 0;
+  let where = '';
+  for (const e of world.edges) {
+    const r = e.road;
+    const hw = e.info.halfWidth;
+    for (let i = 0; i < r.n; i += 2) {
+      if (e.bridge[i]) continue;
+      for (let l = -hw + 0.5; l <= hw - 0.5; l += 1) {
+        const x = r.x[i] - r.tz[i] * l;
+        const z = r.z[i] + r.tx[i] * l;
+        for (const packed of grid.get(Math.floor(x / cell) * 100003 + Math.floor(z / cell)) ?? []) {
+          const oe = (packed / 65536) | 0;
+          if (oe === e.id) continue;
+          const k = packed - oe * 65536;
+          const o = world.edges[oe];
+          if (o.bridge[k] || o.bridge[k + 1]) continue;
+          const R = o.road;
+          const dx = R.x[k + 1] - R.x[k];
+          const dz = R.z[k + 1] - R.z[k];
+          const l2 = dx * dx + dz * dz;
+          const t = l2 > 0 ? Math.max(0, Math.min(1, ((x - R.x[k]) * dx + (z - R.z[k]) * dz) / l2)) : 0;
+          if (Math.hypot(x - (R.x[k] + dx * t), z - (R.z[k] + dz * t)) > o.info.halfWidth - 0.5) continue;
+          const diff = Math.abs(R.y[k] + (R.y[k + 1] - R.y[k]) * t - r.y[i]);
+          if (diff > worst) {
+            worst = diff;
+            where = `${world.nodes[e.a].id}->${world.nodes[e.b].id} at s=${r.s[i].toFixed(0)}, over ${world.nodes[o.a].id}->${world.nodes[o.b].id}`;
+          }
+        }
+      }
+    }
+  }
+  log(`worst height step where two roads' pavements overlap: ${worst.toFixed(2)} m (${where})`);
+  assert(worst < 0.5, `step of ${worst.toFixed(2)} m between overlapping roads (${where})`);
+});
+
 test('road edges: no lips to the ground (guardrails at drops), bridges have parapets', () => {
   const sim = new Sim(1);
   const g = sim.ground;

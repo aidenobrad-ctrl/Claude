@@ -38,6 +38,14 @@ namespace Halcyon.Core
         public readonly HashSet<string> Found = new HashSet<string>();
         public string RoadsDriven = "", Fog = "";
         public int RoadMilestones;
+        /// <summary>The best score at each stunt, by its id.</summary>
+        public readonly Dictionary<string, double> StuntBest = new Dictionary<string, double>();
+        /// <summary>Accolades earned (by id), and the counters they read (Accolades.Podiums, ...).</summary>
+        public readonly HashSet<string> Accolades = new HashSet<string>();
+        public readonly Dictionary<string, int> Stats = new Dictionary<string, int>();
+        /// <summary>Championships won (by id), and the one under way (null when none).</summary>
+        public readonly HashSet<string> ChampionshipsWon = new HashSet<string>();
+        public ChampionshipRun Championship;
 
         public OwnedCar CurrentCar => Garage.Count == 0 ? null : Garage[Math.Max(0, Math.Min(Garage.Count - 1, Current))];
 
@@ -130,8 +138,28 @@ namespace Halcyon.Core
                 ["roads"] = RoadsDriven,
                 ["fog"] = Fog,
                 ["roadMilestones"] = RoadMilestones,
+                ["stunts"] = StuntsJson(),
+                ["accolades"] = new List<object>(new SortedSet<string>(Accolades, StringComparer.Ordinal)),
+                ["stats"] = SortedInts(Stats),
+                ["champsWon"] = new List<object>(new SortedSet<string>(ChampionshipsWon, StringComparer.Ordinal)),
             };
+            if (Championship != null) root["championship"] = Championship.ToDict();
             return JsonWriter.Write(root);
+        }
+
+        static Dictionary<string, object> SortedInts(Dictionary<string, int> d)
+        {
+            var o = new Dictionary<string, object>();
+            foreach (var k in new SortedSet<string>(d.Keys, StringComparer.Ordinal)) o[k] = d[k];
+            return o;
+        }
+
+        Dictionary<string, object> StuntsJson()
+        {
+            // Sorted, so the same profile always writes the same text.
+            var d = new Dictionary<string, object>();
+            foreach (var k in new SortedSet<string>(StuntBest.Keys, StringComparer.Ordinal)) d[k] = StuntBest[k];
+            return d;
         }
 
         public static Profile FromJson(string json)
@@ -171,6 +199,17 @@ namespace Halcyon.Core
             if (root.TryGetValue("roads", out var ro) && ro is string rs) p.RoadsDriven = rs;
             if (root.TryGetValue("fog", out var fg) && fg is string fgs) p.Fog = fgs;
             p.RoadMilestones = (int)root.Num("roadMilestones", 0);
+            if (root.TryGetValue("stunts", out var so) && so is Dictionary<string, object> sd)
+                foreach (var kv in sd)
+                    if (kv.Value is double dv && !double.IsNaN(dv) && dv > 0) p.StuntBest[kv.Key] = dv;
+            // Progression (M7): saves from before it have none of this.
+            if (root.TryGetValue("accolades", out var ao) && ao is List<object> al)
+                foreach (var a in al) if (a is string a_) p.Accolades.Add(a_);
+            if (root.TryGetValue("stats", out var sto) && sto is Dictionary<string, object> std)
+                foreach (var kv in std) if (kv.Value is double v) p.Stats[kv.Key] = (int)v;
+            if (root.TryGetValue("champsWon", out var cwo) && cwo is List<object> cwl)
+                foreach (var c in cwl) if (c is string cs) p.ChampionshipsWon.Add(cs);
+            if (root.TryGetValue("championship", out var cho) && cho is Dictionary<string, object> chd) p.Championship = ChampionshipRun.FromDict(chd);
             if (p.Garage.Count == 0) p.Garage.Add(new OwnedCar { Id = "halden-aster-gt" });
             p.Current = Math.Max(0, Math.Min(p.Garage.Count - 1, p.Current));
             return p;

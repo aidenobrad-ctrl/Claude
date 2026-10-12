@@ -116,6 +116,16 @@ namespace Halcyon.Core
             return line;
         }
 
+        /// <summary>A lane: a constant offset from the centreline (+ = right), kept inside the road for a car this wide.</summary>
+        public static RacingLine Lane(RaceRoute r, double offset, double halfCar)
+        {
+            var line = new RacingLine(r);
+            for (int i = 0; i < line.Offset.Length; i++)
+                line.Offset[i] = Math.Max(-(r.WLeft[i] - halfCar - 0.3), Math.Min(r.WRight[i] - halfCar - 0.3, offset));
+            line.Finish();
+            return line;
+        }
+
         /// <summary>
         /// A road driver's line: the right-hand lane (the inner lane of a dual
         /// carriageway), for driving with traffic rather than racing.
@@ -329,11 +339,16 @@ namespace Halcyon.Core
             return BrakeG + (stable - BrakeG) * t;
         }
 
-        public static CarAbility Measure(CarSpec spec, Tune tune = null, Upgrades up = null, double wetness = 0)
+        /// <summary>
+        /// A car's abilities on a road this wet, or on another surface (a dirt event: the skidpad, the stop and the
+        /// acceleration run all on dirt, where the road's wetness does not count).
+        /// </summary>
+        public static CarAbility Measure(CarSpec spec, Tune tune = null, Upgrades up = null, double wetness = 0, int surface = Surface.Asphalt)
         {
             var p = VehicleParams.Build(spec, tune, up);
             CompoundInfo rear = p.wheels[2].tire.info;
-            double wet = 1 + wetness * (rear.surface.wet / rear.surface.asphalt - 1);
+            if (surface != Surface.Asphalt) wetness = 0;
+            double wet = surface == Surface.Asphalt ? 1 + wetness * (rear.surface.wet / rear.surface.asphalt - 1) : rear.surface[Surfaces.All[surface].grip] / rear.surface.asphalt;
             var c = new CarAbility
             {
                 Id = spec.id,
@@ -348,15 +363,15 @@ namespace Halcyon.Core
                 RearMuX = rear.mu * rear.muLong * wet,
                 RearMuY = rear.mu * wet,
             };
-            c.Mu = Telemetry.SkidpadTest(p, 40, wetness: wetness).g;
+            c.Mu = Telemetry.SkidpadTest(p, 40, surface: surface, wetness: wetness).g;
             c.RollG = RollLimit(p);
-            var br = Telemetry.BrakeTest(p, 100, wetness: wetness);
+            var br = Telemetry.BrakeTest(p, 100, surface: surface, wetness: wetness);
             double v0 = 100 / 3.6;
             c.BrakeG = v0 * v0 / (2 * Math.Max(1, br.distance)) / G;
             c.AeroK = 0.5 * VehicleParams.AIR_DENSITY * p.aero.clA / (p.mass * G);
             c.DragK = 0.5 * VehicleParams.AIR_DENSITY * p.aero.cdA / p.mass;
             // Acceleration curve from a full-throttle run, binned by speed.
-            var ground = new FlatGround();
+            var ground = new FlatGround((x, z) => surface);
             var v = Telemetry.NewTestVehicle(p);
             v.wetness = wetness;
             for (int i = 0; i < 240; i++) v.Step(Loop.SIM_DT, ground);

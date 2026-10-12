@@ -1,9 +1,12 @@
 // Shared IMGUI pieces for the garage, the workshop and the race menus.
 // Screens lay out on a virtual canvas 1080 units tall (as wide as the
-// screen's aspect makes it), so text and panels scale with the resolution.
-// Plots draw lines into small textures and are redrawn only when their data
-// changes.
+// screen's aspect makes it), so text and panels scale with the resolution;
+// the driving HUD scales again by the player's HUD size (Settings.HudScale),
+// its canvas then a little shorter or taller than 1080. The good/warning/bad
+// colours follow the colour-vision setting. Plots draw lines into small
+// textures and are redrawn only when their data changes.
 using System.Collections.Generic;
+using Halcyon.Core;
 using UnityEngine;
 
 namespace Halcyon
@@ -12,21 +15,32 @@ namespace Halcyon
     {
         public static GUIStyle Title, Sub, Body, Small, Keys, Mono, Big, Row, RowOn, Value;
         public static readonly Color Accent = new Color(1f, 0.6f, 0.25f);
-        public static readonly Color Good = new Color(0.45f, 0.9f, 0.5f);
-        public static readonly Color Bad = new Color(1f, 0.42f, 0.36f);
         public static readonly Color Dim = new Color(1, 1, 1, 0.55f);
 
-        /// <summary>Virtual canvas width and height for this frame (height is always 1080).</summary>
+        /// <summary>The palette (Settings.Colours): red and green, or colours that stay apart with a colour-vision deficiency.</summary>
+        public static ColourVision Vision = ColourVision.Normal;
+        /// <summary>Ahead, faster, fine.</summary>
+        public static Color Good => Vision == ColourVision.Normal ? new Color(0.45f, 0.9f, 0.5f) : Vision == ColourVision.Tritanopia ? new Color(0.25f, 0.82f, 0.8f) : new Color(0.35f, 0.68f, 1f);
+        /// <summary>Careful: lift, almost.</summary>
+        public static Color Warn => Vision == ColourVision.Tritanopia ? new Color(1f, 0.62f, 0.8f) : new Color(1f, 0.85f, 0.25f);
+        /// <summary>Behind, slower, brake.</summary>
+        public static Color Bad => Vision == ColourVision.Normal ? new Color(1f, 0.42f, 0.36f) : Vision == ColourVision.Tritanopia ? new Color(0.95f, 0.25f, 0.28f) : new Color(0.9f, 0.4f, 0.05f);
+
+        /// <summary>The driving HUD's size (Settings.HudScale).</summary>
+        public static float HudScale = 1;
+
+        /// <summary>Virtual canvas width and height for this frame (1080 tall, or as the HUD size makes it).</summary>
         public static float W { get; private set; } = 1920;
-        public const float H = 1080;
+        public static float H { get; private set; } = 1080;
         static Matrix4x4 saved;
 
-        /// <summary>Call at the top of OnGUI: builds the styles once and scales the canvas.</summary>
-        public static void Begin()
+        /// <summary>Call at the top of OnGUI: builds the styles once and scales the canvas (by the HUD size too for the driving HUD).</summary>
+        public static void Begin(bool hud = false)
         {
             if (Title == null) Build();
-            float s = Mathf.Max(0.4f, Screen.height / H);
+            float s = Mathf.Max(0.4f, Screen.height / 1080f) * (hud ? Mathf.Clamp(HudScale, 0.5f, 2f) : 1f);
             W = Screen.width / s;
+            H = Screen.height / s;
             saved = GUI.matrix;
             GUI.matrix = Matrix4x4.Scale(new Vector3(s, s, 1));
         }

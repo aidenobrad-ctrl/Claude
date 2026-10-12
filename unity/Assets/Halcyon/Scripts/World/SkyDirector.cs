@@ -85,6 +85,10 @@ namespace Halcyon
         Vector3 lastCam;
 
         AudioSource rainAudio, thunderAudio;
+        /// <summary>Lightning's brightness (Settings.ReduceFlashes makes it a quarter).</summary>
+        public static float FlashScale = 1;
+        /// <summary>Rain and thunder volume, 0 to 1 (Settings.Ambience).</summary>
+        public static float Ambience = 1;
         AudioClip[] thunderNear, thunderFar;
         readonly List<(float at, float gain, bool near)> thunder = new List<(float, float, bool)>();
         float flash;
@@ -252,7 +256,7 @@ namespace Halcyon
             var me = cam.transform.position;
             var flat = new Vector3(at.x - me.x, 0, at.z - me.z);
             float d = Mathf.Max(50, flat.magnitude);
-            float b = (float)brightness * Mathf.Clamp(1600f / d, 0.25f, 1.4f);
+            float b = (float)brightness * Mathf.Clamp(1600f / d, 0.25f, 1.4f) * FlashScale;
             float now = Time.time;
             // A strike flickers: two or three pulses in a quarter of a second.
             flashes.Add((now, b));
@@ -288,7 +292,7 @@ namespace Halcyon
             {
                 if (thunder[i].at > now) continue;
                 var set = thunder[i].near ? thunderNear : thunderFar;
-                thunderAudio.PlayOneShot(set[Random.Range(0, set.Length)], thunder[i].gain);
+                thunderAudio.PlayOneShot(set[Random.Range(0, set.Length)], thunder[i].gain * Ambience);
                 thunder.RemoveAt(i);
             }
 
@@ -350,7 +354,7 @@ namespace Halcyon
 
             UpdateClouds(dt, daylight, sunset, cloud);
             UpdateRain(dt, rainK, daylight, (float)w.Wind, (float)w.WindDir);
-            rainAudio.volume = Mathf.Clamp01(rainK) * 0.55f;
+            rainAudio.volume = Mathf.Clamp01(rainK) * 0.55f * Ambience;
 
             // Wet roads: darker and glossier as they soak.
             float k = Mathf.Pow(Mathf.Clamp01(wetness), 0.7f);

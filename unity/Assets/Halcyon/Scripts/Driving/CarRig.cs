@@ -140,6 +140,40 @@ namespace Halcyon
             LightsOverride = null;
         }
 
+        /// <summary>A time trial's ghost: see-through, no lamp beam, no spray, no shadow.</summary>
+        public bool Ghost { get; private set; }
+
+        /// <summary>Make this rig a ghost: every material turned into a see-through copy tinted towards the colour.</summary>
+        public void MakeGhost(Color tint, float alpha = 0.35f)
+        {
+            Ghost = true;
+            foreach (var r in GetComponentsInChildren<Renderer>(true))
+            {
+                if (r is ParticleSystemRenderer)
+                {
+                    r.enabled = false;
+                    continue;
+                }
+                var mats = r.sharedMaterials;
+                for (int i = 0; i < mats.Length; i++)
+                {
+                    if (mats[i] == null) continue;
+                    var m = new Material(mats[i]) { name = mats[i].name + " (ghost)" };
+                    Color c = m.HasProperty("_BaseColor") ? m.GetColor("_BaseColor") : m.HasProperty("_Color") ? m.GetColor("_Color") : Color.white;
+                    c = Color.Lerp(c, tint, 0.6f);
+                    c.a = alpha;
+                    if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", c);
+                    if (m.HasProperty("_Color")) m.SetColor("_Color", c);
+                    Mats.MakeTransparent(m);
+                    mats[i] = m;
+                }
+                r.sharedMaterials = mats;
+                r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                r.receiveShadows = false;
+            }
+            if (lamp != null) lamp.enabled = false;
+        }
+
         /// <summary>Record the simulation state after a step (call once per fixed step).</summary>
         public void Capture()
         {
@@ -195,7 +229,7 @@ namespace Halcyon
             // A real beam only near the camera (lights are costly); the lenses glow at any distance.
             if (viewer == null) viewer = Camera.main;
             float far = viewer != null ? (viewer.transform.position - transform.position).sqrMagnitude : 0;
-            lamp.enabled = on && far < 180 * 180;
+            lamp.enabled = on && far < 180 * 180 && !Ghost;
             // Spray: from 30 km/h on a wet road, more with speed.
             double wet = v.wetness;
             double speed = System.Math.Abs(v.vLong);

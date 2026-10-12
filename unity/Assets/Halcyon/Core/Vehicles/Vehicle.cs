@@ -259,6 +259,10 @@ namespace Halcyon.Core
         readonly V3 tmpB = new V3();
         readonly V3 tmpC = new V3();
         readonly V3 hp = new V3();
+        /// <summary>Most a strut can push, in multiples of the car's weight.</summary>
+        const double MaxStrutG = 4;
+        /// <summary>Fastest the body may rotate, rad/s.</summary>
+        const double MaxSpin = 30;
         readonly V3 force = new V3();
         readonly V3 torque = new V3();
         readonly V3 bodyF = new V3();
@@ -494,6 +498,10 @@ namespace Halcyon.Core
             angVel.Copy(tmpB.ApplyQuat(quat));
             // Gentle angular damping (air, chassis friction) keeps airborne spins sane.
             angVel.Scale(1 - 0.08 * dt);
+            // A tumbling car turns two revolutions a second at most; a cap well above that keeps contacts
+            // on a spinning body from feeding on themselves.
+            double spin2 = angVel.LenSq();
+            if (spin2 > MaxSpin * MaxSpin) angVel.Scale(MaxSpin / Math.Sqrt(spin2));
             pos.AddScaled(vel, dt);
             quat.Integrate(angVel, dt);
 
@@ -529,6 +537,7 @@ namespace Halcyon.Core
             WheelState w = wheels[i];
             ToWorld(wp.hardpoint, hp);
             V3 u = up;
+            bool wasGrounded = w.grounded;
             w.prevLength = w.length;
             double length = wp.maxLength;
             bool isGrounded = false;
@@ -570,6 +579,15 @@ namespace Halcyon.Core
                 return false;
             }
             double compVel = (length - w.prevLength) / dt;
+            if (!wasGrounded)
+            {
+                // Touching down: the strut closes as fast as the hardpoint nears the ground, not by the jump
+                // from full droop to here in one step (which read as tens of m/s and spun tumbling cars up).
+                PointVelocity(hp, tmpB);
+                double upN = u.x * w.normal.x + u.y * w.normal.y + u.z * w.normal.z;
+                double closing = (tmpB.x * w.normal.x + tmpB.y * w.normal.y + tmpB.z * w.normal.z) / upN;
+                compVel = JsMath.Max(compVel, JsMath.Min(0, closing));
+            }
             double f = wp.spring * (wp.freeLength - length);
             f -= (compVel < 0 ? wp.damperBump : wp.damperRebound) * compVel;
             // Progressive bump stop.
@@ -579,7 +597,8 @@ namespace Halcyon.Core
                 double d = bs - length;
                 f += wp.spring * 12 * d + 3e6 * d * d - (compVel < 0 ? wp.damperBump * 2 * compVel : 0);
             }
-            w.strutForce = f;
+            // No strut carries more than four times the car's weight (a hard landing is a few).
+            w.strutForce = JsMath.Min(f, MaxStrutG * VehicleParams.GRAVITY * p.mass);
             // Contact point at the bottom of the wheel.
             w.contact.Copy(hp).AddScaled(u, -length).AddScaled(w.normal, -wp.radius);
             return true;
@@ -946,13 +965,16 @@ namespace Halcyon.Core
             VehicleParams p = Params;
             GearboxParams g = p.gearbox;
             double G = Math.Abs(g.ratios[gear == -1 ? 0 : Math.Max(1, gear)] * g.final);
-            double wheelTorque = 0;
+            double wheelTorque = double.PositiveInfinity;
             for (int i = 0; i < 4; i++)
             {
                 WheelParams wp = p.wheels[i];
                 if (wp.driveWeight <= 0) continue;
                 WheelState w = wheels[i];
                 TireSetup t = wp.tire;
+                // A lifted or nearly unloaded wheel does not hold the others back: traction control brakes
+                // it, so the loaded wheels drive the car (a car stopped on a rough hill can pull away).
+                if (w.load < 0.2 * t.nominalLoad) continue;
                 SurfaceInfo surf = Surfaces.All[w.surface];
                 // The tire's own peak, as in TireForce: load sensitivity (a squatting
                 // car's rear tires grip less per newton) and standing water.
@@ -962,8 +984,9 @@ namespace Halcyon.Core
                 double mu = t.info.mu * sens * t.info.muLong * t.widthGrip * t.tuneGrip * grip;
                 // Limited by the driven wheel with the least grip relative to its torque share.
                 double perWheel = (mu * w.load * wp.radius) / wp.driveWeight;
-                wheelTorque = wheelTorque == 0 ? perWheel : JsMath.Min(wheelTorque, perWheel);
+                wheelTorque = JsMath.Min(wheelTorque, perWheel);
             }
+            if (double.IsPositiveInfinity(wheelTorque)) wheelTorque = 0;
             return wheelTorque / JsMath.Max(1e-6, G * g.efficiency);
         }
 

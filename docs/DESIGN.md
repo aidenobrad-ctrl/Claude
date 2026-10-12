@@ -322,6 +322,28 @@ Like the AI and the career, all of M6's logic is pure C# in Core, stepped by the
   - It calls out junctions of three or more ways where the route turns (35° or more), and forks where it takes a gentler branch than the straightest road on.
   - It says "turn around" after 2 s facing back along the route, and "arrived" within 30 m of the route's end, which is the road nearest the destination.
 
+## Events, stunts and progression (M7: `Core/AI/RaceSession.cs`, `Core/AI/Ghost.cs`, `Core/World/Stunts.cs`, `Core/Career/`)
+
+- **The roads, rebuilt.** The road baker routes highways, main roads and dirt tracks with the heading-aware A* the pass got in M6, on lattices of 36, 24 and 24 m that turn at most 22.5°, 67.5° and 90° a step, with a cost per turn. The heading carries on through each place in a chain, so a road runs through a town instead of kinking there. Corners are rounded with arcs of up to 200 m (highways), 40 m (main roads) and 22 m (dirt).
+  - **Junctions.** Where two roads come within their half widths plus 2 m without crossing, they get a junction. Every road stays within 1% of level for 25 m from a junction, and on for as far as its pavement overlaps another road's there, so roads meet at one height. A road too short to climb between its two junctions that way keeps the plain grade limit.
+  - **Yumps.** On the longest flat, straight stretch of a dirt track or country main road, the profile rises over a raised-cosine crest: 1.3 m over 52 m on a main road, 2.2 m over 64 m on dirt, within the class's grade limit. Four roads have one.
+- **Race kinds.** A `RaceEvent` is a circuit, a sprint or a drag race, on asphalt or dirt, and can name a rival or a ghost.
+  - *Drag:* two cars side by side on the longest straight, each in its own lane line, over a quarter mile, with the trap speed at the line.
+  - *Rally:* the AI measures its grip, braking and acceleration on the event's surface, and plans with them.
+  - *Head to head:* the festival's rival, Mika Varga (skill 0.95, aggression 0.75), in the car the PI matching chose.
+  - *Time trial:* the rival's run is recorded headless in a simulation of its own, 60 samples a second (pose, progress), on a worker thread while the grid lines up. The gap to it at any point is the time the ghost reached that point, minus now.
+- **Stunts.** Placed from the road data, the same every time, at least 450 m apart.
+  - *Speed traps:* the middle of a straight of 350 m or more; targets from the speed reachable from the slower way in (0.7, 0.85 and 1.0 of it).
+  - *Speed zones:* 500–800 m with no bend under 100 m and some turning; targets 0.65, 0.8 and 0.95 of a speed profile (1.05 g in bends, 4.5 m/s² accelerating, less towards 250 km/h, 8 m/s² braking).
+  - *Drift zones:* 350–450 m of main road or highway turning 120° or more in bends of 30–150 m. Points per second: speed × min(1, (angle − 10°)/30°) × 10 × the chain (1 to 3 after 8 s of sliding), between 10° and 90° above 30 km/h. A hit loses the chain; points bank after 1.2 s without sliding. Targets 1.5, 4 and 8 points a metre.
+  - *Danger signs:* a crest with a straight run-up and run-out. The targets are measured: a stock Aster GT driven over it at 80, 90 and 100% of the run-up speed, from takeoff (within the crest's last 40 m) to landing, 3% short and rounded down to half metres. A crest with a flight before that is not a sign.
+  - Each new star pays once: 150 XP and 1,000 credits for the first star, double for the second, triple for the third.
+- **Championships.** Three: the Grassroots Trophy (class D), the Coastal Cup (class A, level 3) and Mountain Masters (class A, level 6), of three or four festival events. A series is raced in one car against the same rivals (one seed, one difficulty), scored 25-18-15-12-10-8-6-4, and pays 40,000, 20,000 or 10,000 credits (times the class factor) and 3,000, 1,800 or 1,000 XP for the top three. The series under way is in the profile.
+- **Progression.** Festival levels need 1000 n^1.3 XP each. Events open at levels 1 to 6. 26 accolades (wins, podiums, each kind of event, championships, the garage, exploration, stunts) pay their XP once, from counters kept in the profile.
+- **Settings** are kept apart from the career, in their own JSON (a shared career code should not carry someone's settings). Values read back are clamped to their ranges.
+- **Accessibility in Unity:** HUD size 75–150%, palettes that keep good and bad apart with red-green or blue-yellow colour blindness (the HUD, the gaps and the racing line), camera shake from none to full, motion blur off, field of view 50–80°, lightning at a quarter brightness, the minimap and key hints off, and mph and miles.
+- **The racing line** in Unity is the AI's line for the route, coloured from the player's own car: its speed profile (with a little more margin than the AI's) against the speed now, and the braking each point asks for.
+
 ## Testing
 
 - `npm run verify` runs the typecheck, the build, the simulation tests (Node) and the browser tests (headless Chromium through Playwright with SwiftShader). `--quick` shortens the long suites.
@@ -352,3 +374,9 @@ Like the AI and the career, all of M6's logic is pure C# in Core, stepped by the
   - A race holds the weather, so the AI's plan stays true from start to finish.
   - Traffic is a ghost when far and a physics car when near, so the island can be busy without simulating dozens of cars.
   - The GPS arrives at the road nearest a destination, since places off the road are found from there.
+- **M7:** stunts (speed traps, speed zones, drift zones and danger signs on yumps), drag races, a rally on dirt, a head-to-head and a ghost time trial, championships, festival levels and accolades, the road network rerouted with headings and level junctions, the AI braking in time for much slower cars, settings and accessibility, photo mode and the racing line in Unity.
+- **M7 decisions:**
+  - Stunt targets are measured or modelled from the road, never guessed: jumps by driving them, zones from a speed profile.
+  - Yumps are built into the road profile: real crests were too few and too messy to rely on.
+  - Roads that share pavement must share a height: the baker makes junctions where roads touch, and the profiles stay level where pavements overlap.
+  - Settings live outside the career save.

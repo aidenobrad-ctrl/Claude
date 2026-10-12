@@ -15,7 +15,7 @@ Unity (with Blender-made cars) is the main target since M2. The web version is t
 | M4 AI v1 and first events | **Done** headless: racing lines, controller, personalities, racecraft, five events, tournament 98% (`dotnet/Halcyon.AI.Tests`). The Unity race menu and HUD are compile-checked only. |
 | M5 Tuning and upgrades | **Done headless; Unity compile-checked.** Measured PI and classes, parts, prices, payouts and XP, saves, share codes, the understeer test, the measured auto-tune, rivals matched by PI and class-limited events (`dotnet/Halcyon.Career.Tests`, `dotnet/Halcyon.AI.Tests`). Slip-steered launch control and caster in the shared physics. In Unity: the garage with dealer, upgrades, tuning with graphs, test track and career data, and race payouts. |
 | M6 World v2 | **Done headless; Unity compile-checked.** Wet roads in the shared physics (bit-exact), the clock and the weather, events with their own conditions, traffic in two levels of detail, the rebuilt Highcrest pass and its hill climb, crest-aware AI, five landmarks, discoveries, the map with fog of war and fast travel, and the GPS (`dotnet/Halcyon.Sim.Tests`). In Unity: the sky, night, rain, lightning, wet roads, headlights, traffic rigs, landmarks, the map and minimap, and the GPS line. |
-| M7 Everything else | Not started |
+| M7 Everything else | **Done headless; Unity compile-checked.** Stunts (speed traps, speed zones, drift zones, danger signs on yumps), drag, a rally on dirt, a head-to-head and a ghost time trial, three championships, festival levels and 26 accolades, settings (`dotnet/Halcyon.Sim.Tests`). The road network rerouted with headings and level junctions. In Unity: stunt boards and panels, the festival menu with championships, the ghost car, the pause menu with settings and accessibility, the accolades page, photo mode and the racing line. No cross-country event. |
 | M8 Polish and optimization | Not started |
 
 **Not verified:** nothing has run in a real Unity Editor yet: the island build, the garage, races, rendering and performance. Unity can't be downloaded in the build container. `docs/UNITY-PC-BRIEF.md` is the brief for a session on the user's PC.
@@ -40,7 +40,9 @@ cd dotnet/Halcyon.World.Tests && dotnet run -c Release         # island equivale
 cd dotnet/Halcyon.AI.Tests && dotnet run -c Release            # AI: lines, solo laps, sprints, tournament, grids, fields (~4 min)
 cd dotnet/Halcyon.AI.Tests && dotnet run -c Release -- tournament   # just the head-to-head tournament (~2 min on 4 cores)
 cd dotnet/Halcyon.Career.Tests && dotnet run -c Release      # career: PI, parts, prices, saves, share codes, auto-tune
-cd dotnet/Halcyon.Sim.Tests && dotnet run -c Release         # the living island: clock, weather, wet races, traffic, Highcrest, discoveries, GPS (~2.5 min)
+cd dotnet/Halcyon.Sim.Tests && dotnet run -c Release         # the living island and M7: clock, weather, wet races, traffic, Highcrest, discoveries, GPS, stunts, events, progression (~3.5 min)
+cd dotnet/Halcyon.Sim.Tests && dotnet run -c Release -- stunts      # one part: clock, weather, sim, wetrace, traffic, festival, highcrest, discover, gps, stunts, events, progression
+cd dotnet/Halcyon.Sim.Tests && dotnet run -c Release -- stuntsurvey # where stunts could go; jumpat 12:452 explains a crest; starttrace <event> <car> traces a race start
 cd dotnet/Halcyon.Unity && dotnet build                        # compile every Unity script
 blender -b -P blender/build_car.py -- --car all --sheet 'blender/renders/{car}.png'   # all 12 cars + sheets; with pip bpy: python blender/build_car.py -- ...
 ```
@@ -81,7 +83,9 @@ Load `dist/index.html?test=1` for manual stepping, with no animation loop.
   - the island builders, the car rig and chase camera, input and HUD;
   - Blender car models with LODs;
   - a garage on a turntable (G or LB): your cars, the dealer, upgrades, tuning with graphs and auto-tune, the test track, and career export and import;
-  - festival events with AI rivals (T or D-pad up), with a countdown, positions, laps, gaps, wrong-way warning and results;
+  - the festival menu (T or D-pad up): every event with its kind, conditions, class and level, and three championships; races with a countdown, positions, laps, gaps, a drag race's trap speed, a time trial's ghost car and gap, the racing line, and results with standings and accolades;
+  - stunt boards by the road, on the maps and in a live panel with stars and rewards;
+  - the pause menu (Esc): settings and accessibility, the accolades and career numbers, the controls; photo mode (P);
   - the living island: the sky director (sun, moon, clouds, fog, rain, lightning, wet roads, night lights), headlights, traffic rigs, landmarks, the map (M) with fog of war, roads driven, fast travel and the GPS, the minimap, and the GPS line on the road.
 - **AI (C# Core):**
   - per-route racing lines and per-car abilities with stable braking;
@@ -98,7 +102,8 @@ Load `dist/index.html?test=1` for manual stepping, with no animation loop.
   - the clock and the weather, with road wetness in the physics (TypeScript and C#, bit-exact);
   - traffic: ghosts far away, physics cars near the player, lanes, junctions, overtaking;
   - landmarks, discoveries (places, roads driven, the fog of war), fast travel and the GPS;
-  - eight events, with the Highcrest Hill Climb, a night race and a storm.
+  - twelve events, with the Highcrest Hill Climb, a night race, a storm, a drag race, a rally, a head-to-head and a time trial.
+- **M7 (C# Core):** the stunts and their tracker, the ghost recorder, championships, accolades, festival levels, and settings with units.
 - **Blender:** the car generator v2 (`blender/`) for 12 cars, with review sheets in `blender/renders/`. All 12 models are in `unity/Assets/Halcyon/Art/Resources/Cars/`.
 
 ## Next steps
@@ -107,5 +112,6 @@ Load `dist/index.html?test=1` for manual stepping, with no animation loop.
 - **Physics:** brake-force distribution (EBD) with ESC off, in TypeScript and C# together with regenerated references (playtest M4, finding 12).
 - **M5 follow-ups:** a simulated lap in the PI (equal PI is not yet equal pace), an inventory of owned parts, auto-tuned rivals, and the AI in maxed-out hypercar packs (PLAYTEST M5, self-critique).
 - **M6 follow-ups** (PLAYTEST M6, self-critique): traffic rescues only out of the camera's view, local showers, a sharper minimap, a GPS that prefers quicker roads, indicators.
-- **M7 everything else:** more event types (drift zones, speed traps, danger signs, time trials, cross-country), championships, progression, photo mode, settings and accessibility.
+- **M7 follow-ups** (PLAYTEST M7, self-critique): a cross-country event, drift-friendly breakaway in the physics (M8 driving feel), engine and impact sounds and their volumes in Unity, the last 0.35 m step at a shallow fork.
+- **M8 polish:** mobile profiling and presets, audio, an art pass, a bug bash and the docs.
 - **Art:** the close-range items from the M3 review (saw-toothed arch lips, the Vanta's stepped side window), number plates, terrain textures, a water shader, Blender trees, and audio.

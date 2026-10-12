@@ -4,6 +4,8 @@
 // it. Set HalcyonGame.AutoBoot = false (or add your own HalcyonGame) to
 // control start-up yourself.
 using System.Collections;
+using System.Collections.Generic;
+using System.IO;
 using Halcyon.Core;
 using UnityEngine;
 
@@ -28,6 +30,16 @@ namespace Halcyon
         public ChaseCamera CameraRig { get; private set; }
         public bool Ready { get; private set; }
         public bool Paused;
+        /// <summary>The player's settings (graphics, assists, HUD and accessibility, sound), saved beside the career.</summary>
+        public Settings Settings { get; private set; }
+        GraphicsPreset? appliedGraphics;
+        PauseMenu pause;
+        PhotoMode photo;
+        VegetationRenderer veg;
+        /// <summary>Photo mode hides the HUD (the race HUD, the maps, the GPS line, the racing line and the stunt panels).</summary>
+        public bool HideHud => photo != null && photo.Active;
+        /// <summary>A menu over the road (the festival, the map, the pause menu, the garage).</summary>
+        public bool InMenu => (races != null && (races.MenuOpen || races.Busy)) || (mapScreen != null && mapScreen.Open) || (pause != null && pause.Open) || (garage != null && garage.IsOpen);
 
         IslandRuntime island;
         SkyDirector sky;
@@ -39,6 +51,15 @@ namespace Halcyon
         /// <summary>The GPS: a route to a destination set on the map, shown on the road, the maps and the HUD.</summary>
         public Gps Gps { get; private set; }
         GpsRibbon gpsRibbon;
+        /// <summary>The stunts on the island (speed traps, speed zones, drift zones, danger signs) and the player's runs at them.</summary>
+        public StuntTracker Stunts { get; private set; }
+        StuntResult lastStunt;
+        float lastStuntAt = -10;
+        bool wasRacing;
+        /// <summary>Accolades earned and not yet shown, and when the one showing went up.</summary>
+        readonly List<Accolade> accoladeQueue = new List<Accolade>();
+        float accoladeAt = -10, accoladeCheckAt;
+        bool garageWasOpen;
         /// <summary>The corner minimap while driving.</summary>
         public bool ShowMinimap = true;
         public bool Racing => races != null && races.Racing;
@@ -55,7 +76,7 @@ namespace Halcyon
         double accumulator;
         string loading = "Starting";
         float loadStart;
-        GUIStyle big, small, shadow;
+        GUIStyle big, small, shadow, help;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void Boot()
@@ -76,6 +97,7 @@ namespace Halcyon
             loadStart = Time.realtimeSinceStartup;
             SkyDirector.ClearRegistry();
             Career = new Career();
+            Settings = LoadSettings();
             var world = new GameObject("World").transform;
             world.SetParent(transform, false);
             loading = "Lighting the sky";
@@ -101,7 +123,7 @@ namespace Halcyon
             yield return null;
             TerrainBuilder.Build(data, world);
 
-            loading = "Paving 63 km of road";
+            loading = "Paving 62 km of road";
             yield return null;
             RoadBuilder.Build(data, world);
 
@@ -124,7 +146,7 @@ namespace Halcyon
             {
                 loading = "Planting 185,000 trees";
                 yield return null;
-                var veg = world.gameObject.AddComponent<VegetationRenderer>();
+                veg = world.gameObject.AddComponent<VegetationRenderer>();
                 veg.Init(data);
             }
 
@@ -150,6 +172,10 @@ namespace Halcyon
             Career.BeforeSave = () => Discover?.Save();
             Gps = new Gps(data, Sim.Ground);
             gpsRibbon = GpsRibbon.Create(world, Gps);
+            loading = "Marking the stunts";
+            yield return null;
+            Stunts = new StuntTracker(data, Career.Profile, Sim.Ground);
+            StuntBuilder.Build(data, Stunts.All, world);
             mapScreen = MapScreen.Create(this, world);
             if (Traffic)
             {
@@ -158,6 +184,11 @@ namespace Halcyon
             }
             garage = Garage.Create(this, data, world);
             races = RaceController.Create(this, world);
+            pause = PauseMenu.Create(this, world);
+            photo = PhotoMode.Create(this, world);
+            ApplySettings();
+            // A career from before the accolades may already have some.
+            CheckAccolades();
             Ready = true;
             Debug.Log($"Halcyon: ready in {Time.realtimeSinceStartup - loadStart:F1} s");
             captureDir = Arg("-halcyon-capture");
@@ -229,12 +260,72 @@ namespace Halcyon
         public void SwitchCar(string specId, Color? paint, Tune tune = null, Upgrades up = null)
         {
             Sim.ChangePlayerCar(specId, tune, up);
+            Sim.Player.vehicle.aids = Settings.Aids();
             Sim.Events.Clear();
             if (PlayerRig != null) Destroy(PlayerRig.gameObject);
             PlayerRig = CarRig.Create(Sim.Player.vehicle, specId, paint ?? (OverridePaint ? Paint : (Color?)null));
             CameraRig.Snap();
             accumulator = 0;
         }
+
+        // --- Settings -------------------------------------------------------------------------------
+
+        static string SettingsPath => Path.Combine(Application.persistentDataPath, "halcyon-settings.json");
+
+        static Settings LoadSettings()
+        {
+            try
+            {
+                if (File.Exists(SettingsPath)) return Settings.FromJson(File.ReadAllText(SettingsPath));
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning("Halcyon: settings not read, using the defaults: " + e.Message);
+            }
+            return new Settings();
+        }
+
+        public void SaveSettings()
+        {
+            try
+            {
+                File.WriteAllText(SettingsPath, Settings.ToJson());
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning("Halcyon: settings not saved: " + e.Message);
+            }
+        }
+
+        /// <summary>Put the settings into effect: units, HUD, palette, assists, camera, post-processing, lightning, sound, graphics.</summary>
+        public void ApplySettings()
+        {
+            var s = Settings;
+            Units.Imperial = s.Imperial;
+            Ui.HudScale = (float)s.HudScale;
+            Ui.Vision = s.Colours;
+            if (Sim != null) Sim.Player.vehicle.aids = s.Aids();
+            if (CameraRig != null)
+            {
+                CameraRig.Shake = (float)s.Shake;
+                CameraRig.FovBase = (float)s.Fov;
+            }
+            EnvironmentSetup.SetMotionBlur(s.MotionBlur);
+            SkyDirector.FlashScale = s.ReduceFlashes ? 0.25f : 1f;
+            SkyDirector.Ambience = (float)s.Ambience;
+            AudioListener.volume = (float)s.Master;
+            ShowMinimap = s.Minimap;
+            if (appliedGraphics != s.Graphics)
+            {
+                GraphicsQuality.Apply(s.Graphics, veg);
+                appliedGraphics = s.Graphics;
+            }
+        }
+
+        public void StartPhotoMode() => photo.Begin();
+
+        /// <summary>The height of the ground or road under a point (for cameras).</summary>
+        public float GroundY(Vector3 p) => island.SurfaceY(p);
 
         void OnApplicationQuit()
         {
@@ -245,14 +336,31 @@ namespace Halcyon
         {
             if (!Ready) return;
             Career.Tick();
-            // The GPS line on the road: not in a race (it has its own route) nor behind the garage.
-            gpsRibbon.Show = !races.Racing && !garage.IsOpen;
+            // The GPS line on the road: not in a race (it has its own route), behind the garage or in photo mode.
+            gpsRibbon.Show = !races.Racing && !garage.IsOpen && !HideHud;
             if (scripted == null && garage != null)
             {
                 input.Poll();
                 if (garage.IsOpen)
                 {
                     garage.Tick(); // the garage reads the menu keys; the car waits
+                    garageWasOpen = true;
+                    return;
+                }
+                if (garageWasOpen)
+                {
+                    // Cars bought, parts fitted: the garage's accolades.
+                    garageWasOpen = false;
+                    CheckAccolades();
+                }
+                if (photo.Active)
+                {
+                    photo.Tick(); // the world is stopped; the camera is free
+                    return;
+                }
+                if (pause.Open)
+                {
+                    pause.Tick();
                     return;
                 }
                 if (races.Busy) return;
@@ -271,6 +379,11 @@ namespace Halcyon
                     mapScreen.Show();
                     return;
                 }
+                if (input.Menu.photo)
+                {
+                    photo.Begin();
+                    return;
+                }
                 if (races.Racing) races.TickRace();
                 else if (input.Menu.garage)
                 {
@@ -285,7 +398,15 @@ namespace Halcyon
                 WorldKeys(input.Menu, races.Racing);
             }
             var c = scripted ?? input.Controls;
-            if (c.pressed[ControlAction.Pause]) Paused = !Paused;
+            if (c.pressed[ControlAction.Pause])
+            {
+                if (scripted == null)
+                {
+                    pause.Show();
+                    return;
+                }
+                Paused = !Paused;
+            }
             if (c.pressed[ControlAction.Camera]) CameraRig.Cycle();
             if (c.pressed[ControlAction.Lights])
             {
@@ -299,6 +420,13 @@ namespace Halcyon
                 else Sim.ResetToRoad();
                 PlayerRig.Snap();
                 CameraRig.Snap();
+                Stunts.Reset();
+            }
+            // Into or out of a race the car is moved: whatever stunt was under way is off.
+            if (races.Racing != wasRacing)
+            {
+                wasRacing = races.Racing;
+                Stunts.Reset();
             }
             float dt = Mathf.Min(Time.deltaTime, 0.1f);
             if (!Paused)
@@ -308,7 +436,12 @@ namespace Halcyon
                 while (accumulator >= Loop.SIM_DT && steps < 32)
                 {
                     if (races.Racing) races.Step(c);
-                    else Sim.Step(c);
+                    else
+                    {
+                        Sim.Step(c);
+                        var stunt = Stunts.Step(Sim.Player.vehicle, Loop.SIM_DT);
+                        if (stunt != null) OnStunt(stunt);
+                    }
                     PlayerRig.Capture();
                     traffic?.Capture();
                     // Gear-shift edges apply to the first step of a frame only.
@@ -343,7 +476,11 @@ namespace Halcyon
             if (Discover == null || Time.unscaledTime - discoverAt < 0.25f) return;
             discoverAt = Time.unscaledTime;
             // An imported career brings its own island.
-            if (Discover.P != Career.Profile) Discover = new Discoveries(Sim.World, Sim.Ground, Career.Profile);
+            if (Discover.P != Career.Profile)
+            {
+                Discover = new Discoveries(Sim.World, Sim.Ground, Career.Profile);
+                Stunts = new StuntTracker(Sim.World, Career.Profile, Sim.Ground);
+            }
             var v = Sim.Player.vehicle;
             var notes = Discover.Update(v.pos.x, v.pos.z);
             foreach (var n in notes) Career.Say(n);
@@ -354,6 +491,8 @@ namespace Halcyon
                 discoverSaveAt = Time.unscaledTime;
                 Career.MarkDirty();
             }
+            // Places found and roads driven count towards accolades (checked at once after a find, and every few seconds).
+            if (notes.Count > 0 || Time.unscaledTime - accoladeCheckAt > 5) CheckAccolades();
         }
 
         /// <summary>Fast travel to a place found: onto its road (or the proving ground's paddock), the traffic around it anew.</summary>
@@ -368,7 +507,108 @@ namespace Halcyon
             accumulator = 0;
             Career.Say($"Travelled to {p.Name}");
             if (Gps.Active) Gps.Plan(x, z);
+            Stunts.Reset();
         }
+
+        /// <summary>A stunt done: the result on screen, the rewards saved.</summary>
+        void OnStunt(StuntResult r)
+        {
+            lastStunt = r;
+            lastStuntAt = Time.unscaledTime;
+            if (r.Best || r.Xp > 0) Career.MarkDirty();
+            if (r.Stars > 0) CheckAccolades();
+        }
+
+        /// <summary>Accolades earned in free roam (places, roads, stunts, the garage): paid, saved, and shown one at a time.</summary>
+        void CheckAccolades()
+        {
+            accoladeCheckAt = Time.unscaledTime;
+            var got = Accolades.Check(Career.Profile, Discover, Stunts);
+            if (got.Count == 0) return;
+            accoladeQueue.AddRange(got);
+            Career.MarkDirty();
+        }
+
+        /// <summary>The accolade just earned, for four and a half seconds each.</summary>
+        void DrawAccoladeBanner()
+        {
+            if (accoladeQueue.Count == 0 || HideHud) return;
+            if (Time.unscaledTime - accoladeAt > 4.5f)
+            {
+                if (accoladeAt > 0) accoladeQueue.RemoveAt(0);
+                accoladeAt = accoladeQueue.Count > 0 ? Time.unscaledTime : -10;
+                if (accoladeQueue.Count == 0) return;
+            }
+            var a = accoladeQueue[0];
+            float t = Time.unscaledTime - accoladeAt;
+            float fade = Mathf.Clamp01(Mathf.Min(t * 4, (4.5f - t) * 2));
+            Ui.Begin(hud: true);
+            float w = 600, x = Ui.W / 2 - w / 2, y = Ui.H - 280;
+            GUI.color = new Color(1, 1, 1, fade);
+            Ui.Panel(new Rect(x, y, w, 104), 0.7f * fade);
+            Ui.Fill(new Rect(x, y, w, 5), new Color(1f, 0.82f, 0.2f, fade));
+            GUI.color = new Color(1f, 0.82f, 0.2f, fade);
+            GUI.DrawTexture(new Rect(x + 22, y + 24, 56, 56), ProceduralTextures.Star());
+            GUI.color = new Color(1, 1, 1, fade);
+            GUI.Label(new Rect(x + 100, y + 10, w - 120, 28), $"ACCOLADE  ·  +{a.Xp:N0} XP", Ui.Sub);
+            GUI.Label(new Rect(x + 100, y + 34, w - 120, 44), a.Name, Ui.Title);
+            GUI.Label(new Rect(x + 100, y + 76, w - 120, 24), a.Description, Ui.Small);
+            GUI.color = Color.white;
+            Ui.End();
+        }
+
+        /// <summary>The stunt under way (its live score), and the last one done (score, stars, rewards) for a few seconds.</summary>
+        void DrawStunts()
+        {
+            if (Stunts == null || races.Racing || mapScreen.Open || HideHud) return;
+            Ui.Begin(hud: true);
+            var star = ProceduralTextures.Star();
+            var a = Stunts.Active;
+            if (a != null)
+            {
+                float w = 340, x = Ui.W / 2 - w / 2, y = 112;
+                Ui.Panel(new Rect(x, y, w, 70), 0.55f);
+                Ui.Fill(new Rect(x, y, 5, 70), StuntBuilder.Colour(a.Kind));
+                GUI.DrawTexture(new Rect(x + 16, y + 11, 48, 48), StuntBuilder.Icon(a.Kind));
+                string live = a.Kind == StuntKind.DriftZone ? $"{Stunts.Live:N0}  ×{Stunts.Chain:0.0}" : a.Kind == StuntKind.DangerSign ? (Stunts.Live > 0 ? Units.Short(Stunts.Live) : "Hit it!") : Units.Speed(Stunts.Live / 3.6);
+                GUI.Label(new Rect(x + 76, y + 6, w - 90, 30), a.KindName.ToUpperInvariant(), Ui.Sub);
+                GUI.Label(new Rect(x + 76, y + 30, w - 90, 36), live, Ui.Title);
+                // The targets: which star the score so far has reached.
+                for (int k = 0; k < 3; k++)
+                {
+                    GUI.color = Stunts.Live >= a.Stars[k] ? new Color(1f, 0.82f, 0.2f) : new Color(1, 1, 1, 0.25f);
+                    GUI.DrawTexture(new Rect(x + w - 96 + k * 28, y + 10, 24, 24), star);
+                }
+                GUI.color = Color.white;
+            }
+            if (lastStunt != null && Time.unscaledTime - lastStuntAt < 4f)
+            {
+                var r = lastStunt;
+                float fade = Mathf.Clamp01((4f - (Time.unscaledTime - lastStuntAt)) * 2);
+                float w = 520, x = Ui.W / 2 - w / 2, y = 200;
+                GUI.color = new Color(1, 1, 1, fade);
+                Ui.Panel(new Rect(x, y, w, 132), 0.65f * fade);
+                Ui.Fill(new Rect(x, y, w, 5), StuntBuilder.Colour(r.Stunt.Kind) * new Color(1, 1, 1, fade));
+                GUI.DrawTexture(new Rect(x + 20, y + 22, 72, 72), StuntBuilder.Icon(r.Stunt.Kind));
+                GUI.Label(new Rect(x + 110, y + 14, w - 130, 30), r.Stunt.Name.ToUpperInvariant(), Ui.Sub);
+                GUI.Label(new Rect(x + 110, y + 40, w - 130, 50), Score(r.Stunt, r.Score), Ui.Title);
+                for (int k = 0; k < 3; k++)
+                {
+                    GUI.color = k < r.Stars ? new Color(1f, 0.82f, 0.2f, fade) : new Color(1, 1, 1, 0.22f * fade);
+                    GUI.DrawTexture(new Rect(x + w - 128 + k * 36, y + 46, 32, 32), star);
+                }
+                GUI.color = new Color(1, 1, 1, fade);
+                string paid = r.Xp > 0 ? $"+{r.Xp:N0} XP · +{r.Credits:N0} cr" : "";
+                string best = r.Best ? "New best" : $"Best {Score(r.Stunt, Stunts.Best(r.Stunt))}";
+                GUI.Label(new Rect(x + 110, y + 92, w - 130, 30), paid.Length > 0 ? $"{best} · {paid}" : best, Ui.Small);
+                GUI.color = Color.white;
+            }
+            Ui.End();
+        }
+
+        /// <summary>A stunt's score in the player's units (speeds and jumps; drift points are points).</summary>
+        static string Score(Stunt s, double score) =>
+            s.Kind == StuntKind.DriftZone ? s.Format(score) : s.Kind == StuntKind.DangerSign ? Units.Short(score) : Units.Speed(score / 3.6);
 
         /// <summary>A GPS route to a place or landmark (the proving ground: its paddock).</summary>
         public void SetRoute(Place p)
@@ -411,7 +651,7 @@ namespace Halcyon
         void DrawGps()
         {
             var g = Gps;
-            if (g == null || !g.Active || races.Racing || mapScreen.Open) return;
+            if (g == null || !g.Active || races.Racing || mapScreen.Open || HideHud) return;
             string head, sub;
             if (g.Route == null)
             {
@@ -438,7 +678,7 @@ namespace Halcyon
                 head = $"↑  {Core.Gps.Distance(g.Remaining)}";
                 sub = $"to {g.TargetName}";
             }
-            Ui.Begin();
+            Ui.Begin(hud: true);
             float w = 380, x = Ui.W / 2 - w / 2, y = 18;
             Ui.Panel(new Rect(x, y, w, 80), 0.55f);
             Ui.Fill(new Rect(x, y, 5, 80), GpsRibbon.Tint);
@@ -476,7 +716,8 @@ namespace Halcyon
 
         void LateUpdate()
         {
-            if (!Ready || (garage != null && garage.IsOpen)) return;
+            // The garage has its own camera, and photo mode flies this one.
+            if (!Ready || (garage != null && garage.IsOpen) || (photo != null && photo.Active)) return;
             UpdateCamera(Mathf.Min(Time.deltaTime, 0.1f));
         }
 
@@ -492,12 +733,14 @@ namespace Halcyon
         {
             if (big == null)
             {
-                big = new GUIStyle(GUI.skin.label) { fontSize = 44, fontStyle = FontStyle.Bold, alignment = TextAnchor.LowerRight };
+                big = new GUIStyle(GUI.skin.label) { fontSize = 60, fontStyle = FontStyle.Bold, alignment = TextAnchor.LowerRight };
                 big.normal.textColor = Color.white;
-                small = new GUIStyle(GUI.skin.label) { fontSize = 16, alignment = TextAnchor.LowerRight };
+                small = new GUIStyle(GUI.skin.label) { fontSize = 18, alignment = TextAnchor.LowerRight };
                 small.normal.textColor = new Color(1, 1, 1, 0.85f);
                 shadow = new GUIStyle(big);
                 shadow.normal.textColor = new Color(0, 0, 0, 0.5f);
+                help = new GUIStyle(GUI.skin.label) { fontSize = 15, alignment = TextAnchor.UpperLeft };
+                help.normal.textColor = new Color(1, 1, 1, 0.85f);
             }
             if (garage != null && garage.IsOpen) return;
             if (!Ready)
@@ -511,38 +754,41 @@ namespace Halcyon
                 GUI.Label(new Rect(0, Screen.height * 0.38f + 70, Screen.width, 30), loading + "...", sub);
                 return;
             }
+            if (HideHud) return;
+            Ui.Begin(hud: true);
             var v = Sim.Player.vehicle;
-            int kmh = Mathf.RoundToInt((float)(System.Math.Abs(v.vLong) * 3.6));
+            int speed = Units.SpeedValue(v.vLong);
             string gear = v.gear == -1 ? "R" : v.gear == 0 ? "N" : v.gear.ToString();
-            var r = new Rect(Screen.width - 260, Screen.height - 110, 230, 60);
-            GUI.Label(new Rect(r.x + 2, r.y + 2, r.width, r.height), $"{kmh} km/h", shadow);
-            GUI.Label(r, $"{kmh} km/h", big);
-            GUI.Label(new Rect(Screen.width - 260, Screen.height - 48, 230, 30), $"gear {gear}   {v.Rpm:F0} rpm", small);
+            float right = Ui.W - 34, bottom = Ui.H - 22;
+            var r = new Rect(right - 300, bottom - 108, 300, 76);
+            GUI.Label(new Rect(r.x + 2, r.y + 2, r.width, r.height), speed.ToString(), shadow);
+            GUI.Label(r, speed.ToString(), big);
+            GUI.Label(new Rect(right - 300, bottom - 36, 300, 28), $"{Units.SpeedUnit}   gear {gear}   {v.Rpm:F0} rpm", small);
             // Rev bar.
             float frac = Mathf.Clamp01((float)(v.Rpm / (v.Params.engine.redline * 1.05)));
-            GUI.color = new Color(1, 1, 1, 0.25f);
-            GUI.DrawTexture(new Rect(Screen.width - 250, Screen.height - 18, 220, 6), Texture2D.whiteTexture);
-            GUI.color = frac > 0.92f ? new Color(1f, 0.3f, 0.2f) : new Color(0.3f, 0.85f, 1f);
-            GUI.DrawTexture(new Rect(Screen.width - 250, Screen.height - 18, 220 * frac, 6), Texture2D.whiteTexture);
-            GUI.color = Color.white;
-            var help = new GUIStyle(small) { alignment = TextAnchor.UpperLeft, fontSize = 13 };
-            GUI.Label(new Rect(14, 10, 1100, 22), "W/S throttle & brake · A/D steer · Space handbrake · E/Q shift · R reset · C camera · B look back · L lights · G garage · T events · [ ] time · \\ weather · M map · Esc pause", help);
+            Ui.Fill(new Rect(right - 260, bottom - 4, 260, 6), new Color(1, 1, 1, 0.25f));
+            Ui.Fill(new Rect(right - 260, bottom - 4, 260 * frac, 6), frac > 0.92f ? Ui.Bad : new Color(0.3f, 0.85f, 1f));
+            float y = 10;
+            if (Settings.KeyHints && !InMenu)
+            {
+                GUI.Label(new Rect(14, y, Ui.W - 28, 22), "W/S throttle & brake · A/D steer · Space handbrake · E/Q shift · R reset · C camera · B look back · L lights · G garage · T events · M map · P photo · [ ] time · \\ weather · Esc menu", help);
+                y += 22;
+            }
             var car = Career.Profile.CurrentCar;
             var (level, _, _) = Economy.Level(Career.Profile.Xp);
             string pi = car.Pi > 0 ? $" · {Performance.ClassOf(car.Pi)} {car.Pi}" : "";
             var wx = Sim.Weather;
             string skyText = $"{Sim.Clock.Label} · {Weather.Name(wx.State)}{(wx.Locked ? " (set)" : "")}{(Sim.Wetness > 0.15 ? $" · roads {(Sim.Wetness > 0.7 ? "soaked" : "wet")}" : "")}";
-            GUI.Label(new Rect(14, 30, 1100, 22), $"{PlayerRig.Visual.Look.name}{pi} · {Career.Profile.Credits:N0} cr · level {level} · {skyText}", help);
+            GUI.Label(new Rect(14, y, Ui.W - 28, 22), $"{PlayerRig.Visual.Look.name}{pi} · {Career.Profile.Credits:N0} cr · level {level} · {skyText}", help);
+            y += 22;
             if (Career.Notice != null && Time.unscaledTime - Career.NoticeAt < 5f)
-            {
-                GUI.Label(new Rect(14, 50, 900, 22), Career.Notice, help);
-            }
+                GUI.Label(new Rect(14, y, Ui.W - 28, 22), Career.Notice, help);
+            if (Paused && !pause.Open)
+                GUI.Label(new Rect(0, Ui.H / 2 - 50, Ui.W, 100), "PAUSED", Ui.Big);
+            Ui.End();
             DrawGps();
-            if (Paused)
-            {
-                var p = new GUIStyle(big) { alignment = TextAnchor.MiddleCenter };
-                GUI.Label(new Rect(0, Screen.height / 2 - 40, Screen.width, 80), "PAUSED", p);
-            }
+            DrawStunts();
+            DrawAccoladeBanner();
         }
     }
 }

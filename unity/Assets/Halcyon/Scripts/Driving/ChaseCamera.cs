@@ -13,7 +13,10 @@ namespace Halcyon
         public readonly Camera Cam;
         public CamMode Mode = CamMode.Chase;
         public bool LookBack;
-        public bool ReducedShake;
+        /// <summary>How much the camera shakes (Settings.Shake): 0 none, 1 full.</summary>
+        public float Shake = 1;
+        /// <summary>The chase camera's field of view at rest (Settings.Fov); the far and bonnet views follow it.</summary>
+        public float FovBase = 60;
         Vector3 offset = new Vector3(0, 2, -6);
         Vector3 dir = Vector3.forward;
         float shakeT, kick, speedFov;
@@ -55,7 +58,7 @@ namespace Halcyon
                 t.position = pos + rot * new Vector3(0, bonnetY, bonnetZ);
                 bonnetRot = Quaternion.Slerp(bonnetRot, rot, snap ? 1 : 1 - Mathf.Exp(-dt * 25));
                 t.rotation = LookBack ? bonnetRot * Quaternion.Euler(0, 180, 0) : bonnetRot;
-                baseFov = 68;
+                baseFov = FovBase + 8;
             }
             else
             {
@@ -82,14 +85,14 @@ namespace Halcyon
                 t.position = p;
                 var target = pos + Vector3.up * (far ? 1.1f : 0.85f) + dir * (2.6f * back);
                 t.rotation = Quaternion.LookRotation(target - p, Vector3.up);
-                baseFov = far ? 58 : 62;
+                baseFov = far ? FovBase - 2 : FovBase + 2;
             }
             // Speed adds a little FOV; impacts and high speed add a little shake.
             float targetFov = Mathf.Min(14, Mathf.Max(0, (speed - 15) * 0.16f));
             speedFov += (targetFov - speedFov) * (1 - Mathf.Exp(-dt * 2));
             Cam.fieldOfView = FovForAspect(baseFov + speedFov, 72, Cam.aspect);
             shakeT += dt;
-            float shakeAmp = ReducedShake ? 0 : Mathf.Max(0, speed - 45) * 0.0006f + kick * 0.06f;
+            float shakeAmp = (Mathf.Max(0, speed - 45) * 0.0006f + kick * 0.06f) * Shake;
             if (shakeAmp > 0)
                 t.position += new Vector3(Mathf.Sin(shakeT * 37.1f) * shakeAmp, Mathf.Sin(shakeT * 29.3f + 1.3f) * shakeAmp * 0.7f, 0);
             kick *= Mathf.Exp(-dt * 6);

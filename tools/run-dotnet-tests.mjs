@@ -1,7 +1,8 @@
 // The Unity side's checks for npm run verify: compile every Unity script
 // against the UnityEngine reference assemblies, then the headless .NET
 // suites (physics bit-exact with the TypeScript, the island, the career,
-// the living island of M6 and the AI). --quick runs shorter subsets.
+// the living island of M6 with the stunts, events and progression of M7,
+// and the AI). --quick runs shorter subsets.
 // Skips (with a message) when dotnet is not installed.
 //   node tools/run-dotnet-tests.mjs [--quick]
 import { spawnSync } from 'node:child_process';
@@ -34,11 +35,11 @@ steps.push(['island', run('Halcyon.World.Tests')]);
 if (quick) {
   steps.push(['career: saves', run('Halcyon.Career.Tests', 'save')]);
   steps.push(['career: parts', run('Halcyon.Career.Tests', 'parts')]);
-  for (const mode of ['clock', 'weather', 'sim', 'festival', 'discover', 'highcrest', 'gps']) steps.push([`island life: ${mode}`, run('Halcyon.Sim.Tests', mode)]);
+  for (const mode of ['clock', 'weather', 'sim', 'festival', 'discover', 'highcrest', 'gps', 'stunts', 'progression']) steps.push([`island life: ${mode}`, run('Halcyon.Sim.Tests', mode)]);
   steps.push(['AI: sprints', run('Halcyon.AI.Tests', 'sprint')]);
 } else {
   steps.push(['career', run('Halcyon.Career.Tests')]);
-  steps.push(['island life (M6)', run('Halcyon.Sim.Tests')]);
+  steps.push(['island life and M7', run('Halcyon.Sim.Tests')]);
   steps.push(['AI', run('Halcyon.AI.Tests')]);
 }
 

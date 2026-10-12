@@ -7,7 +7,8 @@ using System.Collections.Generic;
 
 namespace Halcyon.Core
 {
-    public enum RaceKind { Circuit, Sprint }
+    /// <summary>Laps of a circuit, a point-to-point sprint, or a drag race (a quarter mile side by side, on its own lane each).</summary>
+    public enum RaceKind { Circuit, Sprint, Drag }
 
     public enum RaceState { Countdown, Racing, Finished }
 
@@ -27,6 +28,14 @@ namespace Halcyon.Core
         /// <summary>The event's own sky and time of day (null: whatever the island has when it starts).</summary>
         public Sky? Weather;
         public double? Hour;
+        /// <summary>The surface the AI plans for (Surface.Dirt for a rally on the dirt tracks).</summary>
+        public int Surface = Core.Surface.Asphalt;
+        /// <summary>Head to head: the one rival, by name, whoever the grid would otherwise be.</summary>
+        public Personality Rival;
+        /// <summary>A time trial: the player alone against a ghost of the AI's run (no collisions; the time to beat).</summary>
+        public bool Ghost;
+        /// <summary>The festival level needed to enter.</summary>
+        public int MinLevel = 1;
 
         /// <summary>"Night · Storm", or null when the event runs in the island's own conditions.</summary>
         public string ConditionsText
@@ -132,7 +141,113 @@ namespace Halcyon.Core
                     list.Add(storm);
                 }
             }
+            // A drag race on the longest straight.
+            var drag = Drag(w);
+            if (drag != null) list.Add(drag);
+            // A rally on the dirt tracks, from the canyon over the hills and down to the lake (the AI plans for dirt).
+            // Downhill: the other way, the 16% climb out of the lake's hairpin stops most cars.
+            var lakeWest = FindNode(w, "lakeWest");
+            var canyon = FindNode(w, "canyonNorth");
+            if (lakeWest != null && canyon != null)
+            {
+                var rally = Sprint(w, g, "rally-redmesa", "Redmesa Rally", canyon.x, canyon.z, lakeWest.x, lakeWest.z);
+                if (rally != null)
+                {
+                    rally.Surface = Core.Surface.Dirt;
+                    rally.Description = $"{rally.Distance / 1000:0.0} km of dirt track from the canyon over the hills and down to the lake.";
+                    list.Add(rally);
+                }
+            }
+            // Head to head with the festival's rival, on the Harbour Dash.
+            var harbor = FindPoi(w, "Harbor");
+            if (harbor != null)
+            {
+                var duel = Sprint(w, g, "duel-harbor", "Showdown: Mika Varga", sp.x, sp.z, harbor.x, harbor.z);
+                if (duel != null)
+                {
+                    duel.GridSize = 2;
+                    duel.Rival = TheRival();
+                    duel.Description = $"{duel.Distance / 1000:0.0} km to the harbour, one on one with the festival's fastest driver, in a car matched to yours.";
+                    list.Add(duel);
+                }
+            }
+            // A time trial: one lap alone against the rival's ghost.
+            var attack = ProvingGP(w, 1);
+            attack.Id = "proving-time-attack";
+            attack.Name = "Proving Ground Time Attack";
+            attack.Description = "One lap alone against the ghost of the festival's fastest driver, in a car matched to yours.";
+            attack.GridSize = 1;
+            attack.Ghost = true;
+            attack.Rival = TheRival();
+            list.Add(attack);
+            // The festival opens up as the player levels up: the first events at once, the hardest later.
+            var levels = new Dictionary<string, int>
+            {
+                ["drag-highway"] = 2, ["proving-time-attack"] = 2, ["rally-redmesa"] = 3, ["sprint-highcrest"] = 4,
+                ["proving-gp-night"] = 4, ["duel-harbor"] = 5, ["sprint-storm"] = 6,
+            };
+            foreach (var e in list) if (levels.TryGetValue(e.Id, out int lv)) e.MinLevel = lv;
             return list;
+        }
+
+        /// <summary>The festival's rival: the driver to beat head to head, and whose run is the time trial's ghost.</summary>
+        public static Personality TheRival() => new Personality { Name = "Mika Varga", Skill = 0.95, Aggression = 0.75, Consistency = 0.95, Risk = 0.65 };
+
+        /// <summary>
+        /// A drag race: a quarter mile from a standing start, side by side, on the island's longest straight
+        /// (no bend under 600 m, no bridge) with the rest of it to stop in.
+        /// </summary>
+        public static RaceEvent Drag(WorldData w)
+        {
+            RoadEdge best = null;
+            int b0 = 0, b1 = 0;
+            double bestLen = 0;
+            foreach (var e in w.Edges)
+            {
+                if (e.info.id == "street" || e.info.id == "dirt") continue;
+                var k = Stunts.Curvature(e);
+                int start = -1;
+                for (int i = 0; i <= e.n; i++)
+                {
+                    bool straight = i < e.n && k[i] < 1.0 / 600 && e.bridge[i] == 0;
+                    if (straight && start < 0) start = i;
+                    if (straight || start < 0) continue;
+                    double len = e.s[i - 1] - e.s[start];
+                    if (len > bestLen)
+                    {
+                        bestLen = len;
+                        best = e;
+                        b0 = start;
+                        b1 = i - 1;
+                    }
+                    start = -1;
+                }
+            }
+            if (best == null || bestLen < 650) return null;
+            var xs = new List<double>();
+            var ys = new List<double>();
+            var zs = new List<double>();
+            var ws = new List<double>();
+            for (int i = b0; i <= b1; i++)
+            {
+                xs.Add(best.x[i]);
+                ys.Add(best.y[i]);
+                zs.Add(best.z[i]);
+                ws.Add(best.info.halfWidth);
+            }
+            var r = RaceRoute.FromPolyline("Highway Quarter Mile", xs, ys, zs, ws, ws, false);
+            const double start0 = 25, quarter = 402.3;
+            return new RaceEvent
+            {
+                Id = "drag-highway",
+                Name = "Highway Quarter Mile",
+                Description = $"A quarter mile from a standing start, side by side, then {r.Length - start0 - quarter:0} m to stop.",
+                Kind = RaceKind.Drag,
+                Route = r,
+                StartS = start0,
+                Distance = quarter,
+                GridSize = 2,
+            };
         }
 
         /// <summary>Gives the island an event's sky and hour (call before measuring the grid).</summary>
@@ -183,6 +298,8 @@ namespace Halcyon.Core
         public double LapStart, LastLap = double.NaN, BestLap = double.NaN;
         public bool Finished;
         public double FinishTime = double.NaN;
+        /// <summary>Speed over the finish line, m/s (a drag race's trap speed).</summary>
+        public double FinishSpeed = double.NaN;
         public int Position;
         /// <summary>The car's performance index, when known (0 otherwise).</summary>
         public int Pi;
@@ -244,14 +361,15 @@ namespace Halcyon.Core
             /// setup (Rival.Key), so equal setups share one measurement.
             /// Thread-safe: grids can be measured in parallel.
             /// </summary>
-            public CarAbility Get(string id, Tune tune, Upgrades up, string key, double wetness = 0)
+            public CarAbility Get(string id, Tune tune, Upgrades up, string key, double wetness = 0, int surface = Surface.Asphalt)
             {
-                string k = id + "|" + key + (wetness > 0 ? "|wet" + wetness.ToString("R", System.Globalization.CultureInfo.InvariantCulture) : "");
+                if (surface != Surface.Asphalt) wetness = 0;
+                string k = id + "|" + key + (wetness > 0 ? "|wet" + wetness.ToString("R", System.Globalization.CultureInfo.InvariantCulture) : "") + (surface != Surface.Asphalt ? "|s" + surface : "");
                 lock (map)
                 {
                     if (map.TryGetValue(k, out var a)) return a;
                 }
-                var m = CarAbility.Measure(Cars.ById(id), tune, up, wetness);
+                var m = CarAbility.Measure(Cars.ById(id), tune, up, wetness, surface);
                 lock (map)
                 {
                     if (!map.ContainsKey(k)) map[k] = m;
@@ -307,7 +425,7 @@ namespace Halcyon.Core
                     var up = Rivals.PartsKey(r.Parts) == "stock" ? null : r.Upgrades;
                     var car = sim.AddCar(r.CarId, false, r.Tune, up);
                     car.name = r.Driver.Name;
-                    var ai = new AiDriver(car, r.Driver, abilities.Get(car.specId, r.Tune, up, r.Key, wet), seed * 7919u + (uint)slot) { Placer = Place };
+                    var ai = new AiDriver(car, r.Driver, abilities.Get(car.specId, r.Tune, up, r.Key, wet, ev.Surface), seed * 7919u + (uint)slot) { Placer = Place };
                     e = new Entrant { Car = car, Ai = ai, Name = r.Driver.Name, Pi = r.Pi };
                 }
                 e.Grid = slot;
@@ -322,7 +440,8 @@ namespace Halcyon.Core
             }
             foreach (var e in Entrants)
             {
-                e.Ai?.SetRoute(ev.Route, Line);
+                // In a drag race each car keeps to its own lane.
+                e.Ai?.SetRoute(ev.Route, ev.Kind == RaceKind.Drag ? RacingLine.Lane(ev.Route, e.Grid % 2 == 0 ? -2.3 : 2.3, e.Car.vehicle.Params.spec.width / 2) : Line);
                 if (e.Ai != null) e.Ai.Hold = true;
                 e.Track(ev.Route, 0);
                 e.Progress = ev.Route.Delta(ev.StartS, e.S);
@@ -336,20 +455,27 @@ namespace Halcyon.Core
         {
             var r = Event.Route;
             int row = slot / 2, col = slot % 2;
-            double s = Event.StartS - 7 - row * 8 - col * 4;
-            r.At(s, out double x, out _, out double z, out double tx, out double tz);
+            // A drag race starts side by side; otherwise the grid is staggered.
+            double s = Event.StartS - 7 - row * 8 - (Event.Kind == RaceKind.Drag ? 0 : col * 4);
+            r.At(s, out double x, out double y, out double z, out double tx, out double tz);
             double wl = r.Sample(r.WLeft, s), wr = r.Sample(r.WRight, s);
             double half = e.Car.vehicle.Params.spec.width / 2;
             double lat = col == 0 ? -Math.Min(2.3, wl - half - 0.3) : Math.Min(2.3, wr - half - 0.3);
             x -= tz * lat;
             z += tx * lat;
-            Place(e.Car.vehicle, x, z, Simulation.YawOf(tx, tz));
+            Place(e.Car.vehicle, x, y, z, Simulation.YawOf(tx, tz));
             e.S = r.Wrap(s);
         }
 
-        void Place(Vehicle v, double x, double z, double yaw)
+        /// <summary>
+        /// A car put down at (x, z) on the race's road, at the route's height y there: where two roads overlap (near a
+        /// junction), not on the top one (the top surface put a rally car on the main road beside it, 1.7 m up).
+        /// </summary>
+        void Place(Vehicle v, double x, double y, double z, double yaw)
         {
-            v.Place(x, Sim.Ground.GroundHeight(x, z), z, yaw);
+            var hit = new GroundHit();
+            double h = Sim.Ground.Sample(x, z, y - 0.5, hit) ? hit.y : Sim.Ground.GroundHeight(x, z);
+            v.Place(x, h, z, yaw);
             if (v == Sim.Player.vehicle) Sim.Filter.Reset();
         }
 
@@ -381,7 +507,7 @@ namespace Halcyon.Core
                 if (e.Ai == null) continue;
                 e.Ai.Hold = !racing;
                 e.Ai.Cruise = e.Finished;
-                e.Ai.StopAt = Event.Kind == RaceKind.Sprint && e.Finished ? Event.Route.Length - 8 : double.NaN;
+                e.Ai.StopAt = Event.Kind != RaceKind.Circuit && e.Finished ? Event.Route.Length - 8 : double.NaN;
                 e.Ai.Update(dt, this);
             }
             Drafting();
@@ -410,6 +536,7 @@ namespace Halcyon.Core
                 {
                     e.Finished = true;
                     e.FinishTime = Clock;
+                    e.FinishSpeed = e.Car.vehicle.speed;
                 }
             }
             Rank();
@@ -521,11 +648,11 @@ namespace Halcyon.Core
             if (e == null) return;
             var r = Event.Route;
             double s = r.Wrap(e.S - 5);
-            r.At(s, out double x, out _, out double z, out double tx, out double tz);
+            r.At(s, out double x, out double y, out double z, out double tx, out double tz);
             double off = Line.OffsetAt(s);
             x -= tz * off;
             z += tx * off;
-            Place(e.Car.vehicle, x, z, Simulation.YawOf(tx, tz));
+            Place(e.Car.vehicle, x, y, z, Simulation.YawOf(tx, tz));
             e.Progress += r.Delta(e.S, s);
             e.S = s;
         }

@@ -11,7 +11,10 @@
 //   d-pad up (events), d-pad down (the map).
 //   Menus (the garage): arrows / WASD / d-pad, Enter / Space / A to pick,
 //   Esc / Backspace / B to go back. On the map: F / X (pad) to fast travel,
-//   X or Delete / Y (pad) to clear the GPS route.
+//   X or Delete / Y (pad) to clear the GPS route. P / right stick click:
+//   photo mode, where the right mouse button drags the camera round (or the
+//   right stick, or J/L and I/K) and the wheel zooms (or the triggers, or
+//   U/O).
 using Halcyon.Core;
 using UnityEngine;
 #if HALCYON_INPUT_SYSTEM && ENABLE_INPUT_SYSTEM
@@ -29,8 +32,13 @@ namespace Halcyon
         /// <summary>Menu keys (the garage): true on the frame they go down.</summary>
         public struct MenuKeys
         {
-            public bool left, right, up, down, select, back, garage, events, hourBack, hourForward, weather, map, travel, clear;
+            public bool left, right, up, down, select, back, garage, events, hourBack, hourForward, weather, map, travel, clear, photo;
         }
+
+        /// <summary>A free camera's turn this frame, degrees (x round, y up): the mouse with its right button held, the right stick, J/L and I/K.</summary>
+        public Vector2 Look;
+        /// <summary>A free camera's zoom this frame, in steps (+ closer): the mouse wheel, the triggers, U/O.</summary>
+        public float Zoom;
 
         public MenuKeys Menu;
         MenuKeys menuHeld;
@@ -75,8 +83,19 @@ namespace Halcyon
                 map = m.map && !menuHeld.map,
                 travel = m.travel && !menuHeld.travel,
                 clear = m.clear && !menuHeld.clear,
+                photo = m.photo && !menuHeld.photo,
             };
             menuHeld = m;
+            Look = Vector2.zero;
+            Zoom = 0;
+            float dt = Mathf.Min(Time.unscaledDeltaTime, 0.1f);
+            bool looked = false;
+#if HALCYON_INPUT_SYSTEM && ENABLE_INPUT_SYSTEM
+            looked = ReadLookInputSystem(dt);
+#endif
+#if ENABLE_LEGACY_INPUT_MANAGER
+            if (!looked) ReadLookLegacy(dt);
+#endif
             // Edges: pressed this frame and not the last.
             c.pressed.Clear();
             for (int i = 0; i < ActionStates.Count; i++)
@@ -105,6 +124,27 @@ namespace Halcyon
             m.map |= Key(KeyCode.M);
             m.travel |= Key(KeyCode.F);
             m.clear |= Key(KeyCode.X) || Key(KeyCode.Delete);
+            m.photo |= Key(KeyCode.P);
+        }
+
+        void ReadLookLegacy(float dt)
+        {
+            bool Key(KeyCode k) => Input.GetKey(k);
+            if (Input.GetMouseButton(1))
+            {
+                try
+                {
+                    Look += new Vector2(Input.GetAxisRaw("Mouse X"), Input.GetAxisRaw("Mouse Y")) * 2.2f;
+                }
+                catch (System.ArgumentException)
+                {
+                    // No mouse axes in this project's Input Manager.
+                }
+            }
+            Zoom += Input.mouseScrollDelta.y;
+            Look.x += ((Key(KeyCode.L) ? 1 : 0) - (Key(KeyCode.J) ? 1 : 0)) * 90 * dt;
+            Look.y += ((Key(KeyCode.I) ? 1 : 0) - (Key(KeyCode.K) ? 1 : 0)) * 60 * dt;
+            Zoom += ((Key(KeyCode.U) ? 1 : 0) - (Key(KeyCode.O) ? 1 : 0)) * 4 * dt;
         }
 
         bool ReadLegacy(Controls c)
@@ -152,6 +192,7 @@ namespace Halcyon
                 m.map |= kb.mKey.isPressed;
                 m.travel |= kb.fKey.isPressed;
                 m.clear |= kb.xKey.isPressed || kb.deleteKey.isPressed;
+                m.photo |= kb.pKey.isPressed;
             }
             var gp = Gamepad.current;
             if (gp != null)
@@ -168,7 +209,34 @@ namespace Halcyon
                 m.map |= gp.dpad.down.isPressed && !gp.leftStick.IsActuated();
                 m.travel |= gp.buttonWest.isPressed;
                 m.clear |= gp.buttonNorth.isPressed;
+                m.photo |= gp.rightStickButton.isPressed;
             }
+        }
+
+        /// <summary>The free camera from the Input System; false when it has no keyboard or mouse (the legacy manager is tried).</summary>
+        bool ReadLookInputSystem(float dt)
+        {
+            var mouse = Mouse.current;
+            if (mouse != null)
+            {
+                if (mouse.rightButton.isPressed) Look += mouse.delta.ReadValue() * 0.15f;
+                Zoom += mouse.scroll.ReadValue().y / 120f;
+            }
+            var kb = Keyboard.current;
+            if (kb != null)
+            {
+                Look.x += ((kb.lKey.isPressed ? 1 : 0) - (kb.jKey.isPressed ? 1 : 0)) * 90 * dt;
+                Look.y += ((kb.iKey.isPressed ? 1 : 0) - (kb.kKey.isPressed ? 1 : 0)) * 60 * dt;
+                Zoom += ((kb.uKey.isPressed ? 1 : 0) - (kb.oKey.isPressed ? 1 : 0)) * 4 * dt;
+            }
+            var gp = Gamepad.current;
+            if (gp != null)
+            {
+                var st = gp.rightStick.ReadValue();
+                if (st.magnitude > 0.15f) Look += new Vector2(st.x * 110, st.y * 70) * dt;
+                Zoom += (gp.rightTrigger.ReadValue() - gp.leftTrigger.ReadValue()) * 4 * dt;
+            }
+            return mouse != null || kb != null;
         }
 
         bool ReadInputSystem(Controls c)

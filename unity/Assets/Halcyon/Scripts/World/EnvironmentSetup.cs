@@ -1,6 +1,7 @@
 // Sun, sky, fog and post-processing for the island. Post-processing uses
 // URP's Volume system when URP is present (looked up by reflection so this
-// compiles and runs in any pipeline).
+// compiles and runs in any pipeline). The grade, motion blur, vignette and
+// depth of field are kept so the settings and photo mode can change them.
 using System;
 using System.Reflection;
 using UnityEngine;
@@ -65,6 +66,54 @@ namespace Halcyon
 
         static Type T(string name) => Type.GetType(name);
 
+        // The post-processing components, kept to change later (null without URP).
+        static object grade, blur, vignette, whiteBalance, dof;
+        static Type dofModeT;
+        public const float BaseExposure = 0.15f, BaseContrast = 12f, BaseSaturation = 12f, BaseTemperature = 6f, BaseVignette = 0.18f, BaseBlur = 0.12f;
+
+        /// <summary>Whether URP post-processing is running (photo mode's grading and depth of field need it).</summary>
+        public static bool HasPost => grade != null;
+
+        public static void SetMotionBlur(bool on) => Param(blur, "intensity", on ? BaseBlur : 0f);
+
+        /// <summary>A look for photos, added to the island's own grade: exposure (EV), saturation, contrast, white balance, a colour filter, vignette.</summary>
+        public static void SetLook(float exposure, float saturation, float contrast, float temperature, Color filter, float vignetteAdd)
+        {
+            Param(grade, "postExposure", BaseExposure + exposure);
+            Param(grade, "saturation", Mathf.Clamp(BaseSaturation + saturation, -100f, 100f));
+            Param(grade, "contrast", Mathf.Clamp(BaseContrast + contrast, -100f, 100f));
+            Param(grade, "colorFilter", filter);
+            Param(whiteBalance, "temperature", Mathf.Clamp(BaseTemperature + temperature, -100f, 100f));
+            Param(vignette, "intensity", Mathf.Clamp01(BaseVignette + vignetteAdd));
+        }
+
+        /// <summary>The island's own grade again.</summary>
+        public static void ResetLook() => SetLook(0, 0, 0, 0, Color.white, 0);
+
+        /// <summary>Bokeh depth of field focused at focus metres (off: none).</summary>
+        public static void SetDepthOfField(bool on, float focus = 10, float aperture = 5.6f, float focalLength = 50)
+        {
+            if (dof == null || dofModeT == null) return;
+            Param(dof, "mode", Enum.Parse(dofModeT, on ? "Bokeh" : "Off"));
+            if (!on) return;
+            Param(dof, "focusDistance", Mathf.Max(0.1f, focus));
+            Param(dof, "aperture", Mathf.Clamp(aperture, 1f, 32f));
+            Param(dof, "focalLength", Mathf.Clamp(focalLength, 1f, 300f));
+        }
+
+        /// <summary>A property of the URP pipeline asset in use (render scale, shadow distance, MSAA), if there is one.</summary>
+        public static void SetPipeline(string name, object value)
+        {
+            try
+            {
+                Set(GraphicsSettings.currentRenderPipeline, name, value);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"Halcyon: could not set {name}: {e.Message}");
+            }
+        }
+
         static void TryUrpPost(Camera cam, Transform parent)
         {
             try
@@ -103,17 +152,21 @@ namespace Halcyon
                 var tone = Comp("Tonemapping");
                 var tmT = T("UnityEngine.Rendering.Universal.TonemappingMode, Unity.RenderPipelines.Universal.Runtime");
                 if (tmT != null) Param(tone, "mode", Enum.Parse(tmT, "ACES"));
-                var grade = Comp("ColorAdjustments");
-                Param(grade, "postExposure", 0.15f);
-                Param(grade, "contrast", 12f);
-                Param(grade, "saturation", 12f);
-                var vignette = Comp("Vignette");
-                Param(vignette, "intensity", 0.18f);
+                grade = Comp("ColorAdjustments");
+                Param(grade, "postExposure", BaseExposure);
+                Param(grade, "contrast", BaseContrast);
+                Param(grade, "saturation", BaseSaturation);
+                vignette = Comp("Vignette");
+                Param(vignette, "intensity", BaseVignette);
                 Param(vignette, "smoothness", 0.45f);
-                var blur = Comp("MotionBlur");
-                Param(blur, "intensity", 0.12f);
-                var wb = Comp("WhiteBalance");
-                Param(wb, "temperature", 6f);
+                blur = Comp("MotionBlur");
+                Param(blur, "intensity", BaseBlur);
+                whiteBalance = Comp("WhiteBalance");
+                Param(whiteBalance, "temperature", BaseTemperature);
+                // Depth of field, off until photo mode wants it.
+                dof = Comp("DepthOfField");
+                dofModeT = T("UnityEngine.Rendering.Universal.DepthOfFieldMode, Unity.RenderPipelines.Universal.Runtime");
+                if (dofModeT != null) Param(dof, "mode", Enum.Parse(dofModeT, "Off"));
             }
             catch (Exception e)
             {

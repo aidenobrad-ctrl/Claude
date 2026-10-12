@@ -211,7 +211,7 @@ function route(from: number, to: number, o: RouteOpts): number[] {
  * the two ends.
  */
 const DIRS = NB.map(([di, dj]) => ({ di, dj, a: Math.atan2(dj, di) })).sort((p, q) => p.a - q.a);
-function routeHeading(from: number, to: number, o: RouteOpts, k: number, maxTurn: number, startDir = -1, margin = 900): { path: number[]; endDir: number; reached: number } {
+function routeHeading(from: number, to: number, o: RouteOpts, k: number, maxTurn: number, startDir = -1, margin = 900, turnCost = 0.1): { path: number[]; endDir: number; reached: number } {
   const fx = cx(from), fz = cz(from), tx = cx(to), tz = cz(to);
   const i0 = Math.max(1, Math.floor((Math.min(fx, tx) - margin + WORLD_HALF) / CELL));
   const i1 = Math.min(N - 2, Math.ceil((Math.max(fx, tx) + margin + WORLD_HALF) / CELL));
@@ -266,7 +266,7 @@ function routeHeading(from: number, to: number, o: RouteOpts, k: number, maxTurn
       const dist = Math.hypot(DIRS[d1].di, DIRS[d1].dj) * k * CELL;
       const sc = stepCost(c, nc, dist, o);
       if (!Number.isFinite(sc)) continue;
-      const ng = g[st] + sc + dist * 0.1 * Math.abs(t);
+      const ng = g[st] + sc + dist * turnCost * Math.abs(t);
       if (ng < g[ns]) {
         g[ns] = ng;
         came[ns] = st;
@@ -475,10 +475,21 @@ function splitEdge(ei: number, k: number, px: number, pz: number, id: string): n
 }
 
 let junctions = 0;
-function polyFromCells(path: number[], cls: RoadClassId): XZ[] {
+/**
+ * Tightest corner per class, m. The 12 m grid's 8-way moves leave a saw-tooth of up to about 8.5 m that corner
+ * cutting kept as 7 m wiggles on the desert, forest and coast roads; every class is now simplified past the
+ * saw-tooth and its corners rounded with real arcs (as the pass was in M6).
+ */
+const CLASS_RADIUS: Record<RoadClassId, number> = { highway: 200, main: 40, pass: PASS_RADIUS, street: 12, dirt: 22 };
+
+function polyFromCells(path: number[], cls: RoadClassId, end?: XZ, trim = 0): XZ[] {
   const raw: XZ[] = path.map((c) => [cx(c), cz(c)]);
-  const tol = cls === 'highway' ? 9 : cls === 'dirt' ? 5 : 6;
-  const smooth = cls === 'pass' ? fillet(simplify(raw, tol), PASS_RADIUS) : chaikin(simplify(raw, tol), 1);
+  // A lattice route stops within a step of its goal: the last stretch runs on to the goal itself,
+  // from far enough back (trim) that it does not kink into it.
+  if (end && trim > 0) while (raw.length > 2 && Math.hypot(raw[raw.length - 1][0] - end[0], raw[raw.length - 1][1] - end[1]) < trim) raw.pop();
+  if (end && Math.hypot(raw[raw.length - 1][0] - end[0], raw[raw.length - 1][1] - end[1]) > CELL) raw.push(end);
+  const tol = cls === 'pass' ? 6 : cls === 'highway' ? 12 : 10;
+  const smooth = fillet(simplify(raw, tol), CLASS_RADIUS[cls]);
   return smooth.map(([x, z]) => [Math.round(x * 2) / 2, Math.round(z * 2) / 2]);
 }
 
@@ -488,15 +499,64 @@ function polyFromCells(path: number[], cls: RoadClassId): XZ[] {
  * reused (that ran routes alongside each other at different heights);
  * they cost extra to approach, so new roads cross them instead.
  */
-function link(cls: RoadClassId, ids: string[]): void {
+/**
+ * Highways, main roads and dirt tracks are routed on a lattice with the heading in the state
+ * (routeHeading): [stride in cells, most turn per step in sixteenths, cost per sixteenth turned].
+ * The 12 m grid's free A* climbed steep ground in serpentines of 16 m legs, which the fillets could
+ * only round at 6 to 10 m (on a main road 9.6 m wide, and on the coast highway); on the lattice a
+ * climb becomes switchbacks with legs a full step long, rounded at 18 m or more.
+ */
+const HEADING: Partial<Record<RoadClassId, [number, number, number]>> = { highway: [3, 1, 2.0], main: [2, 3, 0.2], dirt: [2, 4, 0.1] };
+
+/** The lattice direction (index into DIRS) of a route's first step, -1 for none. */
+function firstDir(path: number[]): number {
+  if (path.length < 2) return -1;
+  const di = (path[1] % N) - (path[0] % N), dj = Math.floor(path[1] / N) - Math.floor(path[0] / N);
+  const a = Math.atan2(dj, di);
+  let best = -1, bd = Infinity;
+  DIRS.forEach((d, k) => {
+    const e = Math.abs(Math.atan2(Math.sin(d.a - a), Math.cos(d.a - a)));
+    if (e < bd) {
+      bd = e;
+      best = k;
+    }
+  });
+  return best;
+}
+
+/**
+ * A chain of places, one edge per consecutive pair. On the lattice each section after the first
+ * sets off from its place in the direction the last one arrived, so the road runs on through the
+ * place instead of kinking there; startDir does the same for the first section (a road carrying
+ * on from another). Returns the direction the chain set off in.
+ */
+function link(cls: RoadClassId, ids: string[], startDir = -1): number {
+  let dir = startDir;
+  let first = -1;
   for (let i = 0; i + 1 < ids.length; i++) {
     const a = nodes[nid(ids[i])];
     const b = nodes[nid(ids[i + 1])];
-    const p = polyFromCells(route(cellOf(a.x, a.z), cellOf(b.x, b.z), { cls }), cls);
+    const hd = HEADING[cls];
+    let path: number[];
+    if (hd) {
+      const from = cellOf(a.x, a.z), to = cellOf(b.x, b.z);
+      let r: ReturnType<typeof routeHeading>;
+      try {
+        r = routeHeading(from, to, { cls }, hd[0], hd[1], dir, 900, hd[2]);
+      } catch {
+        // Straight on is blocked (water, the proving ground): set off any way.
+        r = routeHeading(from, to, { cls }, hd[0], hd[1], -1, 900, hd[2]);
+      }
+      path = r.path;
+      dir = r.endDir;
+    } else path = route(cellOf(a.x, a.z), cellOf(b.x, b.z), { cls });
+    if (i === 0) first = firstDir(path);
+    const p = polyFromCells(path, cls, [b.x, b.z], hd ? hd[0] * CELL * 1.6 : 0);
     p[0] = [a.x, a.z];
     p[p.length - 1] = [b.x, b.z];
     addEdge(cls, nid(ids[i]), nid(ids[i + 1]), p);
   }
+  return first;
 }
 
 /**
@@ -597,8 +657,9 @@ node('forestEast', 1900, -1500);
 }
 
 // Highways first, then main roads, the pass and dirt tracks.
-link('highway', ['hub', 'hubEast', 'southeast', 'eastCoast', 'citySouth']);
-link('highway', ['hub', 'riverEast', 'swBeach', 'westCoast']);
+// The coast highway runs on through the festival: its western half sets off opposite the eastern.
+const eastward = link('highway', ['hub', 'hubEast', 'southeast', 'eastCoast', 'citySouth']);
+link('highway', ['hub', 'riverEast', 'swBeach', 'westCoast'], eastward < 0 ? -1 : (eastward + DIRS.length / 2) % DIRS.length);
 link('highway', ['cityWest', 'lakeEast']);
 link('main', ['cityNorth', 'harbor']);
 link('main', ['hubEast', 'proving']);
@@ -614,7 +675,8 @@ link('main', ['desertTown', 'westCoast']);
 link('main', ['canyonNorth', 'desertTown']);
 link('dirt', ['lakeWest', 'rally', 'canyonNorth']);
 link('main', ['lakeEast', 'forestEast', 'cityNorth']);
-join('dirt', 'swBeach');
+// (Saltmarsh Bay is on the coast highway: the dirt track that joined it to the network only ran
+// alongside the highway into a junction 80 m on, at another height, and is gone.)
 
 // City grid: avenues and streets on the city platform, joined to the network.
 const city = PLATEAUS.find((p) => p.region === 5);
@@ -683,6 +745,101 @@ for (let pass = 0; pass < 200; pass++) {
     }
   }
   if (!changed) break;
+}
+
+// Near misses: two roads that touch without crossing (one runs into the other's side and away
+// again) would share pavement at two heights. Where their centrelines come closer than their half
+// widths together plus 2 m, away from any node, they become a junction at the closest point.
+let merges = 0;
+for (let pass = 0; pass < 50; pass++) {
+  let done = false;
+  outer2: for (let e1 = 0; e1 < edges.length; e1++) {
+    for (let e2 = e1 + 1; e2 < edges.length; e2++) {
+      const A = edges[e1];
+      const B = edges[e2];
+      if (A.cls === 'street' && B.cls === 'street') continue;
+      const reach = ROAD_CLASSES[A.cls].halfWidth + ROAD_CLASSES[B.cls].halfWidth + 2;
+      let best = Infinity;
+      let bi = -1;
+      let bk = -1;
+      let bp: XZ = [0, 0];
+      for (let i = 0; i + 1 < A.pts.length; i++) {
+        for (let k = 0; k + 1 < B.pts.length; k++) {
+          // Closest points of the two segments, sampled (segments are short).
+          for (let t = 0; t <= 1; t += 0.25) {
+            const px = A.pts[i][0] + (A.pts[i + 1][0] - A.pts[i][0]) * t;
+            const pz = A.pts[i][1] + (A.pts[i + 1][1] - A.pts[i][1]) * t;
+            const [bx0, bz0] = B.pts[k];
+            const dx = B.pts[k + 1][0] - bx0;
+            const dz = B.pts[k + 1][1] - bz0;
+            const l2 = dx * dx + dz * dz;
+            const u = l2 > 0 ? Math.max(0, Math.min(1, ((px - bx0) * dx + (pz - bz0) * dz) / l2)) : 0;
+            const d = Math.hypot(px - (bx0 + dx * u), pz - (bz0 + dz * u));
+            if (d >= best) continue;
+            const mx = (px + bx0 + dx * u) / 2;
+            const mz = (pz + bz0 + dz * u) / 2;
+            // Not where they already meet: at least 40 m from every node.
+            if (nodes.some((nd) => Math.hypot(nd.x - mx, nd.z - mz) < 40)) continue;
+            best = d;
+            bi = i;
+            bk = k;
+            bp = [mx, mz];
+          }
+        }
+      }
+      if (best >= reach) continue;
+      const n = splitEdge(e1, bi, bp[0], bp[1], `m${merges}`);
+      // B's index is unchanged unless it was e1 (it is not); split it at the same place.
+      const nb = nodes[n];
+      const sB = splitEdge(e2 > e1 ? e2 : e2, bk, nb.x, nb.z, `m${merges}b`);
+      if (sB !== n) {
+        for (const e of edges) {
+          if (e.a === sB) e.a = n;
+          if (e.b === sB) e.b = n;
+        }
+      }
+      // The new junction sits between the two lines: each road runs to it straight from 25 m out, not with a kink.
+      for (const e of edges) {
+        if (e.a !== n && e.b !== n) continue;
+        const nx = nodes[n].x, nz = nodes[n].z;
+        e.pts = e.pts.filter((p, k) => k === 0 || k === e.pts.length - 1 || Math.hypot(p[0] - nx, p[1] - nz) > 25);
+      }
+      merges++;
+      console.log(`  near miss: ${nodes[A.a].id}->${nodes[A.b].id} and ${nodes[B.a].id}->${nodes[B.b].id} ${best.toFixed(1)} m apart, now a junction`);
+      done = true;
+      break outer2;
+    }
+  }
+  if (!done) break;
+}
+
+// A near miss between two roads leaving the same place makes two roads side by side between it and
+// the new junction: one is enough (the shorter stays).
+for (let e1 = 0; e1 < edges.length; e1++) {
+  for (let e2 = edges.length - 1; e2 > e1; e2--) {
+    const A = edges[e1];
+    const B = edges[e2];
+    const same = (A.a === B.a && A.b === B.b) || (A.a === B.b && A.b === B.a);
+    if (!same) continue;
+    // Side by side all the way: every point of each within 25 m of the other.
+    const near = (P: XZ[], Q: XZ[]): boolean =>
+      P.every(([x, z]) => Q.some(([u, v], k) => {
+        if (k + 1 >= Q.length) return Math.hypot(x - u, z - v) < 25;
+        const [u1, v1] = Q[k + 1];
+        const dx = u1 - u, dz = v1 - v, l2 = dx * dx + dz * dz;
+        const t = l2 > 0 ? Math.max(0, Math.min(1, ((x - u) * dx + (z - v) * dz) / l2)) : 0;
+        return Math.hypot(x - (u + dx * t), z - (v + dz * t)) < 25;
+      }));
+    if (!near(A.pts, B.pts) || !near(B.pts, A.pts)) continue;
+    const len = (P: XZ[]): number => P.reduce((sum, p, k) => (k ? sum + Math.hypot(p[0] - P[k - 1][0], p[1] - P[k - 1][1]) : 0), 0);
+    const drop = len(A.pts) <= len(B.pts) ? e2 : e1;
+    console.log(`  side by side: ${nodes[A.a].id}->${nodes[A.b].id} twice, ${len(A.pts).toFixed(0)} and ${len(B.pts).toFixed(0)} m; the longer goes`);
+    edges.splice(drop, 1);
+    if (drop === e1) {
+      e1--;
+      break;
+    }
+  }
 }
 
 // Check: closest approach between far-apart parts of each road (after all edits).

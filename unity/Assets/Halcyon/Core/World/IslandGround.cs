@@ -64,9 +64,12 @@ namespace Halcyon.Core
 
         /// <summary>
         /// Nearest road surface point whose distance beyond its paved edge is at
-        /// most maxDist (searching the roads within ~60 m). False if none.
+        /// most maxDist (searching the roads within ~60 m). False if none. With
+        /// yMax, roads whose surface there is higher are passed over: where two
+        /// roads overlap (the legs of a hairpin on a hillside), a wheel on the lower
+        /// one is not given the upper one's surface, a wall.
         /// </summary>
-        public bool NearestRoad(double x, double z, double maxDist, RoadHit o)
+        public bool NearestRoad(double x, double z, double maxDist, RoadHit o, double yMax = double.PositiveInfinity)
         {
             if (!grid.TryGetValue(Key((long)Math.Floor(x / Cell), (long)Math.Floor(z / Cell)), out var list)) return false;
             double best = double.PositiveInfinity;
@@ -88,6 +91,7 @@ namespace Halcyon.Core
                 double score = d - r.info.halfWidth;
                 if (score < best)
                 {
+                    if (yMax < double.PositiveInfinity && r.y[i] + (r.y[i + 1] - r.y[i]) * t > yMax) continue;
                     best = score;
                     double len = Math.Sqrt(l2);
                     if (len == 0) len = 1;
@@ -160,7 +164,7 @@ namespace Halcyon.Core
             RoadHit h = hit;
             // Bridge decks run out to the parapets and city streets have raised
             // sidewalks; elsewhere the shoulder is terrain.
-            if (NearestRoad(x, z, w.ShoulderMax, h) && h.y <= yRef + 1.6)
+            if (NearestRoad(x, z, w.ShoulderMax, h, yRef + 1.6))
             {
                 RoadEdge e = w.Edges[h.edge];
                 RoadClassInfo info = e.info;

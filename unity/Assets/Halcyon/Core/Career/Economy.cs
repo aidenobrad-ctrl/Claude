@@ -26,7 +26,8 @@ namespace Halcyon.Core
         /// <summary>Selling a car returns 60% of its price.</summary>
         public static int SellPrice(int pi) => (int)(Math.Round(CarPrice(pi) * 0.6 / 100) * 100);
 
-        static double ClassFactor(PiClass c) =>
+        /// <summary>How much more a race pays in a faster class.</summary>
+        public static double ClassFactor(PiClass c) =>
             c == PiClass.D ? 1.0 : c == PiClass.C ? 1.15 : c == PiClass.B ? 1.3 : c == PiClass.A ? 1.5 : c == PiClass.S1 ? 1.8 : c == PiClass.S2 ? 2.2 : 2.6;
 
         static double DifficultyFactor(Difficulty d) =>

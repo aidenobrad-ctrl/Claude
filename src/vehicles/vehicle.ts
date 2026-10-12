@@ -80,6 +80,10 @@ export class WheelState {
   anchorZ = 0;
 }
 
+/** Most a strut can push, in multiples of the car's weight. */
+const MAX_STRUT_G = 4;
+/** Fastest the body may rotate, rad/s. */
+const MAX_SPIN = 30;
 const tmpA = new V3();
 const tmpB = new V3();
 const tmpC = new V3();
@@ -335,6 +339,10 @@ export class Vehicle {
     this.angVel.copy(tmpB.applyQuat(this.quat));
     // Gentle angular damping (air, chassis friction) keeps airborne spins sane.
     this.angVel.scale(1 - 0.08 * dt);
+    // A tumbling car turns two revolutions a second at most; a cap well above that keeps contacts
+    // on a spinning body from feeding on themselves.
+    const spin2 = this.angVel.lenSq();
+    if (spin2 > MAX_SPIN * MAX_SPIN) this.angVel.scale(MAX_SPIN / Math.sqrt(spin2));
     this.pos.addScaled(this.vel, dt);
     this.quat.integrate(this.angVel, dt);
 
@@ -366,6 +374,7 @@ export class Vehicle {
     const w = this.wheels[i];
     this.toWorld(wp.hardpoint, hp);
     const up = this.up;
+    const wasGrounded = w.grounded;
     w.prevLength = w.length;
     let length = wp.maxLength;
     let grounded = false;
@@ -400,7 +409,15 @@ export class Vehicle {
       w.load = 0;
       return false;
     }
-    const compVel = (length - w.prevLength) / dt;
+    let compVel = (length - w.prevLength) / dt;
+    if (!wasGrounded) {
+      // Touching down: the strut closes as fast as the hardpoint nears the ground, not by the jump
+      // from full droop to here in one step (which read as tens of m/s and spun tumbling cars up).
+      this.pointVelocity(hp, tmpB);
+      const upN = up.x * w.normal.x + up.y * w.normal.y + up.z * w.normal.z;
+      const closing = (tmpB.x * w.normal.x + tmpB.y * w.normal.y + tmpB.z * w.normal.z) / upN;
+      compVel = Math.max(compVel, Math.min(0, closing));
+    }
     let f = wp.spring * (wp.freeLength - length);
     f -= (compVel < 0 ? wp.damperBump : wp.damperRebound) * compVel;
     // Progressive bump stop.
@@ -409,7 +426,8 @@ export class Vehicle {
       const d = bs - length;
       f += wp.spring * 12 * d + 3e6 * d * d - (compVel < 0 ? wp.damperBump * 2 * compVel : 0);
     }
-    w.strutForce = f;
+    // No strut carries more than four times the car's weight (a hard landing is a few).
+    w.strutForce = Math.min(f, MAX_STRUT_G * GRAVITY * p.mass);
     // Contact point at the bottom of the wheel.
     w.contact.copy(hp).addScaled(up, -length).addScaled(w.normal, -wp.radius);
     return true;
@@ -731,12 +749,15 @@ export class Vehicle {
     const p = this.params;
     const g = p.gearbox;
     const G = Math.abs(g.ratios[this.gear === -1 ? 0 : Math.max(1, this.gear)] * g.final);
-    let wheelTorque = 0;
+    let wheelTorque = Infinity;
     for (let i = 0; i < 4; i++) {
       const wp = p.wheels[i];
       if (wp.driveWeight <= 0) continue;
       const w = this.wheels[i];
       const t = wp.tire;
+      // A lifted or nearly unloaded wheel does not hold the others back: traction control brakes
+      // it, so the loaded wheels drive the car (a car stopped on a rough hill can pull away).
+      if (w.load < 0.2 * t.nominalLoad) continue;
       const surf = SURFACES[w.surface];
       // The tire's own peak, as in tireForce: load sensitivity (a squatting
       // car's rear tires grip less per newton) and standing water.
@@ -746,8 +767,9 @@ export class Vehicle {
       const mu = t.info.mu * sens * t.info.muLong * t.widthGrip * t.tuneGrip * grip;
       // Limited by the driven wheel with the least grip relative to its torque share.
       const perWheel = (mu * w.load * wp.radius) / wp.driveWeight;
-      wheelTorque = wheelTorque === 0 ? perWheel : Math.min(wheelTorque, perWheel);
+      wheelTorque = Math.min(wheelTorque, perWheel);
     }
+    if (wheelTorque === Infinity) wheelTorque = 0;
     return wheelTorque / Math.max(1e-6, G * g.efficiency);
   }
 

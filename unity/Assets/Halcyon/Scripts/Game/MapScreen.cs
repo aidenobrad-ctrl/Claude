@@ -200,13 +200,25 @@ namespace Halcyon
             roadsTex.Apply(false);
         }
 
-        /// <summary>The places found (and the festival) then the landmarks found: where the GPS can take the player.</summary>
-        List<Place> Destinations()
+        /// <summary>Somewhere the GPS can take the player: a place, a landmark or a stunt.</summary>
+        sealed class Dest
+        {
+            public string Name;
+            public double X, Z;
+            public Place Place;
+            public Stunt Stunt;
+        }
+
+        /// <summary>The places found (and the festival), the landmarks found, then the stunts on the map uncovered.</summary>
+        List<Dest> Destinations()
         {
             var d = game.Discover;
-            var list = new List<Place>();
-            foreach (var p in d.Places) if (!p.Landmark && (p.Kind == "festival" || d.Found(p))) list.Add(p);
-            foreach (var p in d.Places) if (p.Landmark && d.Found(p)) list.Add(p);
+            var list = new List<Dest>();
+            foreach (var p in d.Places) if (!p.Landmark && (p.Kind == "festival" || d.Found(p))) list.Add(new Dest { Name = p.Name, X = p.X, Z = p.Z, Place = p });
+            foreach (var p in d.Places) if (p.Landmark && d.Found(p)) list.Add(new Dest { Name = p.Name, X = p.X, Z = p.Z, Place = p });
+            if (game.Stunts != null)
+                foreach (var st in game.Stunts.All)
+                    if (d.Uncovered(st.X, st.Z)) list.Add(new Dest { Name = st.Name, X = st.X, Z = st.Z, Stunt = st });
             return list;
         }
 
@@ -238,18 +250,38 @@ namespace Halcyon
             }
             pick = Mathf.Clamp(pick, 0, list.Count - 1);
             var p = list[pick];
-            if (m.select) game.SetRoute(p);
-            if (m.travel && !p.Landmark && !game.Racing)
+            if (m.select) Route(p);
+            if (m.travel && p.Place != null && !p.Place.Landmark && !game.Racing)
             {
                 // Press twice: once to choose, again within 3 s to go.
                 if (Time.unscaledTime - confirmAt < 3f)
                 {
-                    game.FastTravel(p);
+                    game.FastTravel(p.Place);
                     confirmAt = -10;
                     Hide();
                 }
                 else confirmAt = Time.unscaledTime;
             }
+        }
+
+        void Route(Dest p)
+        {
+            if (p.Place != null) game.SetRoute(p.Place);
+            else game.SetRoute(p.X, p.Z, p.Name);
+        }
+
+        /// <summary>The stars earned at a stunt, as three small stars (gold earned, faint not).</summary>
+        void Stars(Vector2 at, float size, Stunt st)
+        {
+            int n = st.StarsFor(game.Stunts.Best(st));
+            var tex = ProceduralTextures.Star();
+            var old = GUI.color;
+            for (int k = 0; k < 3; k++)
+            {
+                GUI.color = k < n ? new Color(1f, 0.82f, 0.2f) : new Color(1, 1, 1, 0.3f);
+                GUI.DrawTexture(new Rect(at.x + k * (size + 2), at.y, size, size), tex);
+            }
+            GUI.color = old;
         }
 
         // --- Drawing --------------------------------------------------------------------------------
@@ -370,8 +402,8 @@ namespace Halcyon
 
         void OnGUI()
         {
-            if (map == null || game.Discover == null) return;
-            Ui.Begin();
+            if (map == null || game.Discover == null || (!Open && (game.HideHud || game.InMenu))) return;
+            Ui.Begin(hud: !Open);
             if (Open) DrawMap();
             else if (game.ShowMinimap) DrawMinimap();
             Ui.End();
@@ -411,6 +443,15 @@ namespace Halcyon
                 Marker(at, p.Landmark ? 18 : 22, found ? (p.Landmark ? new Color(0.5f, 0.85f, 1f) : Color.white) : new Color(1, 1, 1, 0.45f));
                 GUI.Label(new Rect(at.x + 12, at.y - 12, 260, 26), found ? p.Name : "?", Ui.Small);
             }
+            // Stunts on the uncovered map: the kind's icon and the stars earned.
+            if (game.Stunts != null)
+                foreach (var st in game.Stunts.All)
+                {
+                    if (!d.Uncovered(st.X, st.Z)) continue;
+                    var at = ToMap(r, st.X, st.Z);
+                    GUI.DrawTexture(new Rect(at.x - 10, at.y - 10, 20, 20), StuntBuilder.Icon(st.Kind));
+                    Stars(new Vector2(at.x - 16, at.y + 11), 9, st);
+                }
             PlayerArrow(ToMap(r, game.Sim.Player.vehicle.pos.x, game.Sim.Player.vehicle.pos.z), 22);
 
             // The side panel: completion, the GPS, and the destinations.
@@ -436,19 +477,31 @@ namespace Halcyon
             var list = Destinations();
             float y = 340;
             var me = game.Sim.Player.vehicle.pos;
-            for (int i = 0; i < list.Count && y < r.yMax - 100; i++)
+            // A window of rows around the one picked.
+            int rows = Mathf.Max(1, (int)((r.yMax - 100 - y) / 36));
+            int first = Mathf.Clamp(pick - rows / 2, 0, Mathf.Max(0, list.Count - rows));
+            if (first > 0) GUI.Label(new Rect(x + w - 40, y - 26, 40, 24), "▲", Ui.Small);
+            for (int i = first; i < list.Count && i < first + rows; i++)
             {
                 var p = list[i];
                 bool on = i == pick;
                 double km = System.Math.Sqrt((p.X - me.x) * (p.X - me.x) + (p.Z - me.z) * (p.Z - me.z)) / 1000;
                 string value = on && Time.unscaledTime - confirmAt < 3f ? "F again to go" : gps.Active && gps.TargetName == p.Name ? "GPS" : $"{km:0.0} km";
-                if (Ui.Item(new Rect(x, y, w, 34), p.Landmark ? p.Name + "  ◊" : p.Name, on, value, !racing))
+                string label = p.Place != null && p.Place.Landmark ? p.Name + "  ◊" : p.Name;
+                if (p.Stunt != null) label = "      " + p.Name;
+                if (Ui.Item(new Rect(x, y, w, 34), label, on, value, !racing))
                 {
                     pick = i;
-                    if (!racing) game.SetRoute(p);
+                    if (!racing) Route(p);
+                }
+                if (p.Stunt != null)
+                {
+                    GUI.DrawTexture(new Rect(x + 12, y + 6, 22, 22), StuntBuilder.Icon(p.Stunt.Kind));
+                    Stars(new Vector2(x + w - 150, y + 11), 12, p.Stunt);
                 }
                 y += 36;
             }
+            if (first + rows < list.Count) GUI.Label(new Rect(x + w - 40, y - 8, 40, 24), "▼", Ui.Small);
             GUI.Label(new Rect(x, r.yMax - 84, w, 80), racing ? "No GPS or fast travel during a race." :
                 "↑/↓ choose · Enter: GPS route · F twice: fast travel (places, not landmarks ◊) · X: clear the route · click the map: a route to there · M or Esc: close", Ui.Small);
         }
@@ -484,6 +537,13 @@ namespace Halcyon
                 if (!r.Contains(at)) continue;
                 Marker(at, p.Landmark ? 10 : 12, p.Landmark ? new Color(0.5f, 0.85f, 1f) : Color.white);
             }
+            if (game.Stunts != null)
+                foreach (var st in game.Stunts.All)
+                {
+                    var at = At(st.X, st.Z);
+                    if (!r.Contains(at)) continue;
+                    GUI.DrawTexture(new Rect(at.x - 7, at.y - 7, 14, 14), StuntBuilder.Icon(st.Kind));
+                }
             PlayerArrow(r.center, 18);
         }
     }

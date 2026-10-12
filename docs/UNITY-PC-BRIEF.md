@@ -32,6 +32,10 @@ layout and how everything was verified.
   - The island lives (M6): a 24-minute day with night lighting, weather that wets the
     roads, traffic, landmarks, discoveries, a map (**M**) with fog of war, fast travel and
     a GPS (`dotnet/Halcyon.Sim.Tests`).
+  - M7: stunts by the roads (speed traps, speed zones, drift zones, danger signs on
+    jumps), a drag race, a rally, a head-to-head and a ghost time trial, three
+    championships, festival levels and accolades; **Esc** opens the menu (settings and
+    accessibility, accolades, controls), **P** photo mode, and races show a racing line.
   - Every script compiles against Unity reference assemblies, but **it has never run in a
     real Unity Editor**. That is your first job.
 - `blender/build_car.py`: generates the cars in Blender 5.1 (`--car all`). It has been
@@ -117,6 +121,20 @@ system settings or close the user's apps.
      Fast travel (F twice) to a place you have found.
    - Visit a landmark (the lighthouse beam turns, the turbines spin, the mast blinks).
    - Race the Highcrest Hill Climb, the Proving Ground by Night and the Storm Run.
+7. M7, all compile-checked only so far (results headless are in `docs/PLAYTEST.md`, M7):
+   - Drive through a speed trap, a speed zone, a drift zone and a danger sign (the boards
+     stand by the road, and the map shows them). Check the live panel, the stars and the
+     rewards, and that a jump at full speed lands about where its third star says.
+   - Press **T**: the event kinds and levels (a new career is level 1, so most events are
+     locked), then race the Highway Quarter Mile (trap speed), the Proving Ground Time
+     Attack (a see-through ghost car and the gap to it), and the first round of the
+     Grassroots Trophy in a class D car (standings after the race).
+   - Press **Esc**: change the settings one by one and watch them apply: units, HUD size,
+     the colour-blind palettes (the gaps and the racing line), camera shake, field of view,
+     motion blur, fewer flashes in a storm, the minimap, key hints, volume, and the
+     graphics quality. Restart: they should come back.
+   - Press **P** in a race and on the road: orbit, zoom, depth of field on the car, the
+     filters and the hour, and save a photo (it lands in `...\LocalLow\<company>\<product>\Photos`).
 
 ## Step 3 — make it look insane
 

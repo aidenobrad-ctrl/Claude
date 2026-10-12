@@ -383,3 +383,69 @@ Also open: number plates, and the close-range model items from M3.
 5. A traffic car stuck for 5 s is put back on its lane once the player is 60 m away, even if the player is looking at it. **Open:** let Unity tell the core what the camera can see.
 
 Also open: the weather is the same over the whole island (no passing showers); the minimap magnifies a 10 m-a-pixel texture to 900 m across, so it is soft; the GPS takes the shortest road, not the quickest; traffic has no indicators, and nothing reacts to the horn.
+
+## M7: Everything else (events, stunts, championships, progression, photo mode, settings)
+
+**Tried (headless in .NET: `dotnet/Halcyon.Sim.Tests`, `Halcyon.AI.Tests`; the web build in headless Chromium):**
+- The stunts: where the finder puts them, a fast driver through every speed trap and zone both ways, each danger sign at 80, 90 and 100% of its run-up speed and at 60 km/h, the AI gripping through each drift zone and drift bots in three cars, saves.
+- The new events: a drag race between three pairs of cars, the Redmesa Rally with six cars planning for dirt (and the control planning for asphalt), the head-to-head with Mika Varga, and a time trial against a recorded ghost.
+- Progression: the Grassroots Trophy raced through by six cars, standings and saves, accolades, the levels that open the festival, settings and units.
+- The road network, rebuilt twice: tight bends, junctions, steps between roads that share pavement, and the M2 and M6 suites on the new roads (the GPS, traffic, wet races, the hill climb).
+- The web build: screenshots of the new switchbacks, the canyon road and a jump.
+
+| # | Finding | Sev | Root cause | Fix | Retest |
+|---|---|---|---|---|---|
+| 1 | A stunt next to another one was never detected. | S2 | One shared "where the car was" for every stunt. | Each stunt keeps its own. | Every trap and zone scored once per pass, both ways (14 of 14) |
+| 2 | Zones starting at the very beginning of a road could never be entered. | S3 | Entering means crossing the start line from outside. | Zones keep 80 m clear of a road's ends. | As 1 |
+| 3 | Speed traps at 80% of a straight were unfair driven the other way. | S3 | The target came from the run-up one way only. | Traps sit in the middle of their straight; targets come from the slower way in. | A fast driver earns a star at each, both ways |
+| 4 | A hop off a bump at 60 km/h counted as a jump. | S3 | Any moment with four wheels off counted. | A jump must fly for a quarter of a second and 2 m. | 60 km/h over each sign scores nothing |
+| 5 | Jump targets were 1.5× short of the jumps people could make. | S2 | They came from a point mass leaving the crest. | Targets are measured: a stock Aster GT driven over each crest at 80, 90 and 100% of the run-up speed. | Jumps in the game land within 2% of their targets (9 of 9) |
+| 6 | A car tumbling into the canyon went NaN. | S1 | At touchdown the damper saw no compression speed, and the strut could push with any force. Both the TypeScript and the C#. | Touchdown takes the hardpoint's closing speed; struts are capped at 4 g and spin at 30 rad/s. Both languages, references regenerated. | 95 physics checks bit-exact; no NaN in any stunt run |
+| 7 | An AWD car with a wheel in the air stopped dead on a hill. | S2 | Traction control took the lowest torque over the driven wheels, and a lifted wheel's was zero. | Wheels carrying under 20% of their load are left out. | Both languages, bit-exact |
+| 8 | A wall of ground under roads that pass over each other. | S2 | The ground took the nearest road, even one high above the wheel. | Roads more than 1.6 m above the wheel are skipped. | World equivalence passes; no steps onto other roads |
+| 9 | 7 m zigzags on desert, forest and coast roads. | S2 | Corner cutting kept the 12 m grid's saw-tooth. | Every road is simplified past it and its corners rounded with arcs. | See 10 |
+| 10 | Main roads climbed in serpentines of 6–10 m bends, the coast highway had 7 m bends, and in one bend the road overlapped itself with a 1 m step in it. | S1 | The road baker's A* had no idea of heading: on a steep slope it zigzagged from grid cell to grid cell. | Highways, main roads and dirt tracks are routed on a lattice with the heading in the state (as the pass was in M6): steps of 24–36 m, limited turns, a cost per turn, and the heading carried on through each town. Climbs become real switchbacks. | Stretches of main road and highway bending tighter than 25 m: 119 in M6 → 15, all mountain switchbacks of 20 m or more; highway in bends under 100 m: 1.4 km → 76 m |
+| 11 | A dirt track ran along the coast highway into a junction 80 m on, at another height (a 0.86 m lip). | S2 | It was routed to "the nearest road", which was the highway it started on. | Removed: Saltmarsh Bay is on the highway. | No lips at road edges |
+| 12 | Two roads met without crossing (one ran into the other's side and away), sharing pavement at heights 2.5 m apart. | S2 | The baker only made junctions where roads cross. | Where two roads come within their half widths plus 2 m of each other, they become a junction. Two roads left side by side by this are made one. | See 13 |
+| 13 | Roads leaving a junction at different grades left steps of up to 2.8 m where their pavements overlap. | S1 | Each road's profile only met the others at the junction itself. | Every road stays within 1% of level for 25 m from a junction, and on for as far as its pavement overlaps another road's there. A new test checks every overlap. | Worst step 0.35 m, at a shallow fork |
+| 14 | A rally car was put down on the grid on top of the main road beside the dirt track, 1.7 m up, and rolled. | S2 | Grid and reset positions took the top surface. | Cars are put down on the race route's own road. | The rally: one reset in six cars |
+| 15 | The GPS route to the Cape Lighthouse ended 16 m short of the nearest road. | S3 | Far from any road, the route end was looked for at every fourth sample, and never at a road's last few. | Every sample. | Every route ends at the road nearest its destination |
+| 16 | A danger sign scored two jumps in one pass, the first 48 m before the crest. | S2 | Any takeoff once the car was near counted, and the counting started again after landing. | As the targets were measured: takeoffs from the crest's last 40 m only. Crests with a flight before the run-up's last 40 m are not signs. | One jump a pass, within 2% of target |
+| 17 | The island had one danger sign, then none. | S2 | Few real crests survive the smoothed profiles, and none clean. | Yumps: on the longest flat, straight stretch of four roads, a smooth crest (1.3 m over 52 m on main roads, 2.2 m over 64 m on dirt) within the class's grade limit. | 3 danger signs: 19–34 m jumps at 132–165 km/h |
+| 18 | A jump at the full run-up speed earned two stars, not three (33.4 m against 33.5). | S3 | Targets were the measured jumps rounded down to half metres, no margin. | 3% short of the measured jump. | 1, 2 and 3 stars at 80, 90 and 100% |
+| 19 | Speed zone targets assumed speeds that change instantly (215 km/h for a zone the AI averaged 139 in). | S2 | Each sample's bend speed, with no accelerating or braking between them. | A speed profile: 1.05 g in bends, 4.5 m/s² accelerating (less near 250 km/h), 8 m/s² braking. | Zone targets 147–163 km/h; a fast driver earns at least a star at each |
+| 20 | The racing AI ran into much slower cars (34 m/s into one at 12.6). | S2 | It only slowed within two and a half following distances. | No faster than lets it brake, at three quarters of its brakes, to the slower car's speed by the following distance. | The traffic bot: 7 contacts → 4 |
+| 21 | Wedged against a traffic car, the bot rocked back and forth for four minutes. | S2 | Its stuck test wanted it standing still; a traffic car beside the player is never put back. | A racer with no headway for 8 s is reset; a traffic car in trouble for 20 s within sight is taken away. | The bot reaches the harbour in 4:17, 0 resets |
+| 22 | At the start, cars held behind slower launchers reversed into the car behind. | S2 | Waiting behind a car counted as stuck (the reversing manoeuvre), and the brake held at a standstill selects reverse. | A car waiting behind one that is barely moving is not stuck, and is held on the handbrake. | Dry and wet races: 0 resets in 20 |
+| 23 | The drift bots earned no stars once the drift zones moved to the new roads. | S3 | The test gave each bot one try in one style. | Three tries with more or less angle, the best kept (a player retries). The physics' snappy breakaway is open (M8). | 3 of 12 runs earn a star |
+
+**Verified, no bug found:**
+- Drag: three pairs side by side in their own lanes, 8.6–17.3 s at 135–290 km/h, no contact.
+- The head-to-head: Mika Varga (skill 0.95) beats a 0.8 driver in the same car, cleanly.
+- The ghost: replayed beside the run it recorded, it stays within 0.00 m and 0.008 s all lap; a car three seconds behind reads +3 s.
+- Championships: three rounds of the Grassroots Trophy scored 88 points a round shared out, the standings ranked, the run under way and its rivals' difficulty saved.
+- Accolades pay once and survive a save; a save from before M7 loads without them.
+- Settings survive a save, out-of-range values are clamped, a broken file gives the defaults, and speeds and distances read in km/h, km and m or mph, miles and feet.
+- On the new roads: the GPS bot (17.1 km to Highcrest, every turn called), traffic (0 impacts between traffic cars in ten minutes, lane error 0.24 m median and 0.84 m 95th percentile), the Highcrest hill climb (0 resets in four races of six), and the wet races (0 resets in 20).
+
+**Measured:**
+- Stunts: 4 speed traps, 3 speed zones, 4 drift zones and 3 danger signs.
+- Redmesa Rally (4.0 km of dirt): won in 3:22 with one reset in six cars when the AI plans for dirt; planning for asphalt (the control), 21 resets and 39 wall hits.
+- The Harbour Dash through traffic: 7.9 km in 4:17, 4 contacts with traffic for the racing bot.
+
+**In Unity (compile-checked against the UnityEngine reference assemblies; not yet run in a real Editor):**
+- Stunt boards by the road (an icon, the name, gates at zones, lit at night), on the map and the minimap, a live panel with the targets, and a result with stars and rewards.
+- The festival menu (T): every event with its kind, conditions, class and level, then the three championships with their rounds and standings. Head-to-head, drag (trap speed), rally and time trial (a see-through ghost car and the gap to it) races; results with a championship's standings and the accolades earned.
+- The pause menu (Esc): settings (graphics quality, units, assists, the racing line, HUD size, colour-blind palettes, camera shake, motion blur, field of view, fewer flashes, the minimap, key hints, volume), the accolades with progress bars and career numbers, the controls, and quitting.
+- Photo mode (P): the world stops, the camera orbits the car (mouse, right stick or keys), with field of view, depth of field on the car, aperture, exposure, seven filters, vignette and the hour; Enter saves a PNG at twice the screen size.
+- The racing line in races, coloured for the player's own car: where to keep accelerating, lift and brake.
+
+**Self-critique: the five weakest things after the first pass of M7, and what was done:**
+
+1. The roads: serpentines on main roads, 7 m bends on a highway, steps at junctions and a road that overlapped itself. They spoil driving, racing, traffic and the stunts. **Fixed:** lattice routing with headings, junctions where roads touch, level junctions, and two new tests (findings 10–13).
+2. The danger signs depended on luck: one crest, then none, after a re-bake. **Fixed:** yumps built into four roads, and jumps measured in the game within 2% of their targets (findings 16–18).
+3. Speed zone targets nobody could reach. **Fixed:** a real speed profile (finding 19).
+4. The Unity race screen only knew circuits and sprints. **Fixed:** event kinds, levels, championships, the ghost and accolades in the menu, HUD and results.
+5. Nothing has been seen in Unity: the menus, photo mode, the stunt boards and the racing line are compile-checked only. **Open:** the PC session.
+
+Also open: no cross-country event (off-road racing between checkpoints would need the AI to plan across terrain and round trees); drift scoring is set by a crude bot, and the cars' breakaway is snappy (M8, driving feel); engine and impact sounds are not in Unity yet, so their volume settings are not either; one shallow fork still has a 0.35 m step between overlapping pavements; the browser determinism test failed once with the first M7 roads and has not failed since (not reproduced).

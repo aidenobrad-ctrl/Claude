@@ -326,6 +326,44 @@ namespace Halcyon
             return t;
         }
 
+        static Texture2D star;
+
+        /// <summary>A five-pointed star, white on clear, smooth-edged (the stunts' stars).</summary>
+        public static Texture2D Star()
+        {
+            if (star != null) return star;
+            const int n = 64;
+            var cols = new Color32[n * n];
+            // Inside test against the star polygon, supersampled 4x4 for the edges.
+            var pts = new Vector2[10];
+            for (int k = 0; k < 10; k++)
+            {
+                float a = Mathf.PI / 2 + k * Mathf.PI / 5;
+                float r = k % 2 == 0 ? 0.48f : 0.2f;
+                pts[k] = new Vector2(0.5f + Mathf.Cos(a) * r, 0.5f + Mathf.Sin(a) * r);
+            }
+            bool Inside(Vector2 p)
+            {
+                bool c = false;
+                for (int i = 0, j = 9; i < 10; j = i++)
+                    if ((pts[i].y > p.y) != (pts[j].y > p.y) && p.x < (pts[j].x - pts[i].x) * (p.y - pts[i].y) / (pts[j].y - pts[i].y) + pts[i].x) c = !c;
+                return c;
+            }
+            for (int y = 0; y < n; y++)
+                for (int x = 0; x < n; x++)
+                {
+                    int hits = 0;
+                    for (int sy = 0; sy < 4; sy++)
+                        for (int sx = 0; sx < 4; sx++)
+                            if (Inside(new Vector2((x + (sx + 0.5f) / 4) / n, (y + (sy + 0.5f) / 4) / n))) hits++;
+                    cols[y * n + x] = new Color32(255, 255, 255, (byte)(hits * 255 / 16));
+                }
+            star = new Texture2D(n, n, TextureFormat.RGBA32, true) { name = "Star", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Trilinear };
+            star.SetPixels32(cols);
+            star.Apply(true, true);
+            return star;
+        }
+
         /// <summary>A soft round puff for spray and mist.</summary>
         public static Texture2D SoftDot()
         {

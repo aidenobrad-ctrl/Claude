@@ -37,6 +37,8 @@ namespace Halcyon.Core
         public int NextEdge = -1, NextDir;
         /// <summary>Seconds out of its lane or stopped with nothing ahead (crashed).</summary>
         public double Trouble;
+        /// <summary>In trouble for 20 s within sight of the player (tangled with them): taken away.</summary>
+        public bool Stranded;
         /// <summary>Seconds stopped behind something that does not move (a parked or crashed car).</summary>
         public double Blocked;
         /// <summary>Going round it: metres still to go past it, seconds before giving up, and the sideways shift (m, negative = left).</summary>
@@ -620,6 +622,7 @@ namespace Halcyon.Core
                 v.SetSpeed(Math.Min(8, RoadSpeed(c, 8)));
                 Rescued++;
             }
+            else if (c.Trouble > 20) c.Stranded = true;
         }
 
         /// <summary>How far a car is from the centre of its lane, m (tests and debugging).</summary>
@@ -639,7 +642,7 @@ namespace Halcyon.Core
                 var c = Cars[i];
                 var v = c.Vehicle;
                 double d = Math.Sqrt((v.pos.x - px) * (v.pos.x - px) + (v.pos.z - pz) * (v.pos.z - pz));
-                if (d > Despawn)
+                if (d > Despawn || c.Stranded)
                 {
                     if (c.Car != null) sim.Cars.Remove(c.Car);
                     Cars.RemoveAt(i);

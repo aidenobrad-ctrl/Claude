@@ -442,7 +442,12 @@ namespace Halcyon.Core
             {
                 // In a drag race each car keeps to its own lane.
                 e.Ai?.SetRoute(ev.Route, ev.Kind == RaceKind.Drag ? RacingLine.Lane(ev.Route, e.Grid % 2 == 0 ? -2.3 : 2.3, e.Car.vehicle.Params.spec.width / 2) : Line);
-                if (e.Ai != null) e.Ai.Hold = true;
+                if (e.Ai != null)
+                {
+                    e.Ai.Hold = true;
+                    // Keep to the grid column until 60 m past the start line.
+                    e.Ai.HoldGrid(ev.Route.Delta(e.Ai.S, ev.StartS) + 60);
+                }
                 e.Track(ev.Route, 0);
                 e.Progress = ev.Route.Delta(ev.StartS, e.S);
                 e.LapStart = 0;
@@ -680,6 +685,34 @@ namespace Halcyon.Core
             Sim.Traffic?.Resume();
         }
 
+        /// <summary>
+        /// The rivals in qualifying order, fastest first: each one's time round the route at its own pace (its car's
+        /// measured limits through its driver's margins). A field lined up as drawn puts quick starters behind slow ones,
+        /// and the opening seconds turn into a queue of near misses.
+        /// </summary>
+        public static List<Rival> QualifyingOrder(RaceEvent ev, RacingLine line, IList<Rival> field, AbilityCache abilities, double wet)
+        {
+            var r = ev.Route;
+            double step = r.Length / r.N;
+            var time = new double[field.Count];
+            for (int k = 0; k < field.Count; k++)
+            {
+                var f = field[k];
+                var p = f.Driver;
+                var up = Rivals.PartsKey(f.Parts) == "stock" ? null : f.Upgrades;
+                var prof = SpeedProfile.Build(line.Blend(p.LineAccuracy), abilities.Get(f.CarId, f.Tune, up, f.Key, wet, ev.Surface), p.GripScale, p.BrakeScale, p.AccelScale);
+                double t = 0;
+                for (int i = 0; i < r.N; i++) t += step / Math.Max(1, prof.V[i]);
+                time[k] = t;
+            }
+            var order = new List<int>();
+            for (int k = 0; k < field.Count; k++) order.Add(k);
+            order.Sort((a, b) => time[a] != time[b] ? time[a].CompareTo(time[b]) : a.CompareTo(b));
+            var sorted = new List<Rival>();
+            foreach (int k in order) sorted.Add(field[k]);
+            return sorted;
+        }
+
         /// <summary>Opponents for a race: cars with a power-to-weight close to the player's, with drivers around a difficulty.</summary>
         public static List<(string carId, Personality p)> Field(string playerCar, int count, Difficulty d, uint seed)
         {
@@ -690,7 +723,7 @@ namespace Halcyon.Core
             foreach (var c in Cars.All)
             {
                 var p = VehicleParams.Build(c);
-                double r = Math.Abs(Math.Log((p.engine.peakPower / p.mass) / pw));
+                double r = Math.Abs(DMath.Log((p.engine.peakPower / p.mass) / pw));
                 close.Add((r, c.id));
             }
             close.Sort((a, b) => a.score.CompareTo(b.score));

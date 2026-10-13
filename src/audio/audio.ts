@@ -58,6 +58,163 @@ export interface FrameAudio {
   inside: boolean;
 }
 
+/** Another car, for its engine's voice. */
+export interface RemoteCar {
+  id: number;
+  specId: string;
+  vehicle: Vehicle;
+}
+
+/** Where the sound is heard from: the camera, its right-hand direction, and how it moves. */
+export interface Listener {
+  x: number;
+  y: number;
+  z: number;
+  rx: number;
+  rz: number;
+  vx: number;
+  vz: number;
+}
+
+/** Another car's engine loops (on the throttle), shared by every voice that plays that model. */
+interface RemoteEngine {
+  rpms: { rpm: number }[];
+  bufs: AudioBuffer[];
+  electric: boolean;
+  idle: number;
+  limiter: number;
+}
+
+/** As many other cars as Unity voices (GameSound.RemoteVoices), heard to the same range. */
+const REMOTE_VOICES = 4;
+const REMOTE_RANGE = 110;
+/** Unity's rolloff for the other cars (GameSound.RemoteVoice): full near the car, nothing at the range. */
+const ROLLOFF: [number, number][] = [
+  [0, 1],
+  [0.06, 1],
+  [0.15, 0.45],
+  [0.35, 0.15],
+  [0.7, 0.04],
+  [1, 0],
+];
+
+function rolloff(x: number): number {
+  if (x >= 1) return 0;
+  for (let i = 1; i < ROLLOFF.length; i++) {
+    const [x1, y1] = ROLLOFF[i];
+    if (x <= x1) {
+      const [x0, y0] = ROLLOFF[i - 1];
+      return y0 + ((y1 - y0) * (x - x0)) / (x1 - x0);
+    }
+  }
+  return 0;
+}
+
+/**
+ * One other car's engine: its loops crossfaded and pitched by its rpm (as the player's, on the throttle
+ * only), through a distance rolloff, a low-pass for the air and a stereo pan, fading in and out over a
+ * quarter second when it takes or lets go of a car (as in Unity).
+ */
+class RemoteVoice {
+  car: RemoteCar | null = null;
+  engine: RemoteEngine | null = null;
+  releasing = false;
+  fade = 0;
+  private layers: Layer[] = [];
+  private readonly out: GainNode;
+  private readonly air: BiquadFilterNode;
+  private readonly pan: StereoPannerNode;
+  private readonly mix: LoopMix = { lo: 0, hi: 0, t: 0, rateLo: 1, rateHi: 1 };
+  private lastD = -1;
+
+  constructor(
+    private ctx: AudioContext,
+    dest: AudioNode,
+    private makeLayer: (b: AudioBuffer, dest: AudioNode) => Layer,
+  ) {
+    this.out = ctx.createGain();
+    this.out.gain.value = 0;
+    this.air = ctx.createBiquadFilter();
+    this.air.type = 'lowpass';
+    this.air.frequency.value = 16000;
+    this.pan = ctx.createStereoPanner();
+    this.out.connect(this.air).connect(this.pan).connect(dest);
+  }
+
+  get busy(): boolean {
+    return this.car !== null;
+  }
+
+  assign(car: RemoteCar, engine: RemoteEngine): void {
+    this.car = car;
+    this.releasing = false;
+    this.fade = 0;
+    this.lastD = -1;
+    if (engine === this.engine) return;
+    this.dispose();
+    this.engine = engine;
+    this.layers = engine.bufs.map((b) => this.makeLayer(b, this.out));
+  }
+
+  private dispose(): void {
+    for (const l of this.layers) {
+      try {
+        l.src.stop();
+      } catch {
+        /* already stopped */
+      }
+      l.src.disconnect();
+      l.gain.disconnect();
+    }
+    this.layers = [];
+  }
+
+  /** gone: the car has left the simulation (it fades out where it was). */
+  update(dt: number, li: Listener, volume: number, paused: boolean, gone: boolean, t: number, set: (l: Layer, g: number, rate: number, t: number) => void): void {
+    const car = this.car;
+    const eng = this.engine;
+    if (!car || !eng) return;
+    if (gone) this.releasing = true;
+    this.fade = Math.max(0, Math.min(1, this.fade + (this.releasing ? -dt * 4 : dt * 4)));
+    if (this.releasing && this.fade <= 0) {
+      // Silent now: stop its loops (a playing source costs the same at zero gain).
+      this.out.gain.setTargetAtTime(0, t, 0.02);
+      this.dispose();
+      this.engine = null;
+      this.car = null;
+      this.releasing = false;
+      return;
+    }
+    const v = car.vehicle;
+    const dx = v.pos.x - li.x;
+    const dy = v.pos.y - li.y;
+    const dz = v.pos.z - li.z;
+    const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    // Doppler at Unity's 0.6: the closing speed along the line between them.
+    const closing = d > 0.5 ? ((li.vx - v.vel.x) * dx + (li.vz - v.vel.z) * dz) / d : 0;
+    const doppler = Math.max(0.85, Math.min(1.15, 1 + (0.6 * closing) / 343));
+    const rpm = Math.max(v.rpm, eng.electric ? 1 : eng.idle * 0.6);
+    const thr = Math.max(0, Math.min(1, v.throttleEff));
+    const level = paused ? 0 : this.fade * volume * (0.35 + 0.65 * thr) * (0.5 + 0.5 * Math.min(1, rpm / eng.limiter)) * rolloff(d / REMOTE_RANGE);
+    loopMix(eng.rpms, rpm, this.mix);
+    const m = this.mix;
+    const a = Math.cos(m.t * Math.PI * 0.5);
+    const b = Math.sin(m.t * Math.PI * 0.5);
+    for (let i = 0; i < this.layers.length; i++) {
+      const w = i === m.lo ? (m.lo === m.hi ? 1 : a) : i === m.hi ? b : 0;
+      set(this.layers[i], w, (i === m.lo ? m.rateLo : m.rateHi) * doppler, t);
+    }
+    this.out.gain.setTargetAtTime(level, t, 0.03);
+    // The air takes the top off with distance; left and right by the side of the camera it is on.
+    if (Math.abs(d - this.lastD) > 0.5) {
+      this.lastD = d;
+      this.air.frequency.setTargetAtTime(16000 - 13000 * Math.min(1, d / REMOTE_RANGE), t, 0.05);
+    }
+    const side = d > 0.5 ? (dx * li.rx + dz * li.rz) / d : 0;
+    this.pan.pan.setTargetAtTime(Math.max(-1, Math.min(1, side)) * 0.85, t, 0.03);
+  }
+}
+
 export class GameAudio {
   ctx: AudioContext | null = null;
   settings: AudioSettings = loadSettings();
@@ -93,6 +250,11 @@ export class GameAudio {
   private radioEpoch = 0;
   private unlockBound = (): void => this.unlock();
   private failed = false;
+  // The other cars: their engines (by model) and the voices that play them.
+  private remoteEngines = new Map<string, RemoteEngine>();
+  private remotePending = new Set<string>();
+  private voices: RemoteVoice[] = [];
+  private nearCars: { d: number; car: RemoteCar }[] = [];
 
   constructor(private enabled = true) {
     if (!enabled || typeof window === 'undefined') return;
@@ -219,6 +381,11 @@ export class GameAudio {
         for (const [k, d] of Object.entries(r.ui)) this.uiBufs.set(k, this.buffer(d));
         break;
       case 'engine':
+        if (r.remote) {
+          this.remotePending.delete(r.carId);
+          this.remoteEngines.set(r.carId, { rpms: r.on.map((l) => ({ rpm: l.rpm })), bufs: r.on.map((l) => this.buffer(l.data)), electric: r.electric, idle: r.idle, limiter: r.limiter });
+          return;
+        }
         if (r.carId !== this.wantedCar) return;
         this.disposeEngine();
         this.engineCar = r.carId;
@@ -381,10 +548,95 @@ export class GameAudio {
       shots: this.shots.size,
       ui: this.uiBufs.size,
       station: this.radioStation,
+      remoteEngines: [...this.remoteEngines.keys()],
+      voices: this.voices.filter((v) => v.busy).map((v) => ({ car: v.car?.id, fade: +v.fade.toFixed(2) })),
       radioQueued: this.radioSources.length,
       radioAhead: +(this.radioNext - ctx.currentTime).toFixed(2),
       rms: Math.sqrt(sum / buf.length),
     };
+  }
+
+  /** Render the engines of these models for other cars' voices (a race's field), ahead of hearing them. */
+  prepareVoices(carIds: readonly string[]): void {
+    if (!this.ctx) return;
+    for (const id of new Set(carIds)) {
+      if (this.remoteEngines.has(id) || this.remotePending.has(id)) continue;
+      this.remotePending.add(id);
+      this.send({ type: 'engine', sr: this.ctx.sampleRate, carId: id, remote: true });
+    }
+  }
+
+  /**
+   * Once per rendered frame: the other cars' engines. Each voice keeps its car while it is within 1.1× the
+   * range and among the nearest six; the nearest cars without one take a free voice, or the farthest voice
+   * lets go (fades out) for them, as in Unity.
+   */
+  updateRemote(dt: number, cars: readonly RemoteCar[], li: Listener, paused: boolean): void {
+    const ctx = this.ctx;
+    if (!ctx || ctx.state !== 'running') return;
+    if (this.voices.length === 0) {
+      if (cars.length === 0) return;
+      for (let i = 0; i < REMOTE_VOICES; i++) this.voices.push(new RemoteVoice(ctx, this.fxGain, (b, dest) => this.loopLayer(b, dest)));
+    }
+    const t = ctx.currentTime;
+    const keep = REMOTE_RANGE * 1.1;
+    const near = this.nearCars;
+    near.length = 0;
+    for (const c of cars) {
+      const p = c.vehicle.pos;
+      const d = (p.x - li.x) * (p.x - li.x) + (p.y - li.y) * (p.y - li.y) + (p.z - li.z) * (p.z - li.z);
+      if (d < keep * keep) near.push({ d, car: c });
+    }
+    near.sort((a, b) => a.d - b.d);
+    const rank = (car: RemoteCar | null): number => {
+      const i = near.findIndex((n) => n.car === car);
+      return i < 0 ? 1e9 : i;
+    };
+    for (const v of this.voices) if (v.busy && !v.releasing && rank(v.car) >= 6) v.releasing = true;
+    for (let i = 0; i < near.length && i < REMOTE_VOICES; i++) {
+      const { d, car } = near[i];
+      if (d > REMOTE_RANGE * REMOTE_RANGE) break;
+      const has = this.voices.find((v) => v.busy && v.car === car);
+      if (has) {
+        has.releasing = false;
+        continue;
+      }
+      const eng = this.remoteEngines.get(car.specId);
+      if (!eng) {
+        this.prepareVoices([car.specId]);
+        continue;
+      }
+      const free = this.voices.find((v) => !v.busy);
+      if (free) {
+        free.assign(car, eng);
+        continue;
+      }
+      let farthest: RemoteVoice | null = null;
+      let far = REMOTE_VOICES - 1;
+      for (const v of this.voices) {
+        const r = rank(v.car);
+        if (r > far) {
+          far = r;
+          farthest = v;
+        }
+      }
+      if (farthest) farthest.releasing = true;
+    }
+    const volume = 0.55;
+    const set = (l: Layer, g: number, rate: number, tt: number): void => this.set(l, g, rate, tt);
+    for (const v of this.voices) v.update(dt, li, volume, paused, !!v.car && !cars.includes(v.car), t, set);
+  }
+
+  private loopLayer(b: AudioBuffer, dest: AudioNode): Layer {
+    const ctx = this.ctx!;
+    const src = ctx.createBufferSource();
+    src.buffer = b;
+    src.loop = true;
+    const gain = ctx.createGain();
+    gain.gain.value = 0;
+    src.connect(gain).connect(dest);
+    src.start(0, Math.random() * (b.duration * 0.9));
+    return { src, gain, g: 0, rate: 1 };
   }
 
   /** A menu or HUD sound. */

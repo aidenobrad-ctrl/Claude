@@ -93,7 +93,7 @@ export async function importSrc(rel) {
     bundle: true,
     platform: 'node',
     format: 'esm',
-    define: { __DEV__: 'true', __BUILD_TIME__: '"test"', __TILE_WORKER__: '""', __AUDIO_WORKER__: '""' },
+    define: { __DEV__: 'true', __BUILD_TIME__: '"test"', __TILE_WORKER__: '""', __AUDIO_WORKER__: '""', __AI_WORKER__: '""' },
     loader: { '.css': 'text', '.glsl': 'text', '.glb': 'binary' },
     logLevel: 'warning',
   });

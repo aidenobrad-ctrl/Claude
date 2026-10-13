@@ -121,6 +121,8 @@ namespace Halcyon.Core
         int passSide, passId = -1;
         double passT, passCooldown;
         bool started;
+        // Off the grid: the column to keep to, from where, and for how far (0: released).
+        double gridLat, gridS, gridHold;
 
         public AiDriver(SimCar car, Personality p, CarAbility ability, uint seed)
         {
@@ -145,6 +147,19 @@ namespace Halcyon.Core
             var v = Car.vehicle;
             route.ProjectAny(v.pos.x, v.pos.z, out S, out Lateral, out Dist);
             started = true;
+        }
+
+        /// <summary>
+        /// Keep to the grid column off the start, merging onto the racing line over the 60 m after hold
+        /// metres: the line is one car's line, and a grid two abreast all aiming for it at once sees the
+        /// car in the other column as in the way, and swerves across to pass it.
+        /// </summary>
+        public void HoldGrid(double hold)
+        {
+            gridLat = Lateral;
+            gridS = S;
+            gridHold = hold;
+            Lane = Lateral - Line.OffsetAt(S);
         }
 
         /// <summary>The other cars, for racecraft.</summary>
@@ -224,6 +239,13 @@ namespace Halcyon.Core
             // --- Racecraft ----------------------------------------------------------------------
             double half = Ability.HalfWidth;
             laneTarget = mistakeLane;
+            if (gridHold > 0)
+            {
+                double d = Route.Delta(gridS, S);
+                double k = d < gridHold ? 1 : 1 - (d - gridHold) / 60;
+                if (k <= 0) gridHold = 0;
+                else laneTarget += k * (gridLat - Line.OffsetAt(S));
+            }
             sideMin = double.NegativeInfinity;
             sideMax = double.PositiveInfinity;
             if (field != null)
@@ -254,7 +276,7 @@ namespace Halcyon.Core
             double sT = S + ld;
             Route.At(sT, out double cx, out _, out double cz, out double tx, out double tz);
             wobble += dt * wobbleRate;
-            double err = P.LineError * Math.Sin(wobble * 0.9) * 0.6;
+            double err = P.LineError * DMath.Sin(wobble * 0.9) * 0.6;
             double off = Line.OffsetAt(sT) + Lane + err;
             double wlT = Route.Sample(Route.WLeft, sT), wrT = Route.Sample(Route.WRight, sT);
             if (sideMin <= sideMax) off = Clamp(off, sideMin, sideMax);
@@ -591,6 +613,7 @@ namespace Halcyon.Core
         public void ResetToRoute()
         {
             var v = Car.vehicle;
+            gridHold = 0;
             // A second reset near the last one: start further back, on the centreline.
             bool again = Resets > 0 && Math.Abs(Route.Delta(lastResetS, S)) < 40;
             lastResetS = S;

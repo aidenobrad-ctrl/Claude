@@ -24,6 +24,8 @@ export interface SimCar {
   specId: string;
   vehicle: Vehicle;
   player: boolean;
+  /** Its paint (0xRRGGBB), when not the car's own (race rivals). */
+  paint?: number;
 }
 
 export type SimEventKind = 'impact' | 'break' | 'lap' | 'reset';

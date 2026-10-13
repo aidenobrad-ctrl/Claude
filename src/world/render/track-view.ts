@@ -182,7 +182,8 @@ export function buildTrackView(t: TrackLayout): THREE.Group {
     sign2.rotation.y = Math.PI;
     gantry.add(sign, sign2);
     gantry.position.set(at.x, H, at.z);
-    gantry.rotation.y = Math.atan2(at.tx, at.tz) + Math.PI / 2;
+    // Local x across the track (as the line's decal): the posts stand off the road's edges.
+    gantry.rotation.y = Math.atan2(at.tx, at.tz);
     g.add(gantry);
   }
 

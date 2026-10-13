@@ -19,6 +19,13 @@ import { Grass } from './world/render/grass';
 import { buildBuildingsView, type BuildingsView } from './world/render/buildings-view';
 import { FestivalView } from './world/render/festival-view';
 import { FestivalExtras } from './world/render/festival-extras';
+import { EventsMenu, RaceHud } from './ui/race-ui';
+import { festivalEvents } from './ai/events';
+import { AbilityCache, RaceSession, fieldPool, qualifyingOrder, raceField, type RaceEvent } from './ai/race-session';
+import { AbilityMeasurer } from './ai/ability-client';
+import { RacingLine } from './ai/racing-line';
+import { DIFFICULTIES, type Difficulty } from './ai/ai-driver';
+import { RNG } from './engine/rng';
 import { festivalBare } from './world/festival';
 import { GpsView } from './world/render/gps-view';
 import { findRoute, type Route } from './world/route';
@@ -32,8 +39,8 @@ import { CARS } from './vehicles/cars';
 import { Hud } from './ui/hud';
 import { TouchControls } from './ui/touch';
 import { HelpCard, PauseMenu, type QualityChoice } from './ui/menus';
-import { Sim } from './sim';
-import { GameAudio } from './audio/audio';
+import { Sim, type SimCar } from './sim';
+import { GameAudio, type Listener } from './audio/audio';
 
 export { fovForAspect } from './engine/render/fov';
 
@@ -41,6 +48,20 @@ const QUALITY_KEY = 'halcyon-quality';
 const CAR_KEY = 'halcyon-car';
 
 /** The graphics preset chosen in the pause menu, if any ('auto' when left to the device). */
+const DIFFICULTY_KEY = 'halcyon-difficulty';
+/** The rivals' paints: strong festival colours and a few everyday ones. */
+const RIVAL_PAINTS = [0xe0337a, 0x14b8a6, 0xffc23d, 0x3b82f6, 0xff6b2c, 0x7c4dff, 0x2e7d32, 0xf2f2f0, 0x18191b, 0xa7abb0, 0x9a2d22, 0x1f3b6b];
+
+function savedDifficulty(): Difficulty {
+  try {
+    const d = localStorage.getItem(DIFFICULTY_KEY);
+    if (d && (DIFFICULTIES as readonly string[]).includes(d)) return d as Difficulty;
+  } catch {
+    /* private mode */
+  }
+  return 'pro';
+}
+
 export function savedQuality(): QualityChoice | null {
   try {
     const q = typeof localStorage !== 'undefined' ? localStorage.getItem(QUALITY_KEY) : null;
@@ -119,6 +140,20 @@ export class Game {
   readonly festival: FestivalView;
   /** The festival's crowds, cars on show, car park, food trucks and towers. */
   readonly festivalExtras: FestivalExtras;
+  /** The race under way, if any (the festival's races: src/ai/). */
+  race: RaceSession | null = null;
+  private raceEvents: RaceEvent[] | null = null;
+  private readonly abilities = new AbilityCache();
+  /** Racing lines by event (built the first time each is raced). */
+  private readonly raceLines = new Map<string, RacingLine>();
+  private eventsMenu!: EventsMenu;
+  private raceHud!: RaceHud;
+  /** The festival menu is open (the world waits). */
+  private eventsOpen = false;
+  /** Bumped by each race asked for: a grid still being measured is dropped if the menu closed meanwhile. */
+  private raceToken = 0;
+  private difficulty: Difficulty = savedDifficulty();
+  private raceSeed = 1;
   readonly gps = new GpsView();
   readonly minimap: Minimap;
   readonly fullmap: FullMap;
@@ -275,6 +310,19 @@ export class Game {
       getAudio: () => this.audio.settings,
       setAudio: (a) => this.audio.setSettings(a),
       click: () => this.audio.ui('move'),
+      races: () => this.openEvents(),
+      racing: () => this.race !== null,
+      leaveRace: () => this.endRace(),
+    });
+    this.eventsMenu = new EventsMenu(this.uiRoot, {
+      start: (id, d) => this.startRace(id, d),
+      close: () => this.closeEvents(),
+      click: () => this.audio.ui('move'),
+    });
+    this.raceHud = new RaceHud(this.uiRoot, {
+      done: () => this.endRace(),
+      click: () => this.audio.ui('select'),
+      finished: (pos) => this.audio.ui(pos <= 3 ? 'reward' : 'checkpoint'),
     });
     this.help = new HelpCard(this.uiRoot);
     this.help.setVisible(!this.test && !this.mobile);
@@ -318,7 +366,7 @@ export class Game {
     for (const v of this.views) this.scene.remove(v.root);
     this.views = this.sim.cars.map((c) => {
       const spec = CARS.find((s) => s.id === c.specId) ?? CARS[0];
-      const view = new CarView(c.vehicle, spec);
+      const view = new CarView(c.vehicle, spec, { paint: c.paint });
       this.scene.add(view.root, view.contactShadow);
       patchTree(view.root);
       // The Blender model arrives a moment later: its materials get the fog and the live reflections too.
@@ -393,7 +441,7 @@ export class Game {
     this.controls = this.input.poll();
     this.handleFrameActions(this.controls);
     if (this.loading) this.updateLoading(t);
-    if (!this.paused && !this.hidden && !this.loading && !this.mapPaused) {
+    if (!this.paused && !this.hidden && !this.loading && !this.mapPaused && !this.eventsOpen) {
       this.perf.begin('sim');
       this.edgesUsed = false;
       this.stepper.advance(dt, () => this.tick());
@@ -434,7 +482,8 @@ export class Game {
       this.controls.pressed.shiftUp = false;
       this.controls.pressed.shiftDown = false;
     }
-    this.sim.step(this.controls);
+    if (this.race) this.race.step(this.controls);
+    else this.sim.step(this.controls);
     this.edgesUsed = true;
   }
 
@@ -468,12 +517,26 @@ export class Game {
       case 'radio':
         this.hud.toast(this.audio.stationName(this.audio.cycleStation()));
         break;
+      case 'events':
+        if (this.eventsOpen) this.closeEvents();
+        else if (!this.paused) this.openEvents();
+        break;
       default:
         this.input.tap(a);
     }
   }
 
   private handleFrameActions(c: Controls): void {
+    if (this.eventsOpen) {
+      if (c.pressed.pause || c.pressed.events) this.closeEvents();
+      return;
+    }
+    if (this.race && this.raceHud.resultsOpen && c.pressed.confirm && !this.paused) {
+      this.audio.ui('select');
+      this.endRace();
+      return;
+    }
+    if (c.pressed.events && !this.paused) this.openEvents();
     if (c.pressed.map) this.toggleMap();
     if (this.fullmap.visible) {
       if (c.pressed.pause) this.toggleMap(false);
@@ -504,8 +567,43 @@ export class Game {
 
   private mapPaused = false;
 
+  private readonly others: SimCar[] = [];
+  private readonly listener: Listener = { x: 0, y: 0, z: 0, rx: 1, rz: 0, vx: 0, vz: 0 };
+  private readonly camRight = new THREE.Vector3();
+
+  /** The other cars' engines, heard from the camera. */
+  private updateVoices(dt: number, paused: boolean): void {
+    const others = this.others;
+    others.length = 0;
+    for (const c of this.sim.cars) if (!c.player) others.push(c);
+    const cam = this.rig.camera;
+    const r = this.camRight.setFromMatrixColumn(cam.matrixWorld, 0);
+    const li = this.listener;
+    li.x = cam.position.x;
+    li.y = cam.position.y;
+    li.z = cam.position.z;
+    const n = Math.hypot(r.x, r.z) || 1;
+    li.rx = r.x / n;
+    li.rz = r.z / n;
+    const pv = this.sim.player.vehicle.vel;
+    li.vx = pv.x;
+    li.vz = pv.z;
+    this.audio.updateRemote(dt, others, li, paused);
+  }
+
+  /** The race rivals' positions, for the minimap. */
+  private rivalDots(): { x: number; z: number }[] {
+    const out: { x: number; z: number }[] = [];
+    for (const c of this.sim.cars) if (!c.player) out.push(c.vehicle.pos);
+    return out;
+  }
+
   /** Route from the car to (x, z) over the roads; shown on the maps and as the GPS line. */
   setWaypoint(x: number, z: number): void {
+    if (this.race) {
+      this.hud.toast('Leave the race to set a waypoint');
+      return;
+    }
     this.waypoint = { x, z };
     this.audio.ui('checkpoint');
     this.computeRoute();
@@ -545,6 +643,10 @@ export class Game {
       }
     }
     this.routeIndex = bi;
+    if (this.race) {
+      this.gps.update(this.routeS[bi], dt);
+      return;
+    }
     this.rerouteTimer -= dt;
     if (Math.sqrt(best) > 45 && this.rerouteTimer <= 0) {
       this.rerouteTimer = 1.5;
@@ -561,8 +663,112 @@ export class Game {
     this.gps.update(this.routeS[bi], dt);
   }
 
+  /** The festival menu: every race, built the first time it opens. */
+  openEvents(): void {
+    if (this.race || this.eventsOpen) return;
+    if (this.fullmap.visible) this.toggleMap(false);
+    this.raceEvents ??= festivalEvents(this.sim);
+    if (!this.test) void this.measureAhead();
+    this.eventsOpen = true;
+    this.audio.ui('select');
+    this.eventsMenu.show(this.raceEvents, this.difficulty);
+  }
+
+  /** The rivals' cars measured in the background while the menu is read: the whole pool the grid is drawn from. */
+  measureAhead(): Promise<void> {
+    this.abilities.measurer ??= new AbilityMeasurer();
+    return this.abilities.prefetch(fieldPool(this.sim.player.specId));
+  }
+
+  closeEvents(): void {
+    if (!this.eventsOpen) return;
+    this.raceToken++;
+    this.eventsOpen = false;
+    this.eventsMenu.hide();
+    this.audio.ui('back');
+    this.lastT = performance.now();
+    this.stepper.reset();
+  }
+
+  /** Build and start a race: the rivals' cars are measured (a moment), placed on the grid, and the countdown runs. */
+  startRace(id: string, difficulty: Difficulty): void {
+    const ev = this.raceEvents?.find((e) => e.id === id);
+    if (!ev) return;
+    this.difficulty = difficulty;
+    try {
+      if (!this.test) localStorage.setItem(DIFFICULTY_KEY, difficulty);
+    } catch {
+      /* private mode */
+    }
+    const seed = this.raceSeed++;
+    const count = Math.max(0, ev.gridSize - 1);
+    let field = raceField(this.sim.player.specId, count, difficulty, seed);
+    // A duel: the festival's rival, in the player's own car (a fair fight).
+    if (ev.rival) field = [{ carId: this.sim.player.specId, driver: ev.rival }];
+    const build = (): void => {
+      const rng = new RNG(seed * 977 + 13);
+      let line = this.raceLines.get(ev.id);
+      if (!line) this.raceLines.set(ev.id, (line = RacingLine.build(ev.route)));
+      // Qualifying order, fastest at the front; the player starts mid-grid (as on PC), alone in a duel's other lane.
+      field = qualifyingOrder(ev, line, field, this.abilities);
+      const paints = [...RIVAL_PAINTS];
+      const opponents = field.map((f) => ({ ...f, paint: paints.length ? paints.splice(rng.int(0, paints.length), 1)[0] : undefined }));
+      this.clearWaypoint();
+      this.race = new RaceSession(this.sim, ev, opponents, this.abilities, seed, line, true, Math.min(Math.floor(ev.gridSize / 2), opponents.length));
+      // The rivals' engines render while the countdown runs.
+      this.audio.prepareVoices(opponents.map((o) => o.carId));
+      this.rebuildCarViews();
+      this.skid.clear();
+      for (const v of this.views) v.snapshot();
+      this.rig.snap();
+      this.stepper.reset();
+      // A sprint shows its road on the minimap and as the GPS line.
+      if (ev.kind !== 'circuit') this.setRaceRoute(ev);
+      this.eventsOpen = false;
+      this.eventsMenu.hide();
+      this.raceHud.start();
+      this.lastT = performance.now();
+    };
+    if (this.test) {
+      build();
+      return;
+    }
+    // The grid's cars measured off the main thread (most already are, from opening the menu); the page
+    // keeps drawing meanwhile. Closing the menu drops the race.
+    const token = ++this.raceToken;
+    this.eventsMenu.busy('Building the grid…');
+    void this.abilities.prefetch(field.map((f) => f.carId), ev.surface, true).then(() => {
+      if (token !== this.raceToken || !this.eventsOpen || this.race) return;
+      build();
+    });
+  }
+
+  /** Leave the race (from its results, or the pause menu): the rivals leave the island. */
+  endRace(): void {
+    if (!this.race) return;
+    this.race.end();
+    this.race = null;
+    this.raceHud.hide();
+    this.clearWaypoint();
+    this.rebuildCarViews();
+    this.sim.filter.reset();
+    this.lastT = performance.now();
+    this.stepper.reset();
+  }
+
+  private setRaceRoute(ev: RaceEvent): void {
+    const r = ev.route;
+    const points = [];
+    for (let i = 0; i < r.n; i++) points.push({ x: r.x[i], y: r.y[i], z: r.z[i], hw: Math.min(r.wLeft[i], r.wRight[i]) });
+    this.route = { points, length: r.length };
+    this.routeIndex = 0;
+    this.routeS = new Float64Array(r.s);
+    this.gps.setRoute(this.route);
+  }
+
   resetCar(): void {
-    this.sim.resetToRoad();
+    if (this.race) this.race.resetPlayer();
+    else this.sim.resetToRoad();
     for (const v of this.views) v.snapshot();
     this.skid.clear();
     this.rig.snap();
@@ -583,7 +789,9 @@ export class Game {
     for (const v of this.views) v.update(alpha);
     this.drainEvents();
     this.updateEffects(dt);
-    this.audio.update(dt, this.sim.player.vehicle, { paused: this.paused || this.mapPaused || this.loading || this.hidden, inside: this.rig.mode === 'bonnet' });
+    const audioPaused = this.paused || this.mapPaused || this.loading || this.hidden || this.eventsOpen;
+    this.audio.update(dt, this.sim.player.vehicle, { paused: audioPaused, inside: this.rig.mode === 'bonnet' });
+    this.updateVoices(dt, audioPaused);
     this.updateResolution(dt);
     const pv = this.views[0];
     const veh = this.sim.player.vehicle;
@@ -644,7 +852,7 @@ export class Game {
         this.rig.impact(s);
         this.audio.impact(e.value);
         if (this.touch.visible) this.touch.buzz(Math.round(20 + s * 60));
-      } else if (e.kind === 'lap') {
+      } else if (e.kind === 'lap' && !this.race) {
         this.hud.toast(`Lap ${(e.value / 60) | 0}:${(e.value % 60).toFixed(2).padStart(5, '0')}`, 2.5);
         this.audio.ui('checkpoint');
       }
@@ -706,16 +914,21 @@ export class Game {
         abs: v.absActive,
         tcs: v.tcsActive,
         esc: v.escActive,
-        lap: lap.laps > 0 ? { lap: lap.laps, current: this.sim.time - lap.start, last: lap.last, best: lap.best } : null,
+        lap: lap.laps > 0 && !this.race ? { lap: lap.laps, current: this.sim.time - lap.start, last: lap.last, best: lap.best } : null,
         units: this.units,
       },
       dt,
     );
+    if (this.race) {
+      const beep = this.raceHud.update(this.race);
+      if (beep > 0) this.audio.ui('count');
+      else if (beep === 0) this.audio.ui('go');
+    }
     // The minimap redraws at half the frame rate.
     this.minimapFrame = (this.minimapFrame + 1) % 2;
     if (this.minimapFrame === 0 || this.test) {
       const left = this.route ? this.routeS[this.routeS.length - 1] - this.routeS[this.routeIndex] : 0;
-      this.minimap.draw(v.pos.x, v.pos.z, Math.atan2(-v.fwd.x, -v.fwd.z), v.speed, this.route, this.routeIndex, left);
+      this.minimap.draw(v.pos.x, v.pos.z, Math.atan2(-v.fwd.x, -v.fwd.z), v.speed, this.route, this.routeIndex, left, this.race ? this.rivalDots() : []);
     }
   }
 

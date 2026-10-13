@@ -174,7 +174,8 @@ export class Minimap {
     this.c = this.canvas.getContext('2d') as CanvasRenderingContext2D;
   }
 
-  draw(x: number, z: number, yaw: number, speed: number, route: Route | null, routeFrom: number, distLeft: number): void {
+  /** `others`: the other cars to mark (race rivals), as world positions. */
+  draw(x: number, z: number, yaw: number, speed: number, route: Route | null, routeFrom: number, distLeft: number, others: readonly { x: number; z: number }[] = []): void {
     const css = this.el.clientWidth || 170;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     const px = Math.round(css * dpr);
@@ -203,6 +204,19 @@ export class Minimap {
     c.imageSmoothingEnabled = true;
     c.drawImage(this.base, 0, 0);
     drawRoute(c, route, routeFrom, 5 / scale + 2);
+    if (others.length) {
+      c.fillStyle = '#ff4d5e';
+      c.strokeStyle = '#0d1018';
+      c.lineWidth = 1.5 / scale;
+      const r = (px * 0.028) / scale;
+      for (const o of others) {
+        const [ox, oz] = toMap(o.x, o.z);
+        c.beginPath();
+        c.arc(ox, oz, r, 0, Math.PI * 2);
+        c.fill();
+        c.stroke();
+      }
+    }
     c.restore();
     // Player arrow at the centre, always pointing up.
     c.save();

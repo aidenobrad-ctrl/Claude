@@ -37,6 +37,16 @@ static class Program
         Console.WriteLine($"island loaded in {sw.ElapsedMilliseconds} ms");
         var events = EventCatalog.All(W, sim.Ground);
         foreach (var e in events) Console.WriteLine($"  event {e.Id}: {e.Name}, route {e.Route.Length:0} m ({e.Route.N} samples), race {e.Distance:0} m");
+        if (only == "airace")
+        {
+            AiRef.Trace(W, int.Parse(args[1]), int.Parse(args[2]));
+            return 0;
+        }
+        if (only == "airef")
+        {
+            AiRef.Write(Root(), W, sim);
+            return 0;
+        }
         if (only == "" || only == "line") Lines(events);
         if (only == "debugline") DebugLine(events[1]);
         if (only == "colliders") CollidersNear(args.Length > 3 ? events.First(e => e.Id == args[3]) : events[0], double.Parse(args[1]), double.Parse(args[2]));
@@ -527,12 +537,13 @@ static class Program
 
     static void MixedField(List<RaceEvent> events)
     {
-        Console.WriteLine("\nMixed field: eight cars and drivers around Pro difficulty");
+        Console.WriteLine("\nMixed field: eight cars and drivers around Pro difficulty, in qualifying order as the game lines them up");
         foreach (var ev0 in events.Take(2))
         {
             var ev = ev0.Kind == RaceKind.Circuit ? EventCatalog.ProvingGP(W, 2) : ev0;
-            var field = RaceSession.Field("halden-aster-gt", 8, Difficulty.Pro, 7);
-            var run = RunRace(ev, field, 7, 1200);
+            var line = RacingLine.Build(ev.Route);
+            var field = Qualify(ev, line, Rivals.Stock(RaceSession.Field("halden-aster-gt", 8, Difficulty.Pro, 7)));
+            var run = RunRace(ev, field, 7, 1200, line);
             var s = run.Session;
             foreach (var e in s.Order) Console.WriteLine($"    P{e.Position} {e.Name,-14} {e.Car.specId,-24} skill {e.Ai.P.Skill:0.00}  {Fmt(e.FinishTime)}  resets {e.Ai.Resets}");
             double maxStuck = s.Entrants.Max(e => e.Ai.MaxStuck);
@@ -542,6 +553,13 @@ static class Program
     }
 
     static readonly PiTable Pis = new PiTable();
+
+    /// <summary>The field in qualifying order, as the game lines it up (each setup measured first, in parallel).</summary>
+    static List<Rival> Qualify(RaceEvent ev, RacingLine line, List<Rival> field)
+    {
+        System.Threading.Tasks.Parallel.ForEach(field, r => Abilities.Get(r.CarId, r.Tune, Rivals.PartsKey(r.Parts) == "stock" ? null : r.Upgrades, r.Key, 0, ev.Surface));
+        return RaceSession.QualifyingOrder(ev, line, field, Abilities, 0);
+    }
 
     /// <summary>
     /// Fields matched to a player's PI, as the game builds them: cars from the
@@ -564,8 +582,9 @@ static class Program
         {
             var ev0 = events.First(e => e.Id == id);
             var ev = ev0.Kind == RaceKind.Circuit ? EventCatalog.ProvingGP(W, 2) : ev0;
-            var field = Rivals.Field(pi, limit, 8, Difficulty.Pro, 3, Pis);
-            var run = RunRace(ev, field, 3, 1500);
+            var line = RacingLine.Build(ev.Route);
+            var field = Qualify(ev, line, Rivals.Field(pi, limit, 8, Difficulty.Pro, 3, Pis));
+            var run = RunRace(ev, field, 3, 1500, line);
             var s = run.Session;
             foreach (var e in s.Order) Console.WriteLine($"    P{e.Position} {e.Name,-14} {e.Car.specId,-24} PI {e.Pi}  skill {e.Ai.P.Skill:0.00}  {Fmt(e.FinishTime)}  resets {e.Ai.Resets}  max stuck {e.Ai.MaxStuck:0.0} s");
             double maxStuck = s.Entrants.Max(e => e.Ai.MaxStuck);

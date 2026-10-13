@@ -1,5 +1,5 @@
 // Render review shots of the current build: node tools/look.mjs [quality] [time] [prefix] [which]
-//   which: comma list of island,vista,forest,chase,hero (default all)
+//   which: comma list of island,festival,show,vista,forest,city,village,chase,hero,race (default: the first nine)
 import { launchBrowser, openGame, shot } from './browser.mjs';
 const [q = 'ultra', time = 'golden', prefix = 'look', which = 'island,festival,vista,forest,city,village,chase,hero'] = process.argv.slice(2);
 const want = new Set(which.split(','));
@@ -184,6 +184,67 @@ if (want.has('hero')) {
     api.setCamera(v.pos.x + 5.2, v.pos.y + 0.4, v.pos.z - 3.2, v.pos.x, v.pos.y + 0.1, v.pos.z, 36);
   });
   await shot(g.page, `${prefix}-${q}-${time}-hero`);
+}
+if (want.has('race')) {
+  // The Proving Ground Grand Prix: the grid during the countdown, the pack after the start (the player driving
+  // along the route), and the field from the trackside; then the Harbour Dash's grid at the festival.
+  const drive = (seconds) =>
+    g.page.evaluate((seconds) => {
+      const api = window.__game;
+      const race = api.game.race;
+      const me = race.playerEntrant;
+      const v = me.car.vehicle;
+      const at = { x: 0, y: 0, z: 0, tx: 0, tz: 1 };
+      for (let k = 0; k < Math.round(seconds * 30); k++) {
+        race.event.route.at(me.s + 14 + v.speed * 0.6, at);
+        const dx = at.x - v.pos.x;
+        const dz = at.z - v.pos.z;
+        const steer = Math.max(-1, Math.min(1, Math.atan2(dx * v.right.x + dz * v.right.z, dx * v.fwd.x + dz * v.fwd.z) * 2.2));
+        api.setInput({ steer, throttle: race.clock < 0 ? 0 : 0.9 });
+        api.step(8);
+      }
+    }, seconds);
+  const start = async (id) => {
+    await g.page.evaluate((id) => {
+      const api = window.__game;
+      api.setCamera();
+      api.setUiVisible(true);
+      api.setInput({});
+      if (api.game.race) api.game.endRace();
+      api.game.openEvents();
+      api.game.startRace(id, 'pro');
+    }, id);
+    // The rivals' Blender models load a moment after the grid forms.
+    await g.page.evaluate(() => Promise.all(window.__game.game.views.map((v) => v.ready)));
+  };
+  await start('proving-gp');
+  await drive(1.2);
+  await shot(g.page, `${prefix}-${q}-${time}-race-grid`);
+  await drive(4.6);
+  await shot(g.page, `${prefix}-${q}-${time}-race-pack`);
+  await g.page.evaluate(() => {
+    // Trackside, a few metres off the edge ahead of the pack, low, looking back at it.
+    const api = window.__game;
+    const race = api.game.race;
+    const lead = race.standings[0];
+    const r = race.event.route;
+    const at = { x: 0, y: 0, z: 0, tx: 0, tz: 1 };
+    r.at(lead.s + 30, at);
+    const side = 9;
+    api.setUiVisible(false);
+    const me = race.playerEntrant.car.vehicle.pos;
+    api.setCamera(at.x - at.tz * side, at.y + 1.6, at.z + at.tx * side, (lead.car.vehicle.pos.x + me.x) / 2, at.y + 0.8, (lead.car.vehicle.pos.z + me.z) / 2, 38);
+  });
+  await shot(g.page, `${prefix}-${q}-${time}-race-trackside`);
+  await start('sprint-harbor');
+  await drive(1.5);
+  await shot(g.page, `${prefix}-${q}-${time}-race-sprint`);
+  await g.page.evaluate(() => {
+    const api = window.__game;
+    api.setCamera();
+    api.setUiVisible(true);
+    api.game.endRace();
+  });
 }
 const perf = await g.page.evaluate(() => window.__game.perf());
 console.log(`${q}/${time}: ${((Date.now() - t0) / 1000).toFixed(1)} s`, g.errors.length ? g.errors.slice(0, 3) : 'no errors', JSON.stringify(perf).slice(0, 400));

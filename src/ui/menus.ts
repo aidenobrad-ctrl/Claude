@@ -26,6 +26,11 @@ export interface PauseHandlers {
   setAudio(s: Partial<AudioSettings>): void;
   /** A click for the menu (optional). */
   click?(): void;
+  /** The festival's races: open their menu (optional). */
+  races?(): void;
+  /** In a race: the car can't change, and the race can be left (optional). */
+  racing?(): boolean;
+  leaveRace?(): void;
 }
 
 /** Set by the pause menu so every segment button clicks. */
@@ -90,6 +95,10 @@ export class PauseMenu {
       pick.appendChild(o);
     }
     pick.value = this.h.getCar();
+    // Mid-race the car stays the one on the grid.
+    const racing = this.h.racing?.() ?? false;
+    pick.disabled = racing;
+    if (racing) pick.title = 'Leave the race to change car';
     pick.onchange = () => {
       this.h.setCar(pick.value);
       this.h.click?.();
@@ -142,6 +151,23 @@ export class PauseMenu {
       this.h.resume();
     };
     actions.append(resume, reset);
+    if (racing && this.h.leaveRace) {
+      const leave = document.createElement('button');
+      leave.textContent = 'Leave race';
+      leave.onclick = () => {
+        this.h.leaveRace?.();
+        this.h.resume();
+      };
+      actions.append(leave);
+    } else if (this.h.races) {
+      const races = document.createElement('button');
+      races.textContent = 'Festival races';
+      races.onclick = () => {
+        this.h.resume();
+        this.h.races?.();
+      };
+      actions.append(races);
+    }
     p.append(actions);
     this.el.replaceChildren(p);
     this.el.style.display = '';

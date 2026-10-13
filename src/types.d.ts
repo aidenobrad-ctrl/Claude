@@ -19,3 +19,5 @@ declare const __BUILD_TIME__: string;
 declare const __TILE_WORKER__: string;
 /** The audio worker's bundled source (empty outside the browser build). */
 declare const __AUDIO_WORKER__: string;
+/** The car-measuring worker's bundled source (empty outside the browser build). */
+declare const __AI_WORKER__: string;

@@ -539,3 +539,56 @@ Also open: no cross-country event (off-road racing between checkpoints would nee
 5. The Unity code has never run. **Partly:** a bug bash by review found and fixed 15 bugs (findings 15–29), all compile-checked. **Open:** running it, which needs the PC session (`docs/UNITY-PC-BRIEF.md`).
 
 Also open: AWD cars hold a slide on the handbrake but not on the throttle alone (realistic, but less fun than Forza's); the radio's station worker still makes about 0.8 MB/s of short-lived garbage in Unity; the asphalt's aggregate glitters at very low camera angles; Auto picks High only on GPUs it recognises (the pause menu offers every preset).
+
+## The races on the web (the AI ported from the C# Core)
+
+**Tried (headless; the web build in headless Chromium; the AI in Node and in .NET):**
+- The festival's races in the browser (`tests/browser/m9-races.mjs`): the menu on a desktop and on a phone in landscape (the RACE button), the Proving Ground Grand Prix from the grid (countdown, the rivals racing, the HUD, leaving from the pause menu), a drag race driven to its results, the rivals' cars measured in the worker, and the rivals' engines with sound on.
+- AI-only races in Node: six Grand Prix and six Harbour Dashes, each with the field as drawn and in qualifying order, counting contacts in the opening 20 s and over the race (`tools/dev/race-grid-probe.ts`), with contacts traced car by car.
+- The port against the C#: the reference race traced step by step in both languages (`tools/dev/ai-race-trace.ts` against `dotnet run -- airace`).
+- The C# AI suite before and after the AI changes; review screenshots of a race (`node tools/look.mjs high golden look race`).
+
+| # | Finding | Sev | Root cause | Fix | Retest |
+|---|---|---|---|---|---|
+| 1 | The rivals drove into each other: 37 contacts in the opening 20 s of six Grand Prix, 46 over the races, 4 resets. | S2 | The port's racecraft kept references to the race's view of the other cars, which is one object refilled for each car (the C#'s view is a struct, copied when assigned). By the end of the loop, "the car ahead", "the car behind" and "the car being passed" were all the last car on the grid: the player, standing at the back. | Racecraft copies the views it keeps. | 1 contact in the openings, 10 over the races, 0 resets |
+| 2 | Off the grid, rivals swerved across each other. | S2 | Every car steered for the racing line from the start, so the car in the other column was in its path, and it started a pass on it. Both languages. | A car keeps to its grid column until 60 m past the start line, then merges onto the line over the next 60 m (`holdGrid`). | The columns hold (about ±2.3 m) through the first 60 m; the cars behind a player who stalls on the grid get by within about 5 s |
+| 3 | A field lined up as drawn put quick starters behind slow ones, and the first seconds were a chain of rear-end contacts. | S2 | The grid order was the draw's. Both languages. | The grid in qualifying order (`qualifyingOrder`: each driver's time round the route at its own pace, fastest first). The player starts mid-grid, as in Unity. | Six Grand Prix 10 → 2 contacts, six Harbour Dashes 5 → 0. In the C#, mixed and PI-matched fields 24 → 4 contacts over seven races, resets 1 → 0 |
+| 4 | The proving ground's start gantry had stood turned along the track since M1: one leg in the middle of the road, and the cars drove through it (it has no collider). | S3 | Rotated a quarter turn too far. | Turned across the track; its legs stand off the edges. | Grid screenshot |
+| 5 | The first whole-race comparison of the two versions failed: the same race finished up to 0.17 s apart. | S4 (test) | Traced step by step, the versions agree to the last bit for 2.99 s of racing, until a rear wheel lands exactly on the edge of the start straight's concrete shoulder: on it in Unity's copy of the track (32-bit floats), off it in the web's. Not a bug: the island is shared to a millimetre by design, and a race is chaotic after one such step. | The test compares the countdown and two seconds of racing to the last bit, then the finishing times within 1%. | Identical through step 1,200; finishing times within 0.15%; the same contacts |
+| 6 | During a Grand Prix on the proving ground, the circuit's own lap timer put its lap toasts over the race. | S3 | The free-roam lap timer runs on the same circuit. | Quiet during a race. | Code review |
+| 7 | A waypoint set on the map mid-race replaced a sprint's GPS line. | S3 | The race's route and the waypoint's share the GPS. | Waypoints wait until the race is over (a toast says so). | Code review |
+| 8 | The pause menu's car picker would have swapped the car under a race's entrant. | S3 | Nothing stopped it. | Disabled in a race, with a note. | Code review |
+| 9 | The engine played on behind the races menu, while the world waits. | S3 | The sound paused for the pause menu and the map only. | The sound pauses with the world. | Code review |
+| 10 | The first race froze the page while the rivals' cars were measured: 2.0 s on a desktop for the Grand Prix, another 2.6 s for the rally on dirt; a phone is two or three times slower. | S2 | `CarAbility.measure` drives each car round a virtual test track on the main thread. | A worker measures them: the whole pool the grid is drawn from when the menu opens, the race's own cars first when it starts. The page keeps drawing. | In the test container: 7 cars in 5.4 s in the worker, the page blocked 9 ms, the numbers the same as the page's to the last bit |
+| 11 | The rivals were silent. | S2 | Only the player's engine was voiced on the web. | Four engine voices, as in Unity: each car's own loops pitched by its rpm, Unity's rolloff to 110 m, a low-pass for the air, a stereo pan, a little Doppler, quarter-second fades, and hysteresis on which cars are voiced. | Four voices on the four nearest rivals, faded in; none once the race is left |
+| 12 | The race HUD said nothing about the cars around you. | S3 | Position, lap and time only. | The gaps to the cars ahead and behind, as real intervals from timing loops every 5 m. | The browser test reads the gap to the car ahead while the player stands still |
+| 13 | The minimap's distance label ran off the bottom of a 720-pixel desktop screen. | S4 | Placed under the circle, which sits 18 px from the bottom edge. | Inside the circle on desktop; under it on touch screens, where the minimap is at the top. | Screenshot |
+| 14 | Rivals' paints repeated. | S3 | Each drawn independently. | Drawn without repeats from twelve. | 7 rivals, 7 paints |
+| 15 | Key presses in a browser test were ignored. | S4 (test) | The test API's scripted input replaces the keyboard until it is cleared. | The tests clear it before pressing keys. | — |
+| 16 | On a phone the race panel covered the touch buttons: CAM and ROAD in landscape, the whole row and the minimap in portrait. | S2 | Placed for a desktop: top centre. | Below the buttons in landscape, below the gauge (and a little smaller) in portrait. | Screenshots in both orientations; no overlapping boxes |
+| 17 | In portrait the row of touch buttons covered the minimap (since M8 with five buttons; six with RACE covered it fully). | S3 | Both sat at the top left. | In portrait the minimap goes below the buttons. | Portrait screenshot |
+| 18 | The second race of a session showed the first race's gaps during its countdown. | S3 | The gaps carry from frame to frame (they change four times a second), and nothing cleared them. | The HUD clears when a race starts. | The browser test starts a second race and reads its countdown |
+| 19 | The gaps read 0.0 after a frame that covered several timing loops (a slow frame, a tab coming back). | S3 | Every loop crossed in a frame took the frame's time. | Each loop's time is interpolated from the car's progress over the frame; no gap is shown until both cars have crossed the line. | 3 s after GO, standing at the line: "▲ 3.0" to the car that left at GO |
+| 20 | A page that blocks workers without an error (one never answers) would never have built its grid: "Building the grid…" for good. | S2 | The page waited on the worker's reply. | A worker that takes more than 8 s over a car is replaced by the page, starting with that car. | A test with a worker that never answers: 7 cars measured on the page after its silence, in 12.4 s |
+
+**Verified, no bug found:**
+- The festival's nine races build on the web with the C#'s routes, racing lines, speed profiles and measured cars, to the last bit (`tests/ai.test.ts`), and an AI-only race runs as the C#'s does (finding 5).
+- A drag race driven to its end: the player's quarter mile in 13.1 s at 187 km/h, results with both trap speeds, Enter back to free roam.
+- The menu on a phone in landscape (844×390) and the RACE button; leaving a race from the pause menu removes the rivals and their views and gives the car back.
+
+**Measured:**
+- The C# AI suite, before and after findings 2 and 3: head-to-head duels hold the skill order in 294 → 300 of 300 races, with 2 → 1 contacts; full grids 1.0 → 0.5 contacts a race, the longest a car was stuck 2.4 → 0.4 s.
+- The web's AI-only Grand Prix (five Pro drivers, two laps): 3 → 1 contact, 0 resets.
+- Building a race (desktop, Node): racing lines 7–81 ms, measuring a first grid's cars 2.0 s (now in the worker), later races 3–60 ms.
+
+**In Unity (compile-checked; not run):** the grid hold and qualifying order are in the shared Core, so Unity's races start the same way; `RaceController` lines up its PI-matched fields by pace.
+
+**Self-critique: the five weakest things after the first pass, and what was done:**
+
+1. The rivals were silent. **Fixed** (finding 11).
+2. The first race froze the page for seconds on a phone. **Fixed** (findings 10 and 20).
+3. The race said nothing about the cars around you. **Fixed** (finding 12).
+4. Races give nothing on the web: no credits, XP, levels, accolades or championships (the career is in the C# Core and Unity only). **Open, and next:** porting the career, tested against the C# as the AI was.
+5. Outside a race the island is still empty on the web: no traffic, stunts, weather or clock. **Open.**
+
+Also open: the countdown holds the car, so there is no revving at the line; building the racing line (50–80 ms) still runs on the main thread when a race starts (a dropped frame or two); the racing line can't be shown on the web; a player who stalls mid-grid holds up the cars behind for up to about 5 s.

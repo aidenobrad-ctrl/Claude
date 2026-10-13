@@ -234,7 +234,8 @@ The AI drives the same `Vehicle` and physics as the player. Only its inputs diff
   - Aggressive drivers defend the inside.
 - **Recovery.** One reverse attempt when stuck; otherwise a reset to the route (flipped, far off the road, stuck, or facing the wrong way). Cars that have finished park.
 - **Races.** `RaceSession` runs a race on the fixed step, the same in Unity and in the tests. It handles:
-  - a two-column grid and a countdown;
+  - a two-column grid in qualifying order (`QualifyingOrder`: fastest at the front, by each driver's time round the route at its own pace) and a countdown;
+  - the start: each car keeps to its grid column until 60 m past the line, then merges onto the racing line over the next 60 m (the line is one car's line: a grid two abreast all aiming for it sees the car in the other column as in the way, and swerves across to pass it);
   - laps or sprint distance, positions and lap times;
   - drafting (up to 32% less drag 3–30 m behind);
   - contacts counted as episodes, with wall hits kept apart.
@@ -360,6 +361,22 @@ Everything is synthesized; there are no recordings. The synthesis is sample code
 - **Web.** A worker renders the loops, beds and bars (the main thread only plays buffers and moves gains and playback rates). Nothing starts until the first key, click or touch (browsers require it). Settings: master, effects and music volume, the station (N, the FM touch button or the pause menu); saved in the browser.
 - **Unity.** Loops and beds render on worker threads and become clips on the main thread. The player's car is 2D; the four nearest other cars (racers and traffic) get 3D engine voices. The radio renders bars on a worker thread into a queue that `OnAudioFilterRead` plays. The bonnet camera muffles the car. Settings add engine, effects, music and station to the master and weather volumes.
 
+## The races on the web (`src/ai/`, `src/ui/race-ui.ts`)
+
+The AI is ported from the C# Core to TypeScript, so the phone version races too. The port is tested against the C#, which writes references (`dotnet run -- airef` in `dotnet/Halcyon.AI.Tests`):
+
+- the festival's routes, racing lines and speed profiles, and the measured cars, to the last bit (the port reads the exported road data as 32-bit floats, as Unity does, and uses the deterministic `dmath` functions where the C# uses `DMath`);
+- a whole race: five Pro drivers over a lap of the proving ground, the same to the last bit through the countdown and two seconds of racing, then finishing times within 1%. Not further: Unity's copy of the island is exported in 32-bit floats and 16-bit terrain, so a wheel on a paint edge can land on the other side of it, and a race is chaotic after that.
+
+On top of the C#'s race:
+
+- **The menu** (F, RACE on the touch controls, or the pause menu): every race with its kind, distance and field, and the rivals' difficulty (Novice to Legend, remembered). The world waits while it is open.
+- **The grid.** The rivals are drawn as the C# draws them (cars within a power-to-weight factor of 1.57 of the player's), put in qualifying order, and the player starts mid-grid (as in Unity): a back-of-the-grid start in a two-lap race against Pro drivers is unwinnable without rubber-banding, which the AI does not have. A duel is the festival's rival in the player's own car. Each rival has its own paint.
+- **No waiting on the main thread.** Measuring a car takes a fraction of a second of CPU, and a grid of seven froze the page for seconds on a phone. A worker measures them: the whole pool when the menu opens, the race's own cars first when it starts (`ability-worker.ts`, `ability-client.ts`); the page keeps drawing. A worker that never answers (a page can block workers without an error) is replaced by the page after 8 s.
+- **The HUD**: position, the lap or the distance to go, the race time, and the gaps to the cars ahead and behind. The gaps are real intervals, from timing loops every 5 m: the time since the car ahead passed where you are, and since you passed where the car behind is. A countdown with beeps and GO; results with times, best laps or trap speeds. Enter or the pad's A continues.
+- **The rivals heard**: four engine voices, as in Unity: each plays its car's own loops pitched by its rpm, through Unity's rolloff curve to 110 m, a low-pass for the air, a stereo pan and a little Doppler, fading in and out over a quarter second; a voice keeps its car within 1.1× the range and among the nearest six.
+- **Around the race**: the rivals on the minimap, a sprint's road as the GPS line, reset puts the car back on the race's road, waypoints and the car picker wait until the race is over, and the proving ground's own lap timer stays quiet.
+
 ## Testing
 
 - `npm run verify` runs the typecheck, the build, the simulation tests (Node) and the browser tests (headless Chromium through Playwright with SwiftShader). `--quick` shortens the long suites.
@@ -397,6 +414,11 @@ Everything is synthesized; there are no recordings. The synthesis is sample code
   - Roads that share pavement must share a height: the baker makes junctions where roads touch, and the profiles stay level where pavements overlap.
   - Settings live outside the career save.
 - **M8:** drifting (the handbrake declutches, the automatic box upshifts in a long slide, loose ground grips like loose ground), procedural sound in both versions (engines from firing pulses, tires, wind, impacts, UI and three generative radio stations), graphics presets in the web pause menu and dynamic resolution, an art pass (the meadows, the Blender cars in the web build, the festival's crowds, trucks, towers, cars on show and car park), a bug bash of the never-run Unity code, and the FM button on the touch controls.
+- **Web races:** the AI ported to TypeScript and tested against the C#; the festival's nine races on the phone, with a menu, a grid in qualifying order, the race HUD with gaps, the rivals on the minimap and heard, and results. Found on the way: the port's racecraft kept a reference to the race's one reused view of the other cars (C#'s is a struct, copied), so every rival saw the last car on the grid as the car ahead; and in both languages the start was a scramble (the grid hold and qualifying order).
+- **Web races decisions:**
+  - The AI is a port of the C#, tested to the last bit where the two worlds agree (the routes, lines, profiles, cars and a race's start), not a second AI.
+  - The grid lines up by pace and the player starts mid-grid, in both versions.
+  - Heavy work for a race happens off the main thread: the page keeps drawing on a phone.
 - **M8 decisions:**
   - Drift feel came from the drivetrain and the controls, not the tire curve: the post-peak curve was already gentle (10% down at four times the peak slip). A probe drove every car with three kinds of driver (`tools/dev/drift-probe.ts`).
   - The sound is synthesized sample code, the same in TypeScript and C#, so the web and Unity sound alike and the port is tested like the physics.

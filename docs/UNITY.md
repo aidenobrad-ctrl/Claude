@@ -85,7 +85,7 @@ village.
 | `unity/Assets/Halcyon/Scripts/Game/Garage.cs`, `Workshop.cs` | The garage: your cars, the dealer, upgrades, tuning (graphs, auto-tune, share codes), the test track, career data |
 | `unity/Assets/Halcyon/Scripts/Game/Career.cs` | The career save in `Application.persistentDataPath`: autosave, backup, recovery, clipboard export and import |
 | `unity/Assets/Halcyon/Scripts/Game/Ui.cs` | Shared IMGUI styles, panels, rows and plots, scaled to the screen |
-| `unity/Assets/Halcyon/Scripts/Game/RaceController.cs` | The events menu with class limits and conditions, PI-matched AI grids, race HUD (countdown, position, laps, gaps, wrong way), results and payouts |
+| `unity/Assets/Halcyon/Scripts/Game/RaceController.cs` | The events menu with class limits and conditions, PI-matched AI grids in qualifying order (fastest at the front, the player mid-grid), race HUD (countdown, position, laps, gaps, wrong way), results and payouts |
 | `unity/Assets/Halcyon/Scripts/Game/MapScreen.cs` | The map (fog of war, roads driven, places, the GPS route, fast travel) and the minimap |
 | `unity/Assets/Halcyon/Scripts/Editor/` | Project setup (URP, scene, build settings) and command-line builds |
 | `unity/Assets/Halcyon/Art/Resources/Cars/` | Car models from Blender (`blender/build_car.py`) |
@@ -135,13 +135,16 @@ village.
   - the head-to-head tournament (every driver against every other, every route, 4 seeds;
     `-- tournament`);
   - full grids (`-- grids`);
-  - mixed fields (`-- field`);
-  - fields matched to a player's PI, with parts (`-- pifield`), and their reset statistics
+  - mixed fields in qualifying order, as the game lines them up (`-- field`);
+  - fields matched to a player's PI, with parts, in qualifying order (`-- pifield`), and their reset statistics
     over seeds (`-- pistats`);
   - every car with random tunes and parts (`-- tuned`), and every car alone, stock and with
     every part, on every event (`-- matrix`);
   - debugging traces (`-- duel`, `-- compare`, `-- trace2`, `-- skillsolo`, `-- pirace`,
-    `-- crests`, `-- rejoin`).
+    `-- crests`, `-- rejoin`);
+  - the references the web's port of the AI is tested against (`-- airef`, written to
+    `dotnet/ref/ai/ai-ref.json`), and the reference race step by step (`-- airace EVERY UNTIL`,
+    to diff against `tools/dev/ai-race-trace.ts`).
 
   Results are in `docs/PLAYTEST.md` (M4).
 - `Halcyon.Career.Tests`: the PI of every car, parts and prices, payouts, a career saved

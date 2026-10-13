@@ -252,6 +252,8 @@ namespace Halcyon
                 // Head to head: the festival's rival, in the car the matching chose.
                 if (ev.Rival != null && field.Count > 0) field[0].Driver = ev.Rival;
                 Parallel.ForEach(field, r => abilities.Get(r.CarId, r.Tune, Rivals.PartsKey(r.Parts) == "stock" ? null : r.Upgrades, r.Key, wet, ev.Surface));
+                // The grid in qualifying order: fastest at the front.
+                field = RaceSession.QualifyingOrder(ev, line, field, abilities, wet);
                 Ghost g = null;
                 if (ev.Ghost)
                 {

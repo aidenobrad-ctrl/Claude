@@ -9,7 +9,7 @@ import { RadioStation, type StationId } from './radio';
 
 export type AudioRequest =
   | { type: 'init'; sr: number }
-  | { type: 'engine'; sr: number; carId: string }
+  | { type: 'engine'; sr: number; carId: string; /** For another car's voice (its on-load loops only). */ remote?: boolean }
   | { type: 'radio'; sr: number; station: StationId; seed: number }
   | { type: 'bar'; station: StationId };
 
@@ -20,7 +20,7 @@ export interface LoopData {
 
 export type AudioReply =
   | { type: 'init'; beds: Record<string, Float32Array>; shots: Record<string, Float32Array[]>; ui: Record<string, Float32Array> }
-  | { type: 'engine'; carId: string; electric: boolean; turbo: boolean; edge: number; limiter: number; idle: number; on: LoopData[]; off: LoopData[] }
+  | { type: 'engine'; carId: string; remote: boolean; electric: boolean; turbo: boolean; edge: number; limiter: number; idle: number; on: LoopData[]; off: LoopData[] }
   | { type: 'bar'; station: StationId; l: Float32Array; r: Float32Array; title: string; artist: string; newSong: boolean; ident: boolean };
 
 export const BEDS: BedId[] = ['squeal', 'road', 'gravel', 'grass', 'snow', 'spray', 'wind', 'intake', 'turbo'];
@@ -56,10 +56,10 @@ export class AudioRenderer {
         const set = renderEngineSet(spec, req.sr);
         const pack = (loops: { rpm: number; data: Float32Array }[]): LoopData[] => loops.map((l) => ({ rpm: l.rpm, data: l.data }));
         const on = pack(set.on);
-        const off = set.voice.electric ? [] : pack(set.off);
+        const off = set.voice.electric || req.remote ? [] : pack(set.off);
         const transfer = [...on, ...off].map((l) => l.data.buffer as ArrayBuffer);
         const v = set.voice;
-        return { reply: { type: 'engine', carId: spec.id, electric: v.electric, turbo: v.turbo, edge: v.edge, limiter: v.limiter, idle: v.idle, on, off }, transfer };
+        return { reply: { type: 'engine', carId: spec.id, remote: !!req.remote, electric: v.electric, turbo: v.turbo, edge: v.edge, limiter: v.limiter, idle: v.idle, on, off }, transfer };
       }
       case 'radio': {
         this.stations.set(req.station, new RadioStation(req.station, req.sr, req.seed));

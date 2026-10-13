@@ -33,6 +33,7 @@ export class TouchControls {
         <button class="t-small" data-a="reset" aria-label="Reset to road">ROAD</button>
         <button class="t-small" data-a="map" aria-label="Map">MAP</button>
         <button class="t-small" data-a="radio" aria-label="Next radio station">FM</button>
+        <button class="t-small" data-a="events" aria-label="Festival races">RACE</button>
         <button class="t-small" data-a="pause" aria-label="Pause">II</button>
       </div>`;
     parent.appendChild(this.el);

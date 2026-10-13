@@ -45,7 +45,7 @@ async function buildWorker(entry = 'src/world/tile-worker.ts') {
     target: ['es2020', 'safari15'],
     minify: !dev,
     legalComments: 'none',
-    define: { __DEV__: dev ? 'true' : 'false', __BUILD_TIME__: '""', __TILE_WORKER__: '""', __AUDIO_WORKER__: '""' },
+    define: { __DEV__: dev ? 'true' : 'false', __BUILD_TIME__: '""', __TILE_WORKER__: '""', __AUDIO_WORKER__: '""', __AI_WORKER__: '""' },
     logLevel: 'warning',
   });
   return r.outputFiles[0].text;
@@ -53,6 +53,8 @@ async function buildWorker(entry = 'src/world/tile-worker.ts') {
 const workerSource = await buildWorker();
 // The audio worker renders engine loops, sound beds and radio bars the same way.
 const audioWorkerSource = await buildWorker('src/audio/audio-worker.ts');
+// The AI worker measures the rivals' cars before a race.
+const aiWorkerSource = await buildWorker('src/ai/ability-worker.ts');
 
 const buildOptions = {
   entryPoints: [path.join(root, 'src/main.ts')],
@@ -69,6 +71,7 @@ const buildOptions = {
     __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
     __TILE_WORKER__: JSON.stringify(workerSource),
     __AUDIO_WORKER__: JSON.stringify(audioWorkerSource),
+    __AI_WORKER__: JSON.stringify(aiWorkerSource),
   },
   logLevel: 'warning',
   metafile: true,

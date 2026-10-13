@@ -23,11 +23,12 @@ export type Action =
   | 'horn'
   | 'lights'
   | 'radio'
+  | 'events'
   | 'confirm';
 
 export const ACTIONS: readonly Action[] = [
   'throttle', 'brake', 'steerLeft', 'steerRight', 'handbrake', 'clutch', 'shiftUp', 'shiftDown',
-  'camera', 'lookBack', 'reset', 'rewind', 'pause', 'map', 'photo', 'horn', 'lights', 'radio', 'confirm',
+  'camera', 'lookBack', 'reset', 'rewind', 'pause', 'map', 'photo', 'horn', 'lights', 'radio', 'events', 'confirm',
 ];
 
 export const ACTION_LABELS: Record<Action, string> = {
@@ -35,7 +36,7 @@ export const ACTION_LABELS: Record<Action, string> = {
   handbrake: 'Handbrake', clutch: 'Clutch', shiftUp: 'Shift up', shiftDown: 'Shift down',
   camera: 'Change camera', lookBack: 'Look back', reset: 'Reset to road', rewind: 'Rewind',
   pause: 'Pause / back', map: 'Map', photo: 'Photo mode', horn: 'Horn', lights: 'Headlights',
-  radio: 'Next radio station', confirm: 'Confirm / start event',
+  radio: 'Next radio station', events: 'Festival races', confirm: 'Confirm / start event',
 };
 
 export type KeyBindings = Record<Action, string[]>;
@@ -59,6 +60,7 @@ export const DEFAULT_KEYS: KeyBindings = {
   horn: ['KeyH'],
   lights: ['KeyL'],
   radio: ['KeyN'],
+  events: ['KeyF'],
   confirm: ['Enter'],
 };
 

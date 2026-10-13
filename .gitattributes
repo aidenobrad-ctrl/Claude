@@ -1,0 +1,30 @@
+# Unity and Blender binaries: never diff or convert line endings.
+*.bytes binary
+*.fbx binary
+*.glb binary
+*.blend binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.exr binary
+*.hdr binary
+*.tif binary
+*.tga binary
+*.psd binary
+*.wav binary
+*.ogg binary
+*.mp3 binary
+*.ttf binary
+*.otf binary
+# Unity YAML assets are text; keep them LF everywhere.
+*.unity text eol=lf
+*.prefab text eol=lf
+*.asset text eol=lf
+*.mat text eol=lf
+*.meta text eol=lf
+*.cs text eol=lf
+*.asmdef text eol=lf
+*.shader text eol=lf
+*.hlsl text eol=lf
+*.uss text eol=lf
+*.uxml text eol=lf

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Compile-checks the Unity-side scripts (unity/Assets/Halcyon/Scripts)
+       against UnityEngine reference assemblies (node tools/fetch-unity-ref.mjs).
+       Unity defines are set for a standalone player with the legacy input
+       manager; the Input System code paths are compiled by Unity only. -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <NoWarn>CS1591;CS0618</NoWarn>
+    <DefineConstants>UNITY_STANDALONE;ENABLE_LEGACY_INPUT_MANAGER;HALCYON_CHECK</DefineConstants>
+    <UnityRefDir>$(MSBuildThisFileDirectory)../../.cache/unityref</UnityRefDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../unity/Assets/Halcyon/Scripts/**/*.cs" Exclude="../../unity/Assets/Halcyon/Scripts/**/Editor/**" />
+    <ProjectReference Include="../Halcyon.Core/Halcyon.Core.csproj" />
+    <Reference Include="$(UnityRefDir)/*.dll" Private="false" />
+  </ItemGroup>
+</Project>

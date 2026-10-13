@@ -1,0 +1,14 @@
+{
+  "id": "nordvik-kyst-sport",
+  "name": "Nordvik Kyst Sport",
+  "paint": "#4A4F57",
+  "accent": "#111111",
+  "rim": "#3A3C40",
+  "caliper": "#D01F1F",
+  "interior": "#1A1A1C",
+  "metallic": 0.05,
+  "paintRoughness": 0.25,
+  "accentMetallic": 0.3,
+  "rimMetallic": 1.0,
+  "rimRoughness": 0.24
+}

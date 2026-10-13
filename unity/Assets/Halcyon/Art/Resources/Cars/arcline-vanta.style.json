@@ -1,0 +1,14 @@
+{
+  "id": "arcline-vanta",
+  "name": "Arcline Vanta",
+  "paint": "#18C4B8",
+  "accent": "#111111",
+  "rim": "#202226",
+  "caliper": "#D92B1C",
+  "interior": "#1A1A1C",
+  "metallic": 0.7,
+  "paintRoughness": 0.32,
+  "accentMetallic": 0.3,
+  "rimMetallic": 1.0,
+  "rimRoughness": 0.24
+}

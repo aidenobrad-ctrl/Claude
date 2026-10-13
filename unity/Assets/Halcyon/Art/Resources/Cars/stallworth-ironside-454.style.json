@@ -1,0 +1,14 @@
+{
+  "id": "stallworth-ironside-454",
+  "name": "Stallworth Ironside 454",
+  "paint": "#D4A017",
+  "accent": "#0A0A0A",
+  "rim": "#C8C8CC",
+  "caliper": "#D92B1C",
+  "interior": "#101010",
+  "metallic": 0.15,
+  "paintRoughness": 0.32,
+  "accentMetallic": 0.0,
+  "rimMetallic": 1.0,
+  "rimRoughness": 0.15
+}

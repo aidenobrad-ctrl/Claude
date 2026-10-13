@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Compile-checks the Unity editor scripts (unity/Assets/Halcyon/Scripts/Editor)
+       against UnityEngine modules and UnityEditor reference assemblies
+       (node tools/fetch-unity-ref.mjs). -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <NoWarn>CS1591;CS0618;MSB3277;CS1701;CS1702</NoWarn>
+    <DefineConstants>UNITY_EDITOR;UNITY_STANDALONE;ENABLE_LEGACY_INPUT_MANAGER;HALCYON_CHECK</DefineConstants>
+    <UnityRefDir>$(MSBuildThisFileDirectory)../../.cache/unityref</UnityRefDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../unity/Assets/Halcyon/Scripts/Editor/**/*.cs" />
+    <ProjectReference Include="../Halcyon.Core/Halcyon.Core.csproj" />
+    <ProjectReference Include="../Halcyon.Unity/Halcyon.Unity.csproj" />
+    <Reference Include="$(UnityRefDir)/*.dll" Private="false" />
+    <Reference Include="$(UnityRefDir)/editor/UnityEditor.dll" Private="false" />
+  </ItemGroup>
+</Project>

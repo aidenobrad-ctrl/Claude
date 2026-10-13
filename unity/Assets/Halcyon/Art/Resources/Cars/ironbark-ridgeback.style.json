@@ -1,0 +1,14 @@
+{
+  "id": "ironbark-ridgeback",
+  "name": "Ironbark Ridgeback",
+  "paint": "#6B7A3A",
+  "accent": "#111111",
+  "rim": "#18181A",
+  "caliper": "#55585C",
+  "interior": "#1A1A1C",
+  "metallic": 0.05,
+  "paintRoughness": 0.42,
+  "accentMetallic": 0.3,
+  "rimMetallic": 0.3,
+  "rimRoughness": 0.5
+}

@@ -148,7 +148,7 @@ Deviations are measured minus reference, rounded. Every value is within 10%.
 
 ## Models
 
-Every car has a Blender model made by `blender/build_car.py` (see `docs/UNITY.md`). Each model has three LODs, and each LOD keeps cleanly cut glass, lights, grilles and panel gaps. Review sheets with six views per car are in `blender/renders/`.
+Every car has a Blender model made by `blender/build_car.py` (see `docs/UNITY.md`). Each model has three LODs, and each LOD keeps cleanly cut glass, lights, grilles and panel gaps. Review sheets with six views per car are in `blender/renders/`. The web build uses the same models since M8 (LOD 1, 88–156 KB each, packed by `tools/pack-cars.mjs`); the drawn stand-in from `vehicles/render/car-model.ts` shows only while a model loads.
 
 ## How each car drifts (M8)
 

@@ -41,7 +41,7 @@ await esbuild.build({
   target: 'node22',
   sourcemap: 'inline',
   outExtension: { '.js': '.mjs' },
-  loader: { '.css': 'text', '.glsl': 'text' },
+  loader: { '.css': 'text', '.glsl': 'text', '.glb': 'binary' },
   define: { __DEV__: 'true', __BUILD_TIME__: '"test"', __TILE_WORKER__: '""', __AUDIO_WORKER__: '""' },
   logLevel: 'warning',
 });

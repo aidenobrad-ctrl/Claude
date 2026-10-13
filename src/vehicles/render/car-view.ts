@@ -2,6 +2,7 @@
 // and poses the wheels (suspension travel, steering, spin) and lights.
 import * as THREE from 'three';
 import { buildCarModel, type CarModel, type ModelOptions } from './car-model';
+import { applyCarModel, hasCarModel, loadCarModel } from './car-glb';
 import type { Vehicle } from '../vehicle';
 import type { CarSpec } from '../spec';
 
@@ -16,6 +17,11 @@ export class CarView {
   headlightsOn = false;
   /** Soft blob on the ground under the car, for grounding at any shadow quality. */
   readonly contactShadow: THREE.Mesh;
+  /**
+   * Settles when the car's Blender model has replaced the drawn body (true), or
+   * when there is none to load (false). Until then the drawn body shows.
+   */
+  readonly ready: Promise<boolean>;
 
   constructor(readonly vehicle: Vehicle, spec: CarSpec, opts: ModelOptions = {}) {
     this.model = buildCarModel(spec, vehicle.params, opts);
@@ -24,6 +30,14 @@ export class CarView {
     this.contactShadow.renderOrder = 1;
     this.snapshot();
     this.snapshot();
+    this.ready =
+      opts.blender === false || !hasCarModel(spec.id)
+        ? Promise.resolve(false)
+        : loadCarModel(spec.id).then((src) => {
+            if (!src) return false;
+            applyCarModel(this.model, src, spec.id, vehicle.params, opts.paint);
+            return true;
+          });
   }
 
   get root(): THREE.Group {

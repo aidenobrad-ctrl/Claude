@@ -63,7 +63,7 @@ const buildOptions = {
   minify: !dev,
   legalComments: 'eof',
   sourcemap: dev ? 'inline' : false,
-  loader: { '.css': 'text', '.glsl': 'text' },
+  loader: { '.css': 'text', '.glsl': 'text', '.glb': 'binary' },
   define: {
     __DEV__: dev ? 'true' : 'false',
     __BUILD_TIME__: JSON.stringify(new Date().toISOString()),

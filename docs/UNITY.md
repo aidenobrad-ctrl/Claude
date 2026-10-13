@@ -100,7 +100,9 @@ village.
   guardrails on retaining walls.
 - Water: sea, lakes and rivers.
 - Trees: 185k, GPU-instanced with near and far meshes.
-- Buildings, the festival, and sun/sky/fog/post-processing.
+- Buildings, the festival (the stage, the wheel, tents and flags; since M8 also the cars on
+  show on lit plinths, the car park, food trucks, light towers, barriers and crowds, all from
+  the shared layout and solid in the physics), and sun/sky/fog/post-processing.
 - `SkyDirector`: the sun and moon on the clock, sky colours, clouds, ambient light, fog, a
   reflection probe, rain and splashes, lightning and thunder, wet road materials, and
   lit windows and lamps at night (`ProceduralAudio` makes the rain and thunder sounds).
@@ -217,7 +219,9 @@ bars, snorkels, spare wheels and interiors come from a parts registry.
 `blender/renders/<car>.png`.
 
 **Output.** The FBX and `<car>.style.json` land in `Art/Resources/Cars/`. The FBX faces +Z
-in Unity, with its origin on the ground at mid-wheelbase.
+in Unity, with its origin on the ground at mid-wheelbase. `--glb DIR` also exports one LOD
+(`--glb-lod`, default 1) as GLB for the web build; `node tools/pack-cars.mjs` does that for
+every car and packs them into `src/vehicles/models/`.
 
 ## .meta files
 

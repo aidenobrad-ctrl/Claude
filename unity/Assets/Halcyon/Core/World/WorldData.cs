@@ -89,11 +89,35 @@ namespace Halcyon.Core
         public int color;
     }
 
+    /// <summary>A car standing still at the festival: on show on a plinth, or parked.</summary>
+    public sealed class FestivalCar
+    {
+        public double x, z, y, fx, fz;
+        public string specId;
+        /// <summary>0xRRGGBB, or -1 for the car's own colour.</summary>
+        public int paint;
+    }
+
+    /// <summary>Where a crowd stands: centre, facing (towards what it watches), size across and along, head count.</summary>
+    public sealed class FestivalCrowd
+    {
+        public double x, z, y, fx, fz, w, d;
+        public int count;
+    }
+
     public sealed class FestivalLayout
     {
         public FestivalPiece stage, wheel, arch;
         public FestivalPiece[] tents, poles;
         public int[] colors;
+        /// <summary>Cars on show on round plinths (radius 3.3 m, 0.35 m high) and the car park.</summary>
+        public FestivalCar[] displays = new FestivalCar[0], parked = new FestivalCar[0];
+        public FestivalPiece[] trucks = new FestivalPiece[0], towers = new FestivalPiece[0];
+        /// <summary>Crowd barriers (1.1 m tall): polylines of (x, z, y) points.</summary>
+        public double[][] barriers = new double[0][];
+        public FestivalCrowd[] crowds = new FestivalCrowd[0];
+        /// <summary>The car park's gravel: x, z, y, fx, fz (along the bays), w (across the rows), d (along the bays); null in older exports.</summary>
+        public double[] carPark;
     }
 
     public struct Spawn
@@ -281,6 +305,46 @@ namespace Halcyon.Core
                 colors = new int[colors.Count],
             };
             for (int i = 0; i < colors.Count; i++) Festival.colors[i] = (int)Json.Num(colors[i]);
+            // The dressing added in M8 (absent from older exports).
+            List<object> Opt(string key) => f.TryGetValue(key, out var v) && v is List<object> l ? l : new List<object>();
+            FestivalCar[] Cars(List<object> l)
+            {
+                var r = new FestivalCar[l.Count];
+                for (int i = 0; i < l.Count; i++)
+                {
+                    var d = Json.Obj(l[i]);
+                    r[i] = new FestivalCar { x = d.Num("x"), z = d.Num("z"), y = d.Num("y"), fx = d.Num("fx"), fz = d.Num("fz"), specId = d.Str("specId"), paint = (int)d.Num("paint", -1) };
+                }
+                return r;
+            }
+            Festival.displays = Cars(Opt("displays"));
+            Festival.parked = Cars(Opt("parked"));
+            Festival.trucks = Pieces(Opt("trucks"));
+            Festival.towers = Pieces(Opt("towers"));
+            var barriers = Opt("barriers");
+            Festival.barriers = new double[barriers.Count][];
+            for (int i = 0; i < barriers.Count; i++)
+            {
+                var pts = Json.Arr(barriers[i]);
+                var b = new double[pts.Count * 3];
+                for (int k = 0; k < pts.Count; k++)
+                {
+                    var p = Json.Obj(pts[k]);
+                    b[3 * k] = p.Num("x");
+                    b[3 * k + 1] = p.Num("z");
+                    b[3 * k + 2] = p.Num("y");
+                }
+                Festival.barriers[i] = b;
+            }
+            if (f.TryGetValue("carPark", out var cp) && cp is Dictionary<string, object> park)
+                Festival.carPark = new[] { park.Num("x"), park.Num("z"), park.Num("y"), park.Num("fx"), park.Num("fz"), park.Num("w"), park.Num("d") };
+            var crowds = Opt("crowds");
+            Festival.crowds = new FestivalCrowd[crowds.Count];
+            for (int i = 0; i < crowds.Count; i++)
+            {
+                var d = Json.Obj(crowds[i]);
+                Festival.crowds[i] = new FestivalCrowd { x = d.Num("x"), z = d.Num("z"), y = d.Num("y"), fx = d.Num("fx"), fz = d.Num("fz"), w = d.Num("w"), d = d.Num("d"), count = (int)d.Num("count") };
+            }
         }
 
         void ReadHeight(byte[] payload)

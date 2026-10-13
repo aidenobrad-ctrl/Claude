@@ -180,6 +180,8 @@ export class Grass {
   private uniforms: Record<string, THREE.IUniform>;
   /** Texels refreshed last update (perf counter). */
   updated = 0;
+  /** Ground kept bare of blades (the festival's car park); set before the first update. */
+  exclude: ((x: number, z: number) => boolean) | null = null;
   readonly range: number;
 
   constructor(
@@ -270,6 +272,7 @@ export class Grass {
             if (hit.surface === SURFACE.grass) d = 1;
             else if (hit.surface === SURFACE.dirt) d = 0.22;
           }
+          if (d > 0 && this.exclude?.(x, z)) d = 0;
         }
         this.data[k * 4] = h;
         this.data[k * 4 + 1] = d;

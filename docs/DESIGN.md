@@ -163,6 +163,8 @@ Lap timing requires passing all three sectors in order, so reversing over the li
   - **Materials:** clear-coat paint, and dielectric glass with a clearcoat layer. M1 found that metallic dark glass rendered black, because reflections are tinted by the base color.
 - **Effects:** skid marks are a ring buffer of quads with vertex alpha, darker on asphalt and light ruts on loose ground. Smoke, dust and spray are one point cloud with per-particle size and alpha.
 - **Terrain colour (M8 art pass):** meadows are tinted dry or lush by noise at three scales (1.4 km fields, 380 m patches, 95 m tufts), stretched to use its full range (the noise sits in a narrow band around 0.5); sun-facing slopes dry out first; lush patches carry a faint speckle of wildflowers up close. A view across the island reads as pasture and farmland instead of one green.
+- **The Blender cars on the web (M8 art pass):** the web build embeds the same cars as Unity: `tools/pack-cars.mjs` exports LOD 1 of each car from `blender/build_car.py` as GLB and packs it with gltfpack (meshopt compression and quantized vertices, about 130 KB a car). `vehicles/render/car-glb.ts` decodes a model once and clones it per car view; it replaces the drawn body when it has loaded (the drawn one is the stand-in until then), and its wheels and callipers move into the view's steering and spinning groups. Materials are chosen by slot name as in Unity (`car-style.ts`).
+- **The festival's dressing (M8 art pass):** the layout (`world/festival.ts`) adds the cars on show, the car park, food trucks, light towers, crowd barriers and crowd areas, all solid in the physics and exported to Unity. `world/render/festival-extras.ts` draws them: standing cars are baked by finish (paint and coats, metal, matte, glass) so they draw in a few calls; the parked ones cast a blob, not a real shadow; the crowds are instanced people (legs, torso and arms, head) who bounce and sway in the vertex shader; the grass leaves the car park and the plinths bare.
 
 ## Unity and Blender
 
@@ -394,9 +396,11 @@ Everything is synthesized; there are no recordings. The synthesis is sample code
   - Yumps are built into the road profile: real crests were too few and too messy to rely on.
   - Roads that share pavement must share a height: the baker makes junctions where roads touch, and the profiles stay level where pavements overlap.
   - Settings live outside the career save.
-- **M8:** drifting (the handbrake declutches, the automatic box upshifts in a long slide, loose ground grips like loose ground), procedural sound in both versions (engines from firing pulses, tires, wind, impacts, UI and three generative radio stations), graphics presets in the web pause menu and dynamic resolution, an art pass on the meadows, a bug bash of the never-run Unity code, and the FM button on the touch controls.
+- **M8:** drifting (the handbrake declutches, the automatic box upshifts in a long slide, loose ground grips like loose ground), procedural sound in both versions (engines from firing pulses, tires, wind, impacts, UI and three generative radio stations), graphics presets in the web pause menu and dynamic resolution, an art pass (the meadows, the Blender cars in the web build, the festival's crowds, trucks, towers, cars on show and car park), a bug bash of the never-run Unity code, and the FM button on the touch controls.
 - **M8 decisions:**
   - Drift feel came from the drivetrain and the controls, not the tire curve: the post-peak curve was already gentle (10% down at four times the peak slip). A probe drove every car with three kinds of driver (`tools/dev/drift-probe.ts`).
   - The sound is synthesized sample code, the same in TypeScript and C#, so the web and Unity sound alike and the port is tested like the physics.
   - Engines are played like recorded loops (pitch and crossfade between rpm points), not synthesized live: a few native sources per car instead of DSP in a script, on the web and in Unity.
   - No heavy mobile work: the player's phone is a current flagship; presets, the pixel budget and dynamic resolution cover the rest.
+  - One set of car models for both versions: the Blender generator is the source, exported as FBX for Unity and as packed GLB for the web.
+  - Dressing that a car can hit is world data (shared, exported, solid); only its look differs between the versions.

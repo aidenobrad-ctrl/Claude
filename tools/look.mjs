@@ -5,6 +5,8 @@ const [q = 'ultra', time = 'golden', prefix = 'look', which = 'island,festival,v
 const want = new Set(which.split(','));
 const b = await launchBrowser();
 const g = await openGame(b, { viewport: 'desktop', query: `test=1&q=${q}&time=${time}` });
+// The cars' Blender models load a moment after the game.
+await g.page.evaluate(() => Promise.all([...window.__game.game.views.map((v) => v.ready), window.__game.game.festivalExtras.ready]));
 const t0 = Date.now();
 if (want.has('island')) {
   // 1. Chase cam on the island road leaving the festival.
@@ -30,6 +32,43 @@ if (want.has('festival')) {
     api.setCamera(cx, f.stage.y + 34, cz, (f.stage.x + f.wheel.x) / 2, f.stage.y + 12, (f.stage.z + f.wheel.z) / 2, 50);
   });
   await shot(g.page, `${prefix}-${q}-${time}-festival`);
+  await g.page.evaluate(() => window.__game.setCamera());
+}
+if (want.has('show')) {
+  // The cars on show, from the festival road side, with the stage's pit behind.
+  await g.page.evaluate(() => {
+    const api = window.__game;
+    const f = api.game.sim.world.festival;
+    const d = f.displays;
+    const mid = d[Math.floor(d.length / 2)];
+    api.setInput({});
+    api.setUiVisible(false);
+    // Stand back from the middle plinth, towards the road, a little above head height.
+    api.setCamera(mid.x + mid.fx * 11 - mid.fz * 5, mid.y + 2.4, mid.z + mid.fz * 11 + mid.fx * 5, mid.x, mid.y + 1, mid.z, 50);
+  });
+  await shot(g.page, `${prefix}-${q}-${time}-show`);
+  await g.page.evaluate(() => {
+    const api = window.__game;
+    const f = api.game.sim.world.festival;
+    const c = f.crowds[0];
+    // The pit from behind the crowd, looking at the stage.
+    api.setCamera(c.x - c.fx * (c.d / 2 + 14), c.y + 5, c.z - c.fz * (c.d / 2 + 14), f.stage.x, f.stage.y + 6, f.stage.z, 55);
+  });
+  await shot(g.page, `${prefix}-${q}-${time}-pit`);
+  await g.page.evaluate(() => {
+    const api = window.__game;
+    const f = api.game.sim.world.festival;
+    const t = f.trucks[2];
+    api.setCamera(t.x + t.fx * 26 + t.fz * 8, t.y + 4, t.z + t.fz * 26 - t.fx * 8, t.x, t.y + 1.5, t.z, 55);
+  });
+  await shot(g.page, `${prefix}-${q}-${time}-food`);
+  await g.page.evaluate(() => {
+    const api = window.__game;
+    const f = api.game.sim.world.festival;
+    const p = f.parked[Math.floor(f.parked.length / 2)];
+    api.setCamera(p.x - p.fz * 14 + p.fx * 9, p.y + 5, p.z + p.fx * 14 + p.fz * 9, p.x, p.y + 0.6, p.z, 50);
+  });
+  await shot(g.page, `${prefix}-${q}-${time}-park`);
   await g.page.evaluate(() => window.__game.setCamera());
 }
 if (want.has('vista')) {

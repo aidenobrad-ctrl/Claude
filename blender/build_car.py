@@ -59,6 +59,9 @@ def args():
     p.add_argument('--views', default='front34,rear34')
     p.add_argument('--blend', default='')
     p.add_argument('--no-export', action='store_true')
+    p.add_argument('--glb', default='', help='also export a GLB of one LOD for the web build to this folder')
+    p.add_argument('--glb-lod', type=int, default=1)
+    p.add_argument('--no-fbx', action='store_true', help='skip the FBX and style (with --glb)')
     p.add_argument('--engine', default='CYCLES')
     return p.parse_args(argv)
 
@@ -392,6 +395,31 @@ def export_fbx(path):
     )
 
 
+def export_glb(path, lod):
+    """The car for the web build: one LOD of every part, the wheels and callipers under
+    their hub empties, the materials by name (the game swaps in its own)."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    bpy.ops.object.select_all(action='DESELECT')
+    for ob in bpy.context.scene.objects:
+        n = ob.name
+        k = n.rfind('_LOD')
+        if ob.type == 'EMPTY' or (ob.type == 'MESH' and (k < 0 or n[k + 4:] == str(lod))):
+            ob.select_set(True)
+    bpy.ops.export_scene.gltf(
+        filepath=path,
+        export_format='GLB',
+        use_selection=True,
+        export_apply=True,
+        export_yup=True,
+        export_texcoords=False,
+        export_normals=True,
+        export_materials='EXPORT',
+        export_cameras=False,
+        export_lights=False,
+        export_extras=False,
+    )
+
+
 # --- Review renders ----------------------------------------------------------------------------
 def stage(body):
     sc = bpy.context.scene
@@ -520,7 +548,11 @@ def main():
         t = time.time()
         reset_scene()
         body = build(car, a.voxel)
-        if not a.no_export:
+        if a.glb:
+            glb = os.path.join(a.glb, f'{car}.glb')
+            export_glb(glb, a.glb_lod)
+            print(f'exported {glb}')
+        if not a.no_export and not a.no_fbx:
             fbx = os.path.join(a.out, f'{car}.fbx')
             export_fbx(fbx)
             export_style(car, os.path.join(a.out, f'{car}.style.json'))

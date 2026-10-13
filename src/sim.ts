@@ -15,7 +15,7 @@ import { applyBumps, newHit, type Ground, type GroundHit } from './world/ground'
 import type { Colliders } from './world/colliders';
 import { World, WorldGround, addBridgeRails, addBuildingColliders, type RoadHit, type TreeCircle } from './world/world';
 import { PROVING_ORIGIN, PLATEAUS, REGION } from './world/island';
-import { addFestivalColliders } from './world/festival';
+import { addFestivalColliders, addFestivalExtraColliders } from './world/festival';
 import { addRailColliders } from './world/guardrails';
 
 export interface SimCar {
@@ -117,6 +117,7 @@ export class Sim {
     addBuildingColliders(this.world, this.colliders);
     addFestivalColliders(this.world.festival, this.colliders);
     addRailColliders(this.world, this.world.rails, this.colliders);
+    addFestivalExtraColliders(this.world.festival, this.colliders);
     // Trees are generated per terrain tile; the world hands them to collisions on demand.
     this.colliders.extra = (x, z, r, cb) => this.world.queryTrees(x, z, r, cb as (c: TreeCircle) => void);
     this.reset();

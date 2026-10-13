@@ -6,6 +6,11 @@ declare module '*.glsl' {
   const text: string;
   export default text;
 }
+/** A binary asset (a car model), embedded in the build. */
+declare module '*.glb' {
+  const data: Uint8Array;
+  export default data;
+}
 
 /** True in `--dev` builds. Use for expensive assertions. */
 declare const __DEV__: boolean;

@@ -6,7 +6,7 @@ import { Input, neutralControls, type Action, type Controls } from './engine/inp
 import { Perf } from './engine/perf';
 import { Atmosphere, type TimeOfDay } from './engine/render/atmosphere';
 import { Pipeline } from './engine/render/pipeline';
-import { QUALITY, autoQuality, type Quality, type QualityName } from './engine/render/quality';
+import { QUALITY, autoQuality, gpuName, type Quality, type QualityName } from './engine/render/quality';
 import { patchTree } from './engine/render/materials';
 import { CarReflections } from './vehicles/render/reflections';
 import { CameraRig, CAM_LABELS } from './engine/render/camera-rig';
@@ -18,6 +18,8 @@ import { Vegetation } from './world/render/vegetation';
 import { Grass } from './world/render/grass';
 import { buildBuildingsView, type BuildingsView } from './world/render/buildings-view';
 import { FestivalView } from './world/render/festival-view';
+import { FestivalExtras } from './world/render/festival-extras';
+import { festivalBare } from './world/festival';
 import { GpsView } from './world/render/gps-view';
 import { findRoute, type Route } from './world/route';
 import { paintBaseMap, mapPois, Minimap, FullMap } from './ui/map';
@@ -115,6 +117,8 @@ export class Game {
   readonly grass: Grass | null = null;
   readonly buildings: BuildingsView;
   readonly festival: FestivalView;
+  /** The festival's crowds, cars on show, car park, food trucks and towers. */
+  readonly festivalExtras: FestivalExtras;
   readonly gps = new GpsView();
   readonly minimap: Minimap;
   readonly fullmap: FullMap;
@@ -157,7 +161,7 @@ export class Game {
     this.uiRoot = opts.ui;
     this.sim = new Sim(opts.seed);
     const nav = typeof navigator !== 'undefined' ? (navigator as Navigator & { deviceMemory?: number }) : undefined;
-    this.quality = QUALITY[opts.quality ?? autoQuality(this.mobile, nav?.hardwareConcurrency ?? 4, nav?.deviceMemory)];
+    this.quality = QUALITY[opts.quality ?? autoQuality(this.mobile, nav?.hardwareConcurrency ?? 4, nav?.deviceMemory, gpuName())];
     this.pixelBudget = this.quality.pixelBudget;
     this.renderer = new THREE.WebGLRenderer({
       canvas: this.canvas,
@@ -209,11 +213,15 @@ export class Game {
     this.scene.add(this.buildings.group);
     this.festival = new FestivalView(this.sim.world.festival);
     this.scene.add(this.festival.group);
+    this.festivalExtras = new FestivalExtras(this.sim.world.festival, { parked: this.quality.name !== 'low', crowd: this.quality.name === 'low' ? 0.4 : this.quality.name === 'medium' ? 0.7 : 1 });
+    this.scene.add(this.festivalExtras.group);
     const q = this.quality;
     this.vegetation = new Vegetation(this.renderer, this.tiles, { near: q.treeNear, far: q.treeFar, thinFrom: q.treeThin, thinKeep: q.treeKeep, shadows: q.treeShadows });
     this.scene.add(this.vegetation.group);
     if (q.grass > 0) {
       this.grass = new Grass(this.sim.ground, q.grass);
+      const fest = this.sim.world.festival;
+      this.grass.exclude = (x, z) => festivalBare(fest, x, z);
       this.scene.add(this.grass.mesh);
     }
     this.scene.add(buildTrackView(this.sim.track));
@@ -261,7 +269,7 @@ export class Game {
       getQuality: () => savedQuality() ?? 'auto',
       setQuality: (q) => {
         saveQuality(q);
-        const want = q === 'auto' ? autoQuality(this.mobile, navigator.hardwareConcurrency ?? 4, (navigator as Navigator & { deviceMemory?: number }).deviceMemory) : q;
+        const want = q === 'auto' ? autoQuality(this.mobile, navigator.hardwareConcurrency ?? 4, (navigator as Navigator & { deviceMemory?: number }).deviceMemory, gpuName()) : q;
         return want !== this.quality.name;
       },
       getAudio: () => this.audio.settings,
@@ -313,6 +321,12 @@ export class Game {
       const view = new CarView(c.vehicle, spec);
       this.scene.add(view.root, view.contactShadow);
       patchTree(view.root);
+      // The Blender model arrives a moment later: its materials get the fog and the live reflections too.
+      void view.ready.then((swapped) => {
+        if (!swapped || !this.views.includes(view)) return;
+        patchTree(view.root);
+        if (view === this.views[0]) this.reflections?.track(view.root);
+      });
       return view;
     });
     if (this.views[0] && this.reflections) this.reflections.track(this.views[0].root);

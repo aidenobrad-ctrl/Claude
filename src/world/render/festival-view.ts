@@ -7,7 +7,7 @@ import { FESTIVAL_COLORS } from '../festival';
 import { patchMaterial } from '../../engine/render/materials';
 import { atmoUniforms } from '../../engine/render/atmosphere';
 
-class Merge {
+export class Merge {
   pos: number[] = [];
   nrm: number[] = [];
   col: number[] = [];
@@ -407,7 +407,7 @@ export class FestivalView {
 }
 
 /** Append a BufferGeometry (non-indexed or indexed) to a Merge with one colour. */
-function mergeInto(m: Merge, g: THREE.BufferGeometry, color: THREE.Color): void {
+export function mergeInto(m: Merge, g: THREE.BufferGeometry, color: THREE.Color): void {
   const pos = g.getAttribute('position');
   const nrm = g.getAttribute('normal');
   const base = m.pos.length / 3;

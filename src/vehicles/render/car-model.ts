@@ -452,6 +452,8 @@ export interface ModelOptions {
   lod?: 0 | 1 | 2;
   caliper?: number;
   rim?: number;
+  /** Swap in the car's Blender model once it has loaded (car-glb.ts); default true. */
+  blender?: boolean;
 }
 
 export function buildCarModel(spec: CarSpec, params: VehicleParams, opts: ModelOptions = {}): CarModel {

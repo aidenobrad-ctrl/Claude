@@ -21,7 +21,7 @@ await esbuild.build({
   target: 'node22',
   sourcemap: 'inline',
   define: { __DEV__: 'true', __BUILD_TIME__: '"tool"', __TILE_WORKER__: '""', __AUDIO_WORKER__: '""' },
-  loader: { '.css': 'text', '.glsl': 'text' },
+  loader: { '.css': 'text', '.glsl': 'text', '.glb': 'binary' },
   logLevel: 'warning',
 });
 const r = spawnSync(process.execPath, ['--enable-source-maps', '--stack-size=4000', out, ...args], { stdio: 'inherit' });

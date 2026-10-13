@@ -44,7 +44,31 @@ export const QUALITY: Record<QualityName, Quality> = {
   ultra: { name: 'ultra', pixelBudget: 2560 * 1440, post: true, bloom: true, msaa: 4, ao: true, csm: true, shadowSize: 4096, cascades: 4, carReflections: 2, grass: 1, scenery: 1.3, terrain: 1.25, clouds: true, particles: 1000, treeNear: 220, treeFar: 2200, treeThin: 900, treeKeep: 0.6, treeShadows: true },
 };
 
-export function autoQuality(mobile: boolean, cores: number, memoryGb: number | undefined): QualityName {
+/** The GPU's name, where the browser tells it (to pick a preset), else ''. */
+export function gpuName(): string {
+  try {
+    const c = document.createElement('canvas');
+    const gl = (c.getContext('webgl2') ?? c.getContext('webgl')) as WebGLRenderingContext | null;
+    if (!gl) return '';
+    const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    const name = String(gl.getParameter(ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER));
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
+    return name;
+  } catch {
+    return '';
+  }
+}
+
+/** A recent flagship phone's GPU: Adreno 740 and up (Snapdragon 8 Gen 2 on), Immortalis, Xclipse 9xx. */
+export function flagshipMobileGpu(name: string): boolean {
+  const adreno = /Adreno[^0-9]*(\d{3})/i.exec(name);
+  if (adreno) return Number(adreno[1]) >= 740;
+  return /Immortalis|Xclipse 9\d\d/i.test(name);
+}
+
+export function autoQuality(mobile: boolean, cores: number, memoryGb: number | undefined, gpu = ''): QualityName {
+  // A flagship phone runs High; dynamic resolution holds the frame rate.
+  if (mobile && flagshipMobileGpu(gpu)) return 'high';
   if (mobile) return cores >= 8 && (memoryGb ?? 4) >= 6 ? 'medium' : 'low';
   if (cores <= 4) return 'medium';
   return 'high';

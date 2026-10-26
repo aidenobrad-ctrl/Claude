@@ -1,0 +1,326 @@
+package com.ridedeck.app.ui.settings
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ridedeck.app.data.prefs.ThemeMode
+import com.ridedeck.app.ui.components.GloveTouchTarget
+import com.ridedeck.core.format.Units
+import com.ridedeck.core.model.SpeedUnit
+import kotlin.math.roundToInt
+
+@Composable
+fun SettingsScreen(
+    onOpenPermissions: () -> Unit,
+    viewModel: SettingsViewModel = hiltViewModel(),
+) {
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val p = state.prefs
+    var showSystems by rememberSaveable { mutableStateOf(false) }
+
+    LazyColumn(
+        Modifier.fillMaxSize(),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 12.dp),
+    ) {
+        item { Header("Settings", large = true) }
+
+        item { Header("Display") }
+        item {
+            Choice(
+                label = "Units",
+                options = listOf(SpeedUnit.KMH to "km/h", SpeedUnit.MPH to "mph"),
+                selected = p.speedUnit,
+                onSelect = viewModel::setUnit,
+            )
+        }
+        item {
+            Choice(
+                label = "Theme",
+                options = listOf(ThemeMode.OLED to "OLED black", ThemeMode.DARK to "Dark", ThemeMode.SYSTEM to "System"),
+                selected = p.themeMode,
+                onSelect = viewModel::setTheme,
+            )
+        }
+
+        item { Header("Tracking") }
+        item { SwitchRow("Auto-pause when stopped", p.autoPauseEnabled, viewModel::setAutoPause) }
+        item { SwitchRow("Keep screen on during sessions", p.keepScreenOn, viewModel::setKeepScreenOn) }
+        item {
+            SwitchRow(
+                "Ride Mode",
+                p.rideModeLockEnabled,
+                viewModel::setRideModeLock,
+                supporting = "Locks search, history and settings while you're moving.",
+            )
+        }
+
+        item { Header("Speed alert (Bike mode)") }
+        item { SwitchRow("Alert when over the limit", p.speedAlertEnabled, viewModel::setSpeedAlertEnabled) }
+        if (p.speedAlertEnabled) {
+            item { SpeedLimitSlider(p.speedAlertLimitMps, p.speedUnit, viewModel::setSpeedAlertLimit) }
+            item { SwitchRow("Sound", p.speedAlertSound, viewModel::setSpeedAlertSound) }
+            item { SwitchRow("Vibrate", p.speedAlertVibrate, viewModel::setSpeedAlertVibrate) }
+        }
+
+        item { Header("Map") }
+        item { SwitchRow("Bike shops", p.showBikeShops, viewModel::setShowBikeShops) }
+        item { SwitchRow("Cycling map style (Bike mode)", p.showCycleLanes, viewModel::setShowCycleLanes) }
+        item { SwitchRow("Bike-share stations", p.showBikeShare, viewModel::setShowBikeShare) }
+        item {
+            SwitchRow(
+                "Show bike-share in Walk mode",
+                p.showBikeShareInWalkMode,
+                viewModel::setShowBikeShareInWalk,
+                supporting = "Hidden in Walk mode unless this is on.",
+            )
+        }
+        item { SwitchRow("Only stations with bikes", p.onlyStationsWithBikes, viewModel::setOnlyWithBikes) }
+        item {
+            Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
+                Text("Bike-share system", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    p.gbfsSystemName?.takeIf { it.isNotBlank() } ?: p.gbfsDiscoveryUrl ?: "None selected",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+                    Button(
+                        onClick = {
+                            showSystems = true
+                            viewModel.findBikeShareSystems()
+                        },
+                        modifier = Modifier.heightIn(min = GloveTouchTarget),
+                    ) { Text("Choose") }
+                    if (p.gbfsDiscoveryUrl != null) {
+                        OutlinedButton(
+                            onClick = { viewModel.chooseBikeShareSystem(null, null) },
+                            modifier = Modifier.heightIn(min = GloveTouchTarget),
+                        ) { Text("Clear") }
+                    }
+                }
+            }
+        }
+
+        item { Header("Music") }
+        item { SwitchRow("Show synced lyrics", p.lyricsEnabled, viewModel::setLyricsEnabled) }
+        item {
+            Text(
+                "The built-in player plays the songs stored on your phone (MP3, FLAC, OGG, M4A, WAV). " +
+                    "Copy music into the Music folder and it shows up in the library.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+            )
+        }
+
+        item { Header("Privacy") }
+        item {
+            TextButton(
+                onClick = onOpenPermissions,
+                modifier = Modifier.padding(horizontal = 12.dp).heightIn(min = GloveTouchTarget),
+            ) { Text("Review permissions") }
+        }
+
+        item { Header("About") }
+        item {
+            Text(
+                "RideDeck is built only on open-source software and open data. " +
+                    "Map data © OpenStreetMap contributors (ODbL); cycling map style © CyclOSM. " +
+                    "Routing by OSRM (FOSSGIS servers), search by Photon (komoot), bike shops via Overpass API. " +
+                    "Bike-share data from public GBFS feeds (MobilityData catalogue). Lyrics from LRCLIB. " +
+                    "Music playback by AndroidX Media3 ExoPlayer.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+            )
+        }
+    }
+
+    if (showSystems) {
+        BikeShareDialog(
+            search = state.bikeShare,
+            currentUrl = p.gbfsDiscoveryUrl.orEmpty(),
+            onPick = { name, url ->
+                viewModel.chooseBikeShareSystem(name, url)
+                showSystems = false
+            },
+            onDismiss = { showSystems = false },
+        )
+    }
+
+    state.message?.let { msg ->
+        AlertDialog(
+            onDismissRequest = viewModel::dismissMessage,
+            text = { Text(msg) },
+            confirmButton = { TextButton(onClick = viewModel::dismissMessage) { Text("OK") } },
+        )
+    }
+}
+
+@Composable
+private fun Header(text: String, large: Boolean = false) {
+    Text(
+        text,
+        style = if (large) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.titleSmall,
+        color = if (large) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.primary,
+        modifier = Modifier
+            .padding(start = 20.dp, end = 20.dp, top = if (large) 4.dp else 20.dp, bottom = 4.dp)
+            .semantics { heading() },
+    )
+}
+
+@Composable
+private fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit, supporting: String? = null) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = GloveTouchTarget)
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onChange)
+            .padding(horizontal = 20.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.bodyLarge)
+            if (supporting != null) {
+                Text(supporting, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        // The whole row is the toggle; the switch is decorative for accessibility.
+        Switch(checked = checked, onCheckedChange = null)
+    }
+}
+
+@Composable
+private fun <T> Choice(label: String, options: List<Pair<T, String>>, selected: T, onSelect: (T) -> Unit) {
+    Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
+        Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(bottom = 6.dp))
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            options.forEachIndexed { index, (value, text) ->
+                SegmentedButton(
+                    selected = value == selected,
+                    onClick = { onSelect(value) },
+                    shape = SegmentedButtonDefaults.itemShape(index, options.size),
+                    modifier = Modifier.heightIn(min = 56.dp),
+                ) { Text(text) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SpeedLimitSlider(limitMps: Double, unit: SpeedUnit, onChange: (Float, SpeedUnit) -> Unit) {
+    val range = if (unit == SpeedUnit.KMH) 10f..80f else 6f..50f
+    val stored = Units.speed(limitMps, unit).toFloat().coerceIn(range)
+    var value by remember(unit) { mutableFloatStateOf(stored) }
+    LaunchedEffect(stored) { value = stored }
+    Column(Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) {
+        Text("Limit: ${value.roundToInt()} ${Units.speedLabel(unit)}", style = MaterialTheme.typography.bodyLarge)
+        Slider(
+            value = value,
+            onValueChange = { value = it.roundToInt().toFloat() },
+            onValueChangeFinished = { onChange(value, unit) },
+            valueRange = range,
+            modifier = Modifier
+                .heightIn(min = GloveTouchTarget)
+                .semantics { stateDescription = "${value.roundToInt()} ${Units.speedLabel(unit)}" },
+        )
+    }
+}
+
+@Composable
+private fun BikeShareDialog(
+    search: BikeShareSearch,
+    currentUrl: String,
+    onPick: (String?, String?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var customUrl by rememberSaveable { mutableStateOf(currentUrl) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Bike-share system") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                when {
+                    search.loading -> Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(Modifier.padding(end = 12.dp))
+                        Text("Finding systems near you…")
+                    }
+                    search.error != null -> Text(search.error)
+                }
+                if (search.systems.isNotEmpty()) {
+                    LazyColumn(Modifier.heightIn(max = 300.dp)) {
+                        items(search.systems, key = { it.systemId + it.autoDiscoveryUrl }) { system ->
+                            Column(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = GloveTouchTarget)
+                                    .clickable(role = Role.Button) { onPick(system.name, system.autoDiscoveryUrl) }
+                                    .padding(vertical = 8.dp),
+                            ) {
+                                Text(system.name, style = MaterialTheme.typography.titleMedium)
+                                Text(system.location, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            HorizontalDivider()
+                        }
+                    }
+                }
+                OutlinedTextField(
+                    value = customUrl,
+                    onValueChange = { customUrl = it },
+                    label = { Text("Or paste a gbfs.json URL") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onPick(null, customUrl) },
+                enabled = customUrl.isNotBlank(),
+                modifier = Modifier.heightIn(min = GloveTouchTarget),
+            ) { Text("Use URL") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = GloveTouchTarget)) { Text("Cancel") }
+        },
+    )
+}

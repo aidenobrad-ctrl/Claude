@@ -1,0 +1,77 @@
+name: RideDeck APK
+
+on:
+  push:
+    branches: [main, ridedeck]
+    tags: ["ridedeck-v*"]
+    paths: ["RideDeck/**", ".github/workflows/ridedeck-apk.yml"]
+  pull_request:
+    paths: ["RideDeck/**", ".github/workflows/ridedeck-apk.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    working-directory: RideDeck
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Make wrapper executable
+        run: chmod +x gradlew
+
+      - name: Unit tests (core logic)
+        run: ./gradlew --no-daemon :core:test
+
+      - name: Use signing key from secrets (optional)
+        env:
+          KEYSTORE_B64: ${{ secrets.RIDEDECK_KEYSTORE_BASE64 }}
+        if: ${{ env.KEYSTORE_B64 != '' }}
+        run: |
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "RIDEDECK_KEYSTORE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+
+      - name: Build release APK
+        env:
+          RIDEDECK_KEYSTORE_PASSWORD: ${{ secrets.RIDEDECK_KEYSTORE_PASSWORD }}
+          RIDEDECK_KEY_ALIAS: ${{ secrets.RIDEDECK_KEY_ALIAS }}
+          RIDEDECK_KEY_PASSWORD: ${{ secrets.RIDEDECK_KEY_PASSWORD }}
+        run: ./gradlew --no-daemon :app:assembleRelease
+
+      - name: Rename APK
+        run: cp app/build/outputs/apk/release/app-release.apk RideDeck.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RideDeck-apk
+          path: RideDeck/RideDeck.apk
+
+      - name: Publish to the "ridedeck-latest" release
+        if: github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete ridedeck-latest --yes --cleanup-tag || true
+          gh release create ridedeck-latest RideDeck.apk \
+            --target "$GITHUB_SHA" \
+            --title "RideDeck (latest build)" \
+            --notes "Built from ${GITHUB_SHA::7} on ${GITHUB_REF_NAME}. Download RideDeck.apk on your phone and open it to install."
+
+      - name: Publish tagged release
+        if: startsWith(github.ref, 'refs/tags/ridedeck-v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" RideDeck.apk --title "RideDeck ${GITHUB_REF_NAME#ridedeck-}" --generate-notes

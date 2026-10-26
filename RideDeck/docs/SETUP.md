@@ -42,7 +42,7 @@ You need Android Studio (or the Android SDK command-line tools) with JDK 17+.
 
 On first launch RideDeck explains and requests permissions. Only precise location is required.
 
-- **Ride tab**: pick Bike or Walk, tap Start. Recording continues with the screen off; use the notification to pause or stop.
+- **Ride tab**: tap Start to record. Recording continues with the screen off; use the notification to pause or stop.
 - **Ride screen**: use the Map, Speed and Music chips to choose what's on screen. Search a destination on the map for cycling directions.
 - **Music** (bottom bar) opens the player. Copy music files into the phone's Music folder; they appear in the library. Tap a song to play, the heart to add it to favourites, and use the Lyrics tab for synced lyrics. Drag the panel's handle to resize it.
 

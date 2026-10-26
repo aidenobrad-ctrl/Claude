@@ -40,39 +40,6 @@ import com.ridedeck.core.model.ActivityMode
 val GloveTouchTarget = 64.dp
 
 @Composable
-fun ModeToggle(
-    mode: ActivityMode,
-    onModeChange: (ActivityMode) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val options = listOf(
-        Triple(ActivityMode.BIKE, stringResource(R.string.mode_bike), Icons.AutoMirrored.Filled.DirectionsBike),
-        Triple(ActivityMode.WALK, stringResource(R.string.mode_walk), Icons.AutoMirrored.Filled.DirectionsWalk),
-    )
-    SingleChoiceSegmentedButtonRow(modifier = modifier.fillMaxWidth()) {
-        options.forEachIndexed { index, (value, label, icon) ->
-            SegmentedButton(
-                selected = mode == value,
-                onClick = { onModeChange(value) },
-                shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
-                modifier = Modifier.heightIn(min = GloveTouchTarget),
-                icon = {
-                    SegmentedButtonDefaults.Icon(active = mode == value) {
-                        Icon(icon, contentDescription = null, modifier = Modifier.size(28.dp))
-                    }
-                },
-                colors = SegmentedButtonDefaults.colors(
-                    activeContainerColor = MaterialTheme.colorScheme.primary,
-                    activeContentColor = MaterialTheme.colorScheme.onPrimary,
-                ),
-            ) {
-                Text(label, style = MaterialTheme.typography.titleMedium)
-            }
-        }
-    }
-}
-
-@Composable
 fun BigActionButton(
     text: String,
     icon: ImageVector,

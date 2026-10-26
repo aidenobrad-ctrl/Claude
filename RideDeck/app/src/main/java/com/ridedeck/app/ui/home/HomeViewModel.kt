@@ -44,6 +44,7 @@ data class HomeUiState(
     val hasLocationPermission: Boolean = true,
     val speedAlertEnabled: Boolean = false,
     val speedAlertLimitMps: Double = UserPreferences.DEFAULT_ALERT_LIMIT_MPS,
+    val expanded: Boolean = true,
 ) {
     val sessionActive: Boolean get() = snapshot.isActive
     val profile: ModeProfile get() = ModeProfile.of(mode)
@@ -111,6 +112,7 @@ class HomeViewModel @Inject constructor(
             hasLocationPermission = locationRepository.hasPreciseLocationPermission(),
             speedAlertEnabled = prefs.speedAlertEnabled,
             speedAlertLimitMps = prefs.speedAlertLimitMps,
+            expanded = prefs.speedOverlayExpanded,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
 
@@ -119,7 +121,7 @@ class HomeViewModel @Inject constructor(
         permissionTick.value++
     }
 
-    fun setMode(mode: ActivityMode) = viewModelScope.launch { preferencesRepository.setMode(mode) }
+    fun setExpanded(expanded: Boolean) = viewModelScope.launch { preferencesRepository.setSpeedOverlayExpanded(expanded) }
 
     fun toggleUnit() = viewModelScope.launch {
         val current = preferencesRepository.current().speedUnit

@@ -3,6 +3,7 @@ package com.ridedeck.app.ui.main
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ridedeck.app.data.location.LocationRepository
+import com.ridedeck.app.data.prefs.MusicSource
 import com.ridedeck.app.data.prefs.UserPreferences
 import com.ridedeck.app.data.prefs.UserPreferencesRepository
 import com.ridedeck.app.tracking.TrackingEvent
@@ -61,6 +62,10 @@ class MainViewModel @Inject constructor(
 
     fun setMusicPanelVisible(visible: Boolean) = viewModelScope.launch {
         preferencesRepository.setMusicPanelVisible(visible)
+    }
+
+    fun setMusicSource(source: MusicSource) = viewModelScope.launch {
+        preferencesRepository.setMusicSource(source)
     }
 
     fun setMusicPanelFraction(fraction: Float) = viewModelScope.launch {

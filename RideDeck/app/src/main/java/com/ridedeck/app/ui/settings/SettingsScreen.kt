@@ -44,6 +44,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ridedeck.app.data.prefs.ThemeMode
 import com.ridedeck.app.ui.components.GloveTouchTarget
+import com.ridedeck.app.ui.theme.GoGreen
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.ridedeck.core.format.Units
 import com.ridedeck.core.model.SpeedUnit
 import kotlin.math.roundToInt
@@ -54,6 +56,11 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    // Setup steps finish in other apps, so re-check them whenever the screen comes back.
+    LifecycleResumeEffect(Unit) {
+        viewModel.refreshIntegrations()
+        onPauseOrDispose { }
+    }
     val p = state.prefs
     var showSystems by rememberSaveable { mutableStateOf(false) }
 
@@ -93,7 +100,7 @@ fun SettingsScreen(
             )
         }
 
-        item { Header("Speed alert (Bike mode)") }
+        item { Header("Speed alert") }
         item { SwitchRow("Alert when over the limit", p.speedAlertEnabled, viewModel::setSpeedAlertEnabled) }
         if (p.speedAlertEnabled) {
             item { SpeedLimitSlider(p.speedAlertLimitMps, p.speedUnit, viewModel::setSpeedAlertLimit) }
@@ -103,16 +110,8 @@ fun SettingsScreen(
 
         item { Header("Map") }
         item { SwitchRow("Bike shops", p.showBikeShops, viewModel::setShowBikeShops) }
-        item { SwitchRow("Cycling map style (Bike mode)", p.showCycleLanes, viewModel::setShowCycleLanes) }
+        item { SwitchRow("Cycling map style", p.showCycleLanes, viewModel::setShowCycleLanes) }
         item { SwitchRow("Bike-share stations", p.showBikeShare, viewModel::setShowBikeShare) }
-        item {
-            SwitchRow(
-                "Show bike-share in Walk mode",
-                p.showBikeShareInWalkMode,
-                viewModel::setShowBikeShareInWalk,
-                supporting = "Hidden in Walk mode unless this is on.",
-            )
-        }
         item { SwitchRow("Only stations with bikes", p.onlyStationsWithBikes, viewModel::setOnlyWithBikes) }
         item {
             Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
@@ -152,6 +151,74 @@ fun SettingsScreen(
             )
         }
 
+        item { Header("Spotify (optional)") }
+        item {
+            SwitchRow(
+                "Control Spotify from RideDeck",
+                p.spotifyEnabled,
+                viewModel::setSpotifyEnabled,
+                supporting = "Adds a Spotify tab to the music panel. No account linking or API key needed.",
+            )
+        }
+        if (p.spotifyEnabled) {
+            item {
+                SetupSteps(
+                    listOf(
+                        SetupStep(
+                            "Install Spotify and log in",
+                            done = state.spotifyInstalled,
+                            action = if (state.spotifyInstalled) null else "Get Spotify" to viewModel::openSpotify,
+                        ),
+                        SetupStep(
+                            "Allow notification access for RideDeck. It lets RideDeck see what Spotify is playing and " +
+                                "send play, pause and skip. Find RideDeck in the list and switch it on.",
+                            done = state.spotifyAccess,
+                            action = if (state.spotifyAccess) null else "Allow access" to viewModel::openNotificationAccess,
+                        ),
+                        SetupStep(
+                            "If Android says the setting is restricted (Android 13 and newer, for apps installed from an APK): " +
+                                "open App info for RideDeck, tap ⋮ at the top right, choose \"Allow restricted settings\", then repeat step 2.",
+                            done = state.spotifyAccess,
+                            action = if (state.spotifyAccess) null else "Open App info" to viewModel::openAppInfo,
+                        ),
+                        SetupStep(
+                            "Play something in Spotify, open the music panel and tap the Spotify tab.",
+                            done = false,
+                        ),
+                    ),
+                )
+            }
+        }
+
+        item { Header("Google Maps (optional)") }
+        item {
+            SwitchRow(
+                "Navigate with Google Maps",
+                p.googleMapsEnabled,
+                viewModel::setGoogleMapsEnabled,
+                supporting = "Adds a \"Start in Google Maps\" button to directions, for Google's voice turn-by-turn cycling navigation.",
+            )
+        }
+        if (p.googleMapsEnabled) {
+            item {
+                SetupSteps(
+                    listOf(
+                        SetupStep(
+                            "Install Google Maps",
+                            done = state.googleMapsInstalled,
+                            action = if (state.googleMapsInstalled) null else "Get Google Maps" to viewModel::openGoogleMapsStore,
+                        ),
+                        SetupStep("Search for a destination on the Ride screen and pick it.", done = false),
+                        SetupStep(
+                            "Tap \"Start in Google Maps\". Google Maps opens with spoken turn-by-turn steps for cycling. " +
+                                "RideDeck keeps recording your ride in the background; come back to it any time.",
+                            done = false,
+                        ),
+                    ),
+                )
+            }
+        }
+
         item { Header("Privacy") }
         item {
             TextButton(
@@ -163,7 +230,7 @@ fun SettingsScreen(
         item { Header("About") }
         item {
             Text(
-                "RideDeck is built only on open-source software and open data. " +
+                "RideDeck is built on open-source software and open data; Spotify and Google Maps are optional add-ons. " +
                     "Map data © OpenStreetMap contributors (ODbL); cycling map style © CyclOSM. " +
                     "Routing by OSRM (FOSSGIS servers), search by Photon (komoot), bike shops via Overpass API. " +
                     "Bike-share data from public GBFS feeds (MobilityData catalogue). Lyrics from LRCLIB. " +
@@ -206,6 +273,42 @@ private fun Header(text: String, large: Boolean = false) {
             .padding(start = 20.dp, end = 20.dp, top = if (large) 4.dp else 20.dp, bottom = 4.dp)
             .semantics { heading() },
     )
+}
+
+private data class SetupStep(
+    val text: String,
+    val done: Boolean,
+    val action: Pair<String, () -> Unit>? = null,
+)
+
+/** Numbered setup instructions with a tick for each step that is already done. */
+@Composable
+private fun SetupSteps(steps: List<SetupStep>) {
+    Column(
+        Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text("Setup", style = MaterialTheme.typography.titleSmall)
+        steps.forEachIndexed { index, step ->
+            Row(verticalAlignment = Alignment.Top) {
+                Text(
+                    if (step.done) "✓" else "${index + 1}.",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = if (step.done) GoGreen else MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(end = 10.dp),
+                )
+                Column(Modifier.weight(1f)) {
+                    Text(step.text, style = MaterialTheme.typography.bodyMedium)
+                    step.action?.let { (label, onClick) ->
+                        OutlinedButton(
+                            onClick = onClick,
+                            modifier = Modifier.padding(top = 6.dp).heightIn(min = 48.dp),
+                        ) { Text(label) }
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable

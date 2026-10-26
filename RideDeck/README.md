@@ -1,8 +1,8 @@
 # RideDeck
 
-An Android app for bike rides and walks: a glove-friendly speedometer and trip recorder, OpenStreetMap navigation for cycling and walking, bike shops and bike-share stations, and a built-in music player with synced lyrics.
+An Android app for bike rides: one screen with an OpenStreetMap map, a floating speedometer and trip recorder, and a music panel with synced lyrics. Bike shops, bike-share stations and cycling directions are built in.
 
-RideDeck is built only on open-source libraries and open data. It needs **no API keys, no Google Play services and no accounts**, so it also runs on de-Googled phones (LineageOS, GrapheneOS, /e/OS).
+RideDeck is built on open-source libraries and open data. It needs **no API keys, no Google Play services and no accounts**, so it also runs on de-Googled phones (LineageOS, GrapheneOS, /e/OS). Spotify control and Google Maps navigation are optional switches in Settings, each with setup steps in the app.
 
 **Stack:** Kotlin · Jetpack Compose · Material 3 · MVVM · Hilt · Room · DataStore · Coroutines/Flow · osmdroid · Media3 ExoPlayer · minSdk 26 / targetSdk 35
 
@@ -16,10 +16,12 @@ Every push that changes RideDeck builds a new signed APK, and each one installs 
 
 ## Features
 
-- **Bike / Walk mode** on the Ride and Map screens, switchable mid-session. Mode drives routing, speed vs pace display, alerts, the saved session type, history filters and map style.
-- **Speedometer and trip tracking**: smoothed GPS speed (km/h or mph), pace in Walk mode, max/average speed, distance, moving time, lifetime odometers and max-speed records per mode, a Bike-mode speed alert, auto-pause, and foreground recording with the screen off.
+- **One screen**: the map fills the screen, the speedometer floats over it (tap to shrink it to a small speed pill), and the music panel sits underneath (drag to resize, or hide it from the bottom bar).
+- **Speedometer and trip tracking**: smoothed GPS speed (km/h or mph), max/average speed, distance, moving time, lifetime odometer and top speed, a speed alert, auto-pause, and foreground recording with the screen off.
 - **History** with mode filters and a route map per session.
-- **Maps** (OpenStreetMap via osmdroid; CyclOSM cycling style in Bike mode): search (Photon), cycling and walking directions with steps and ETA (OSRM), automatic re-routing, bike shops (Overpass API) and GBFS bike-share stations.
+- **Maps** (OpenStreetMap via osmdroid, CyclOSM cycling style): search (Photon), cycling directions with steps and ETA (OSRM), automatic re-routing, bike shops (Overpass API) and GBFS bike-share stations.
+- **Optional Google Maps**: a "Start in Google Maps" button hands the destination to the Google Maps app for voice turn-by-turn cycling navigation.
+- **Optional Spotify**: a Spotify tab in the music panel shows what Spotify is playing, with play/pause/skip and synced lyrics. It uses Android's media controls (notification access), so no Spotify account linking or API key is needed.
 - **Music player**: plays the songs stored on the phone (MP3, FLAC, OGG, M4A, WAV) with Media3 ExoPlayer. Library, shuffle, favourites, album art, lock-screen and headset controls, background playback, and synced lyrics from LRCLIB.
 - **Safety and UX**: large touch targets, OLED black theme, Ride Mode that locks complex menus while moving, keep-screen-on, permission explanations and TalkBack labels.
 

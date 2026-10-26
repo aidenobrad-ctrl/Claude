@@ -16,13 +16,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-/** History filter. Starts on the current activity mode, as the mode drives the default filter. */
+/** History filter. RideDeck is bike-only now, but rides recorded as walks in older versions stay listed. */
 enum class HistoryFilter { ALL, BIKE, WALK }
 
 data class HistoryUiState(
@@ -40,14 +39,7 @@ class HistoryViewModel @Inject constructor(
     preferencesRepository: UserPreferencesRepository,
 ) : ViewModel() {
 
-    private val filter = MutableStateFlow<HistoryFilter?>(null)
-
-    init {
-        viewModelScope.launch {
-            val mode = preferencesRepository.mode.first()
-            if (filter.value == null) filter.value = if (mode == ActivityMode.BIKE) HistoryFilter.BIKE else HistoryFilter.WALK
-        }
-    }
+    private val filter = MutableStateFlow<HistoryFilter?>(HistoryFilter.ALL)
 
     private val sessions = filter.flatMapLatest { f ->
         sessionRepository.observeSessions(

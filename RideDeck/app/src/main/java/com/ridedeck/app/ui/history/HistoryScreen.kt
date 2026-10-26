@@ -63,59 +63,23 @@ fun HistoryScreen(
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 StatTile(
-                    "Bike odometer",
+                    "Odometer",
                     Formatters.distance(state.totals.bikeDistanceM, unit, 1),
                     Units.distanceLabel(unit),
                     Modifier.weight(1f),
                 )
                 StatTile(
-                    "Walk odometer",
-                    Formatters.distance(state.totals.walkDistanceM, unit, 1),
-                    Units.distanceLabel(unit),
-                    Modifier.weight(1f),
-                )
-            }
-        }
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                StatTile(
-                    "Bike record",
+                    "Top speed",
                     Formatters.speed(state.totals.bikeMaxSpeedMps, unit, 1),
                     Units.speedLabel(unit),
                     Modifier.weight(1f),
                 )
-                StatTile(
-                    "Walk record",
-                    Formatters.speed(state.totals.walkMaxSpeedMps, unit, 1),
-                    Units.speedLabel(unit),
-                    Modifier.weight(1f),
-                )
-            }
-        }
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                HistoryFilter.entries.forEach { f ->
-                    FilterChip(
-                        selected = state.filter == f,
-                        onClick = { viewModel.setFilter(f) },
-                        label = {
-                            Text(
-                                when (f) {
-                                    HistoryFilter.ALL -> "All"
-                                    HistoryFilter.BIKE -> "Bike"
-                                    HistoryFilter.WALK -> "Walk"
-                                },
-                            )
-                        },
-                        modifier = Modifier.heightIn(min = 48.dp),
-                    )
-                }
             }
         }
         if (!state.loading && state.sessions.isEmpty()) {
             item {
                 Text(
-                    "No sessions yet. Start one from the Ride tab.",
+                    "No rides yet. Tap Start on the speedometer to record one.",
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

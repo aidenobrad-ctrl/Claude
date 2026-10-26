@@ -2,7 +2,12 @@ package com.ridedeck.app.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import android.content.Context
 import com.ridedeck.app.data.location.LocationRepository
+import com.ridedeck.app.integrations.GoogleMapsLauncher
+import com.ridedeck.app.integrations.SpotifyControl
+import com.ridedeck.app.ui.permissions.openAppSettings
+import dagger.hilt.android.qualifiers.ApplicationContext
 import com.ridedeck.app.data.maps.GbfsRepository
 import com.ridedeck.app.data.prefs.ThemeMode
 import com.ridedeck.app.data.prefs.UserPreferences
@@ -31,6 +36,15 @@ data class SettingsUiState(
     val prefs: UserPreferences = UserPreferences(),
     val bikeShare: BikeShareSearch = BikeShareSearch(),
     val message: String? = null,
+    val spotifyInstalled: Boolean = false,
+    val spotifyAccess: Boolean = false,
+    val googleMapsInstalled: Boolean = false,
+)
+
+private data class IntegrationStatus(
+    val spotifyInstalled: Boolean = false,
+    val spotifyAccess: Boolean = false,
+    val googleMapsInstalled: Boolean = false,
 )
 
 @HiltViewModel
@@ -38,7 +52,11 @@ class SettingsViewModel @Inject constructor(
     private val prefs: UserPreferencesRepository,
     private val gbfsRepository: GbfsRepository,
     private val locationRepository: LocationRepository,
+    private val spotify: SpotifyControl,
+    @ApplicationContext private val appContext: Context,
 ) : ViewModel() {
+
+    private val integrations = MutableStateFlow(IntegrationStatus())
 
     private val bikeShare = MutableStateFlow(BikeShareSearch())
     private val message = MutableStateFlow<String?>(null)
@@ -47,8 +65,16 @@ class SettingsViewModel @Inject constructor(
         prefs.preferences,
         bikeShare,
         message,
-    ) { p, share, msg ->
-        SettingsUiState(prefs = p, bikeShare = share, message = msg)
+        integrations,
+    ) { p, share, msg, i ->
+        SettingsUiState(
+            prefs = p,
+            bikeShare = share,
+            message = msg,
+            spotifyInstalled = i.spotifyInstalled,
+            spotifyAccess = i.spotifyAccess,
+            googleMapsInstalled = i.googleMapsInstalled,
+        )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 
     fun setUnit(unit: SpeedUnit) = launch { prefs.setSpeedUnit(unit) }
@@ -61,7 +87,21 @@ class SettingsViewModel @Inject constructor(
     fun setSpeedAlertVibrate(v: Boolean) = launch { prefs.setSpeedAlertVibrate(v) }
     fun setShowBikeShops(v: Boolean) = launch { prefs.setShowBikeShops(v) }
     fun setShowBikeShare(v: Boolean) = launch { prefs.setShowBikeShare(v) }
-    fun setShowBikeShareInWalk(v: Boolean) = launch { prefs.setShowBikeShareInWalkMode(v) }
+    fun setSpotifyEnabled(v: Boolean) = launch { prefs.setSpotifyEnabled(v) }
+    fun setGoogleMapsEnabled(v: Boolean) = launch { prefs.setGoogleMapsEnabled(v) }
+
+    fun refreshIntegrations() {
+        integrations.value = IntegrationStatus(
+            spotifyInstalled = spotify.isInstalled(),
+            spotifyAccess = spotify.hasAccess(),
+            googleMapsInstalled = GoogleMapsLauncher.isInstalled(appContext),
+        )
+    }
+
+    fun openSpotify() = spotify.openSpotify()
+    fun openNotificationAccess() = spotify.openAccessSettings()
+    fun openGoogleMapsStore() = GoogleMapsLauncher.openStore(appContext)
+    fun openAppInfo() = appContext.openAppSettings()
     fun setOnlyWithBikes(v: Boolean) = launch { prefs.setOnlyStationsWithBikes(v) }
     fun setShowCycleLanes(v: Boolean) = launch { prefs.setShowCycleLanes(v) }
     fun setLyricsEnabled(v: Boolean) = launch { prefs.setLyricsEnabled(v) }

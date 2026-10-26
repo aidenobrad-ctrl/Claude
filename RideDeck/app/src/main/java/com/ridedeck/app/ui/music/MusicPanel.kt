@@ -70,6 +70,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ridedeck.app.data.prefs.MusicSource
 import com.ridedeck.app.music.PlaybackState
 import com.ridedeck.app.music.Track
 import com.ridedeck.app.ui.permissions.audioPermission
@@ -83,6 +84,39 @@ import kotlinx.coroutines.delay
  */
 @Composable
 fun MusicPanel(
+    lyricsEnabled: Boolean,
+    spotifyEnabled: Boolean,
+    source: MusicSource,
+    onSourceChange: (MusicSource) -> Unit,
+) {
+    Surface(color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxSize()) {
+        Column {
+            if (spotifyEnabled) {
+                Row(
+                    Modifier.padding(start = 12.dp, end = 12.dp, top = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    FilterChip(
+                        selected = source == MusicSource.PHONE,
+                        onClick = { onSourceChange(MusicSource.PHONE) },
+                        label = { Text("On this phone") },
+                    )
+                    FilterChip(
+                        selected = source == MusicSource.SPOTIFY,
+                        onClick = { onSourceChange(MusicSource.SPOTIFY) },
+                        label = { Text("Spotify") },
+                    )
+                }
+            }
+            Box(Modifier.weight(1f)) {
+                if (spotifyEnabled && source == MusicSource.SPOTIFY) SpotifyPanel(lyricsEnabled) else PhoneMusicPanel(lyricsEnabled)
+            }
+        }
+    }
+}
+
+@Composable
+private fun PhoneMusicPanel(
     lyricsEnabled: Boolean,
     viewModel: MusicViewModel = hiltViewModel(),
 ) {
@@ -109,7 +143,7 @@ fun MusicPanel(
         viewModel.refreshLibrary()
     }
 
-    Surface(color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxSize()) {
+    Box(Modifier.fillMaxSize()) {
         when (state.library) {
             LibraryState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
@@ -322,7 +356,7 @@ private fun Controls(state: MusicUiState, viewModel: MusicViewModel, small: Bool
 }
 
 @Composable
-private fun LyricsView(lyrics: LyricsState, playback: PlaybackState, modifier: Modifier) {
+internal fun LyricsView(lyrics: LyricsState, playback: PlaybackState, modifier: Modifier) {
     Box(modifier.fillMaxWidth()) {
         when (lyrics) {
             LyricsState.Off -> Text("Play a song to see its lyrics.", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -380,7 +414,7 @@ private fun Source(source: String) {
 }
 
 @Composable
-private fun Prompt(message: String, action: String?, onAction: (() -> Unit)?) {
+internal fun Prompt(message: String, action: String?, onAction: (() -> Unit)?) {
     Column(
         Modifier.fillMaxSize().padding(16.dp),
         verticalArrangement = Arrangement.Center,

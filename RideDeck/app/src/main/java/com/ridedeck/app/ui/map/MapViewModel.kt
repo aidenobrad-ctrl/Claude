@@ -75,6 +75,7 @@ data class MapUiState(
     val bikeShareInWalk: Boolean = false,
     val onlyStationsWithBikes: Boolean = false,
     val bikeShareConfigured: Boolean = false,
+    val googleMapsEnabled: Boolean = false,
 )
 
 private data class NavState(
@@ -191,6 +192,7 @@ class MapViewModel @Inject constructor(
             bikeShareInWalk = p.showBikeShareInWalkMode,
             onlyStationsWithBikes = p.onlyStationsWithBikes,
             bikeShareConfigured = p.gbfsDiscoveryUrl != null,
+            googleMapsEnabled = p.googleMapsEnabled,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), MapUiState())
 
@@ -207,8 +209,6 @@ class MapViewModel @Inject constructor(
     fun refreshPermissions() {
         permissionTick.value++
     }
-
-    fun setMode(mode: ActivityMode) = viewModelScope.launch { preferencesRepository.setMode(mode) }
 
     fun setFollowUser(follow: Boolean) = nav.update { it.copy(followUser = follow) }
 
@@ -334,15 +334,7 @@ class MapViewModel @Inject constructor(
 
     fun setShowShops(show: Boolean) = viewModelScope.launch { preferencesRepository.setShowBikeShops(show) }
 
-    fun setShowStations(show: Boolean) = viewModelScope.launch {
-        if (prefs.mode == ActivityMode.WALK) {
-            // In Walk mode the chip is the explicit opt-in; it also turns the layer on.
-            preferencesRepository.setShowBikeShareInWalkMode(show)
-            if (show) preferencesRepository.setShowBikeShare(true)
-        } else {
-            preferencesRepository.setShowBikeShare(show)
-        }
-    }
+    fun setShowStations(show: Boolean) = viewModelScope.launch { preferencesRepository.setShowBikeShare(show) }
 
     fun setShowCycleLanes(show: Boolean) = viewModelScope.launch { preferencesRepository.setShowCycleLanes(show) }
 

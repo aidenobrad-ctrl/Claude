@@ -1,0 +1,299 @@
+package com.ridedeck.app.ui.home
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.LifecycleResumeEffect
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ridedeck.app.R
+import com.ridedeck.app.ui.components.GloveTouchTarget
+import com.ridedeck.app.ui.theme.AlertRed
+import com.ridedeck.app.ui.theme.GoGreen
+import com.ridedeck.app.ui.theme.NumericStyle
+import com.ridedeck.core.format.Formatters
+import com.ridedeck.core.format.Units
+import com.ridedeck.core.tracking.TripStatus
+
+/**
+ * The speedometer, floating over the map. Expanded it shows speed, ride stats and the
+ * Start/Pause/Stop controls; collapsed it is a small speed pill so more of the map is visible.
+ */
+@Composable
+fun SpeedOverlay(
+    rideLocked: Boolean,
+    onOpenPermissions: () -> Unit,
+    modifier: Modifier = Modifier,
+    viewModel: HomeViewModel = hiltViewModel(),
+) {
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    var confirmStop by rememberSaveable { mutableStateOf(false) }
+
+    LifecycleResumeEffect(Unit) {
+        viewModel.refreshPermissions()
+        onPauseOrDispose { }
+    }
+
+    val unit = state.unit
+    val snap = state.snapshot
+    val speedMps = state.displaySpeedMps
+    val speedText = Formatters.speed(speedMps, unit)
+    val overLimit = state.speedAlertEnabled && speedMps > state.speedAlertLimitMps
+    val speedColor = if (overLimit) AlertRed else MaterialTheme.colorScheme.onSurface
+    val spokenSpeed = "Speed $speedText ${Units.speedLabel(unit)}" + if (overLimit) ", over your speed limit" else ""
+
+    Surface(
+        shape = MaterialTheme.shapes.extraLarge,
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+        tonalElevation = 3.dp,
+        shadowElevation = 6.dp,
+        modifier = modifier.widthIn(max = 420.dp),
+    ) {
+        if (!state.expanded) {
+            Row(
+                Modifier
+                    .clickable(onClickLabel = "Show speedometer") { viewModel.setExpanded(true) }
+                    .padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    speedText,
+                    style = NumericStyle.copy(fontSize = 40.sp),
+                    color = speedColor,
+                    modifier = Modifier.semantics { contentDescription = spokenSpeed },
+                )
+                Spacer(Modifier.width(4.dp))
+                Text(Units.speedLabel(unit), style = MaterialTheme.typography.labelLarge)
+                if (state.sessionActive) {
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        "${Formatters.distance(snap.distanceM, unit)} ${Units.distanceLabel(unit)}",
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                }
+                Spacer(Modifier.width(4.dp))
+                PrimaryControl(snap.status, state, viewModel, onOpenPermissions)
+                Icon(Icons.Default.ExpandLess, contentDescription = null, modifier = Modifier.padding(horizontal = 8.dp))
+            }
+        } else {
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        Modifier.weight(1f).semantics(mergeDescendants = true) { contentDescription = spokenSpeed },
+                        verticalAlignment = Alignment.Bottom,
+                    ) {
+                        Text(speedText, style = NumericStyle.copy(fontSize = 72.sp, lineHeight = 72.sp), color = speedColor)
+                        Spacer(Modifier.width(6.dp))
+                        TextButton(onClick = viewModel::toggleUnit, modifier = Modifier.heightIn(min = 48.dp)) {
+                            Text(Units.speedLabel(unit), style = MaterialTheme.typography.titleLarge)
+                        }
+                    }
+                    Column(horizontalAlignment = Alignment.End) {
+                        StatusChip(snap.status, state.isNewRecord)
+                        IconButton(onClick = { viewModel.setExpanded(false) }, modifier = Modifier.size(48.dp)) {
+                            Icon(Icons.Default.ExpandMore, contentDescription = "Shrink speedometer")
+                        }
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    MiniStat(stringResource(R.string.stat_distance), Formatters.distance(snap.distanceM, unit), Units.distanceLabel(unit), Modifier.weight(1f))
+                    MiniStat(stringResource(R.string.stat_time), Formatters.duration(snap.movingTimeMs), null, Modifier.weight(1f))
+                    MiniStat(stringResource(R.string.stat_avg), Formatters.speed(snap.averageSpeedMps, unit, 1), null, Modifier.weight(1f))
+                    MiniStat(stringResource(R.string.stat_max), Formatters.speed(snap.maxSpeedMps, unit, 1), null, Modifier.weight(1f))
+                }
+                if (!state.hasLocationPermission) {
+                    OutlinedButton(
+                        onClick = onOpenPermissions,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = GloveTouchTarget),
+                    ) { Text("Precise location is off. Tap to allow it.") }
+                }
+                Controls(
+                    status = snap.status,
+                    onStart = { if (!viewModel.start()) onOpenPermissions() },
+                    onPause = viewModel::pause,
+                    onResume = viewModel::resume,
+                    onStop = { confirmStop = true },
+                )
+                if (state.sessionActive && !rideLocked) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Odometer ${Formatters.distance(state.odometerM, unit, 1)} ${Units.distanceLabel(unit)}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f),
+                        )
+                        TextButton(onClick = viewModel::resetMax, modifier = Modifier.heightIn(min = 48.dp)) {
+                            Text(stringResource(R.string.reset_max))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (confirmStop) {
+        AlertDialog(
+            onDismissRequest = { confirmStop = false },
+            title = { Text("Finish this ride?") },
+            text = { Text("It will be saved to your history.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        confirmStop = false
+                        viewModel.stop()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = AlertRed),
+                    modifier = Modifier.heightIn(min = GloveTouchTarget),
+                ) { Text("Finish") }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { confirmStop = false }, modifier = Modifier.heightIn(min = GloveTouchTarget)) {
+                    Text("Keep going")
+                }
+            },
+        )
+    }
+}
+
+/** The one button shown on the collapsed pill: start, pause or resume. */
+@Composable
+private fun PrimaryControl(status: TripStatus, state: HomeUiState, viewModel: HomeViewModel, onOpenPermissions: () -> Unit) {
+    val (icon, label, color) = when (status) {
+        TripStatus.IDLE -> Triple(Icons.Default.PlayArrow, "Start ride", GoGreen)
+        TripStatus.PAUSED -> Triple(Icons.Default.PlayArrow, "Resume", GoGreen)
+        else -> Triple(Icons.Default.Pause, "Pause", MaterialTheme.colorScheme.primary)
+    }
+    FilledIconButton(
+        onClick = {
+            when (status) {
+                TripStatus.IDLE -> if (!viewModel.start()) onOpenPermissions()
+                TripStatus.PAUSED -> viewModel.resume()
+                else -> viewModel.pause()
+            }
+        },
+        colors = IconButtonDefaults.filledIconButtonColors(containerColor = color),
+        modifier = Modifier.size(56.dp),
+    ) {
+        Icon(icon, contentDescription = label, modifier = Modifier.size(32.dp))
+    }
+}
+
+@Composable
+private fun MiniStat(label: String, value: String, unit: String?, modifier: Modifier = Modifier) {
+    Column(modifier.semantics(mergeDescendants = true) { contentDescription = "$label: $value ${unit.orEmpty()}" }) {
+        Text(label.uppercase(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(value, style = NumericStyle.copy(fontSize = 20.sp), maxLines = 1)
+            if (unit != null) {
+                Spacer(Modifier.width(2.dp))
+                Text(unit, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatusChip(status: TripStatus, newRecord: Boolean) {
+    val text = when {
+        newRecord -> stringResource(R.string.status_new_record)
+        status == TripStatus.AUTO_PAUSED -> stringResource(R.string.status_auto_paused)
+        status == TripStatus.PAUSED -> stringResource(R.string.status_paused)
+        status == TripStatus.RUNNING -> "Recording"
+        else -> "Ready"
+    }
+    val highlight = newRecord || status == TripStatus.AUTO_PAUSED || status == TripStatus.PAUSED
+    Surface(
+        shape = MaterialTheme.shapes.small,
+        color = if (highlight) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
+        contentColor = if (highlight) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+    ) {
+        Text(text, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
+    }
+}
+
+@Composable
+private fun Controls(
+    status: TripStatus,
+    onStart: () -> Unit,
+    onPause: () -> Unit,
+    onResume: () -> Unit,
+    onStop: () -> Unit,
+) {
+    val buttonModifier = Modifier.heightIn(min = GloveTouchTarget)
+    when (status) {
+        TripStatus.IDLE -> Button(
+            onClick = onStart,
+            colors = ButtonDefaults.buttonColors(containerColor = GoGreen),
+            modifier = buttonModifier.fillMaxWidth(),
+        ) {
+            Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(28.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(R.string.action_start), style = MaterialTheme.typography.titleLarge)
+        }
+        else -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            val paused = status == TripStatus.PAUSED
+            Button(
+                onClick = if (paused) onResume else onPause,
+                colors = ButtonDefaults.buttonColors(containerColor = if (paused) GoGreen else MaterialTheme.colorScheme.primary),
+                modifier = buttonModifier.weight(1f),
+            ) {
+                Icon(if (paused) Icons.Default.PlayArrow else Icons.Default.Pause, contentDescription = null, modifier = Modifier.size(28.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    stringResource(if (paused) R.string.action_resume else R.string.action_pause),
+                    style = MaterialTheme.typography.titleLarge,
+                )
+            }
+            Button(
+                onClick = onStop,
+                colors = ButtonDefaults.buttonColors(containerColor = AlertRed),
+                modifier = buttonModifier.weight(1f),
+            ) {
+                Icon(Icons.Default.Stop, contentDescription = null, modifier = Modifier.size(28.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.action_stop), style = MaterialTheme.typography.titleLarge)
+            }
+        }
+    }
+}

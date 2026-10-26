@@ -9,6 +9,9 @@
 
 ## Product decisions
 
+- **Bike only, one screen** (requested 2026-10-26). Walk mode was removed from the UI; the tracking engine still has the mode internally and rides saved as walks by earlier builds remain in History. The Ride tab is the map with a floating speedometer and the music panel below it.
+- **Spotify and Google Maps are optional.** Spotify is controlled through its Android media session (needs notification access; on Android 13+ sideloaded apps must first get "Allow restricted settings" in App info). Liking songs in Spotify isn't possible this way. Google Maps is used by handing off the destination with the public `google.navigation:` intent in bicycle mode; its map isn't embedded, because embedding needs a paid API key.
+
 1. **Open source only.** Google Maps, Places, Routes, Play services location and Spotify were replaced with osmdroid + OpenStreetMap tiles, OSRM (FOSSGIS servers at routing.openstreetmap.de), Photon (photon.komoot.io), the Overpass API, Android's own LocationManager, and a built-in Media3 ExoPlayer music player. No keys or accounts are needed.
 2. **Map style.** Bike mode uses the CyclOSM style, which shows cycle lanes and bike infrastructure; Walk mode (or with "Cycling map" off) uses the standard OSM style. Dark themes invert the tiles. These are free community tile servers with fair-use policies; heavy use should move to a self-hosted or commercial tile server.
 3. **Music** comes from the phone's own storage (MediaStore). Streaming services are not integrated. Favourites are stored in RideDeck's database and are separate from any other music app. Lyrics come from LRCLIB (free, community-sourced) behind `LyricsProvider`.

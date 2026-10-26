@@ -66,7 +66,8 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.viewinterop.AndroidView
 import com.ridedeck.app.data.maps.MapTiles
 import com.ridedeck.app.ui.components.GloveTouchTarget
-import com.ridedeck.app.ui.components.ModeToggle
+import com.ridedeck.app.integrations.GoogleMapsLauncher
+import com.ridedeck.app.ui.home.SpeedOverlay
 import com.ridedeck.core.format.Formatters
 import com.ridedeck.core.geo.Geo
 import com.ridedeck.core.model.ActivityMode
@@ -79,8 +80,10 @@ import java.time.format.FormatStyle
 @Composable
 fun MapScreen(
     rideLocked: Boolean,
+    onOpenPermissions: () -> Unit,
     viewModel: MapViewModel = hiltViewModel(),
 ) {
+    val context = LocalContext.current
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val focusManager = LocalFocusManager.current
     var showSteps by rememberSaveable { mutableStateOf(false) }
@@ -164,9 +167,6 @@ fun MapScreen(
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)) {
-                ModeToggle(mode = state.mode, onModeChange = viewModel::setMode, modifier = Modifier.padding(4.dp))
-            }
             SearchField(
                 query = state.query,
                 enabled = !rideLocked,
@@ -223,6 +223,7 @@ fun MapScreen(
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            SpeedOverlay(rideLocked = rideLocked, onOpenPermissions = onOpenPermissions)
             Row(verticalAlignment = Alignment.Bottom) {
                 // OpenStreetMap's licence requires visible attribution.
                 Box(Modifier.weight(1f)) {
@@ -246,6 +247,7 @@ fun MapScreen(
             if (state.destination != null) {
                 NavigationCard(
                     state = state,
+                    onGoogleMaps = { state.destination?.let { GoogleMapsLauncher.navigate(context, it.location) } },
                     showSteps = showSteps,
                     onToggleSteps = { showSteps = !showSteps },
                     onEnd = {
@@ -328,17 +330,15 @@ private fun LayerChips(
         FilterChip(
             selected = state.showStations,
             onClick = { viewModel.setShowStations(!state.showStations) },
-            label = { Text(if (state.mode == ActivityMode.WALK) "Bike share (walk)" else "Bike share") },
+            label = { Text("Bike share") },
             modifier = Modifier.heightIn(min = 48.dp),
         )
-        if (state.mode == ActivityMode.BIKE) {
-            FilterChip(
-                selected = state.cycleLanesEnabled,
-                onClick = { viewModel.setShowCycleLanes(!state.cycleLanesEnabled) },
-                label = { Text("Cycling map") },
-                modifier = Modifier.heightIn(min = 48.dp),
-            )
-        }
+        FilterChip(
+            selected = state.cycleLanesEnabled,
+            onClick = { viewModel.setShowCycleLanes(!state.cycleLanesEnabled) },
+            label = { Text("Cycling map") },
+            modifier = Modifier.heightIn(min = 48.dp),
+        )
         if (state.showStations) {
             FilterChip(
                 selected = state.onlyStationsWithBikes,
@@ -370,6 +370,7 @@ private fun LayerChips(
 @Composable
 private fun NavigationCard(
     state: MapUiState,
+    onGoogleMaps: () -> Unit,
     showSteps: Boolean,
     onToggleSteps: () -> Unit,
     onEnd: () -> Unit,
@@ -392,9 +393,8 @@ private fun NavigationCard(
                     Spacer(Modifier.width(12.dp))
                     Text(
                         when (state.rerouteReason) {
-                            RerouteReason.MODE_CHANGED -> "Mode changed, re-routing…"
-                            RerouteReason.OFF_ROUTE -> "Off route, re-routing…"
-                            null -> "Finding a ${if (state.mode == ActivityMode.BIKE) "cycling" else "walking"} route…"
+                            RerouteReason.MODE_CHANGED, RerouteReason.OFF_ROUTE -> "Off route, re-routing…"
+                            null -> "Finding a cycling route…"
                         },
                         style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
@@ -436,6 +436,12 @@ private fun NavigationCard(
                         },
                     )
                 }
+            }
+            if (state.googleMapsEnabled && !state.arrived) {
+                Button(
+                    onClick = onGoogleMaps,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = GloveTouchTarget),
+                ) { Text("Start in Google Maps") }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (route != null && !state.arrived) {

@@ -11,7 +11,6 @@ import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.MusicOff
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -45,7 +44,6 @@ import com.ridedeck.app.tracking.TrackingEvent
 import com.ridedeck.app.ui.components.RideModeBanner
 import com.ridedeck.app.ui.history.HistoryScreen
 import com.ridedeck.app.ui.history.SessionDetailScreen
-import com.ridedeck.app.ui.home.HomeScreen
 import com.ridedeck.app.ui.map.MapScreen
 import com.ridedeck.app.ui.music.MusicPanel
 import com.ridedeck.app.ui.permissions.PermissionsScreen
@@ -55,7 +53,6 @@ import com.ridedeck.app.ui.theme.RideDeckTheme
 object Routes {
     const val PERMISSIONS = "permissions"
     const val RIDE = "ride"
-    const val MAP = "map"
     const val HISTORY = "history"
     const val SESSION = "history/{sessionId}"
     const val SETTINGS = "settings"
@@ -66,8 +63,8 @@ object Routes {
 private data class TopLevel(val route: String, val label: Int, val icon: ImageVector, val lockable: Boolean)
 
 private val topLevels = listOf(
-    TopLevel(Routes.RIDE, R.string.nav_ride, Icons.Default.Speed, lockable = false),
-    TopLevel(Routes.MAP, R.string.nav_map, Icons.Default.Map, lockable = false),
+    // Map, speedometer overlay and music panel all live on the Ride screen.
+    TopLevel(Routes.RIDE, R.string.nav_ride, Icons.Default.Map, lockable = false),
     TopLevel(Routes.HISTORY, R.string.nav_history, Icons.Default.History, lockable = true),
     TopLevel(Routes.SETTINGS, R.string.nav_settings, Icons.Default.Settings, lockable = true),
 )
@@ -153,12 +150,11 @@ fun RideDeckRoot(viewModel: MainViewModel = hiltViewModel()) {
                                 PermissionsScreen(onDone = { navController.popBackStack() })
                             }
                             composable(Routes.RIDE) {
-                                HomeScreen(
+                                MapScreen(
                                     rideLocked = state.rideLocked,
                                     onOpenPermissions = { navController.navigate(Routes.PERMISSIONS) },
                                 )
                             }
-                            composable(Routes.MAP) { MapScreen(rideLocked = state.rideLocked) }
                             composable(Routes.HISTORY) {
                                 HistoryScreen(onOpenSession = { navController.navigate(Routes.session(it)) })
                             }
@@ -173,7 +169,14 @@ fun RideDeckRoot(viewModel: MainViewModel = hiltViewModel()) {
                             }
                         }
                     },
-                    panel = { MusicPanel(lyricsEnabled = state.preferences.lyricsEnabled) },
+                    panel = {
+                        MusicPanel(
+                            lyricsEnabled = state.preferences.lyricsEnabled,
+                            spotifyEnabled = state.preferences.spotifyEnabled,
+                            source = state.preferences.musicSource,
+                            onSourceChange = viewModel::setMusicSource,
+                        )
+                    },
                 )
             }
         }

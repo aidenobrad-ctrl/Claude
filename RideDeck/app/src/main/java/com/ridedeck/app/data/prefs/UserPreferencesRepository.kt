@@ -22,7 +22,11 @@ import javax.inject.Singleton
 
 enum class ThemeMode { SYSTEM, DARK, OLED }
 
+/** Where the music panel gets its music from. */
+enum class MusicSource { PHONE, SPOTIFY }
+
 data class UserPreferences(
+    /** Always BIKE: Walk mode was removed. Kept so the tracking engine and old sessions keep working. */
     val mode: ActivityMode = ActivityMode.BIKE,
     val speedUnit: SpeedUnit = SpeedUnit.KMH,
     val speedAlertEnabled: Boolean = false,
@@ -44,6 +48,12 @@ data class UserPreferences(
     val musicPanelFraction: Float = DEFAULT_PANEL_FRACTION,
     val lyricsEnabled: Boolean = true,
     val onboardingDone: Boolean = false,
+    /** Optional Spotify integration: control the Spotify app from the music panel. */
+    val spotifyEnabled: Boolean = false,
+    val musicSource: MusicSource = MusicSource.PHONE,
+    /** Optional Google Maps integration: hand turn-by-turn directions to the Google Maps app. */
+    val googleMapsEnabled: Boolean = false,
+    val speedOverlayExpanded: Boolean = true,
 ) {
     companion object {
         const val DEFAULT_ALERT_LIMIT_MPS = 30.0 / 3.6
@@ -58,7 +68,6 @@ class UserPreferencesRepository @Inject constructor(
     @SettingsStore private val dataStore: DataStore<Preferences>,
 ) {
     private object Keys {
-        val MODE = stringPreferencesKey("mode")
         val SPEED_UNIT = stringPreferencesKey("speed_unit")
         val ALERT_ENABLED = booleanPreferencesKey("speed_alert_enabled")
         val ALERT_LIMIT = doublePreferencesKey("speed_alert_limit_mps")
@@ -79,6 +88,10 @@ class UserPreferencesRepository @Inject constructor(
         val PANEL_FRACTION = floatPreferencesKey("music_panel_fraction")
         val LYRICS = booleanPreferencesKey("lyrics_enabled")
         val ONBOARDING_DONE = booleanPreferencesKey("onboarding_done")
+        val SPOTIFY = booleanPreferencesKey("spotify_enabled")
+        val MUSIC_SOURCE = stringPreferencesKey("music_source")
+        val GOOGLE_MAPS = booleanPreferencesKey("google_maps_enabled")
+        val OVERLAY_EXPANDED = booleanPreferencesKey("speed_overlay_expanded")
     }
 
     val preferences: Flow<UserPreferences> = dataStore.data
@@ -86,7 +99,7 @@ class UserPreferencesRepository @Inject constructor(
         .map { p ->
             val defaults = UserPreferences()
             UserPreferences(
-                mode = ActivityMode.fromName(p[Keys.MODE]),
+                mode = ActivityMode.BIKE,
                 speedUnit = SpeedUnit.fromName(p[Keys.SPEED_UNIT]),
                 speedAlertEnabled = p[Keys.ALERT_ENABLED] ?: defaults.speedAlertEnabled,
                 speedAlertLimitMps = p[Keys.ALERT_LIMIT] ?: defaults.speedAlertLimitMps,
@@ -108,6 +121,10 @@ class UserPreferencesRepository @Inject constructor(
                     .coerceIn(UserPreferences.MIN_PANEL_FRACTION, UserPreferences.MAX_PANEL_FRACTION),
                 lyricsEnabled = p[Keys.LYRICS] ?: defaults.lyricsEnabled,
                 onboardingDone = p[Keys.ONBOARDING_DONE] ?: defaults.onboardingDone,
+                spotifyEnabled = p[Keys.SPOTIFY] ?: defaults.spotifyEnabled,
+                musicSource = MusicSource.entries.firstOrNull { it.name == p[Keys.MUSIC_SOURCE] } ?: defaults.musicSource,
+                googleMapsEnabled = p[Keys.GOOGLE_MAPS] ?: defaults.googleMapsEnabled,
+                speedOverlayExpanded = p[Keys.OVERLAY_EXPANDED] ?: defaults.speedOverlayExpanded,
             )
         }
         .distinctUntilChanged()
@@ -116,7 +133,13 @@ class UserPreferencesRepository @Inject constructor(
 
     suspend fun current(): UserPreferences = preferences.first()
 
-    suspend fun setMode(mode: ActivityMode) = dataStore.edit { it[Keys.MODE] = mode.name }
+    suspend fun setSpotifyEnabled(enabled: Boolean) = dataStore.edit {
+        it[Keys.SPOTIFY] = enabled
+        if (!enabled) it[Keys.MUSIC_SOURCE] = MusicSource.PHONE.name
+    }
+    suspend fun setMusicSource(source: MusicSource) = dataStore.edit { it[Keys.MUSIC_SOURCE] = source.name }
+    suspend fun setGoogleMapsEnabled(enabled: Boolean) = dataStore.edit { it[Keys.GOOGLE_MAPS] = enabled }
+    suspend fun setSpeedOverlayExpanded(expanded: Boolean) = dataStore.edit { it[Keys.OVERLAY_EXPANDED] = expanded }
     suspend fun setSpeedUnit(unit: SpeedUnit) = dataStore.edit { it[Keys.SPEED_UNIT] = unit.name }
     suspend fun setSpeedAlertEnabled(enabled: Boolean) = dataStore.edit { it[Keys.ALERT_ENABLED] = enabled }
     suspend fun setSpeedAlertLimitMps(limit: Double) = dataStore.edit { it[Keys.ALERT_LIMIT] = limit }

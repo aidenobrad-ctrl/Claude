@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">RideDeck</string>
+
+    <string name="notif_channel_tracking">Ride tracking</string>
+    <string name="notif_channel_tracking_desc">Shows your live ride or walk while it is being recorded.</string>
+    <string name="notif_title_bike">Ride in progress</string>
+    <string name="notif_title_walk">Walk in progress</string>
+    <string name="notif_title_paused">Session paused</string>
+    <string name="notif_action_pause">Pause</string>
+    <string name="notif_action_resume">Resume</string>
+    <string name="notif_action_stop">Stop</string>
+
+    <string name="mode_bike">Bike</string>
+    <string name="mode_walk">Walk</string>
+    <string name="mode_toggle_description">Activity mode: %1$s. Double tap to change.</string>
+
+    <string name="nav_ride">Ride</string>
+    <string name="nav_map">Map</string>
+    <string name="nav_history">History</string>
+    <string name="nav_settings">Settings</string>
+    <string name="ride_mode_locked">Locked while moving</string>
+
+    <string name="action_start">Start</string>
+    <string name="action_pause">Pause</string>
+    <string name="action_resume">Resume</string>
+    <string name="action_stop">Stop</string>
+
+    <string name="stat_max">Max</string>
+    <string name="stat_avg">Avg</string>
+    <string name="stat_distance">Distance</string>
+    <string name="stat_time">Moving time</string>
+    <string name="stat_elapsed">Elapsed</string>
+    <string name="stat_odometer">Odometer</string>
+    <string name="stat_record">Record</string>
+    <string name="stat_pace">Pace</string>
+    <string name="stat_speed">Speed</string>
+    <string name="status_auto_paused">Auto-paused</string>
+    <string name="status_paused">Paused</string>
+    <string name="status_new_record">New record!</string>
+    <string name="reset_max">Reset max</string>
+
+    <string name="music_panel_toggle">Music panel</string>
+</resources>

@@ -42,7 +42,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SecondaryTabRow
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
@@ -169,7 +169,7 @@ private fun Player(state: MusicUiState, lyricsEnabled: Boolean, viewModel: Music
             if (!compact) Controls(state, viewModel, small = false)
             if (roomForList) {
                 if (lyricsEnabled) {
-                    SecondaryTabRow(selectedTabIndex = tab) {
+                    TabRow(selectedTabIndex = tab) {
                         Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Lyrics") })
                         Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Library") })
                     }

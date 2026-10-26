@@ -108,6 +108,7 @@ class SpotifyControl @Inject constructor(
 
     fun next() = controller?.transportControls?.skipToNext()
     fun previous() = controller?.transportControls?.skipToPrevious()
+    fun seekTo(positionMs: Long) = controller?.transportControls?.seekTo(positionMs.coerceAtLeast(0))
 
     fun openSpotify() {
         val launch = context.packageManager.getLaunchIntentForPackage(SPOTIFY_PACKAGE)

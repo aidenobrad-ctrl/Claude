@@ -200,6 +200,7 @@ private fun Player(state: MusicUiState, lyricsEnabled: Boolean, viewModel: Music
                 }
                 if (compact) Controls(state, viewModel, small = true)
             }
+            if (playback.trackId != null) SeekBar(playback, onSeek = viewModel::seekTo)
             if (!compact) Controls(state, viewModel, small = false)
             if (roomForList) {
                 if (lyricsEnabled) {

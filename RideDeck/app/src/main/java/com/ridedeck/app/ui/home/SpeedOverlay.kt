@@ -5,7 +5,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -56,14 +60,15 @@ import com.ridedeck.core.format.Units
 import com.ridedeck.core.tracking.TripStatus
 
 /**
- * The speedometer, floating over the map. Expanded it shows speed, ride stats and the
- * Start/Pause/Stop controls; collapsed it is a small speed pill so more of the map is visible.
+ * The speedometer. Over the map it floats as a card that can shrink to a small speed pill; with
+ * [fullScreen] it fills its own view (speedometer alone, or above the music panel).
  */
 @Composable
 fun SpeedOverlay(
     rideLocked: Boolean,
     onOpenPermissions: () -> Unit,
     modifier: Modifier = Modifier,
+    fullScreen: Boolean = false,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -83,13 +88,13 @@ fun SpeedOverlay(
     val spokenSpeed = "Speed $speedText ${Units.speedLabel(unit)}" + if (overLimit) ", over your speed limit" else ""
 
     Surface(
-        shape = MaterialTheme.shapes.extraLarge,
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
-        tonalElevation = 3.dp,
-        shadowElevation = 6.dp,
-        modifier = modifier.widthIn(max = 420.dp),
+        shape = if (fullScreen) RectangleShape else MaterialTheme.shapes.extraLarge,
+        color = if (fullScreen) MaterialTheme.colorScheme.background else MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+        tonalElevation = if (fullScreen) 0.dp else 3.dp,
+        shadowElevation = if (fullScreen) 0.dp else 6.dp,
+        modifier = if (fullScreen) modifier.fillMaxSize() else modifier.widthIn(max = 420.dp),
     ) {
-        if (!state.expanded) {
+        if (!fullScreen && !state.expanded) {
             Row(
                 Modifier
                     .clickable(onClickLabel = "Show speedometer") { viewModel.setExpanded(true) }
@@ -116,13 +121,19 @@ fun SpeedOverlay(
                 Icon(Icons.Default.ExpandLess, contentDescription = null, modifier = Modifier.padding(horizontal = 8.dp))
             }
         } else {
-            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(
+                Modifier
+                    .then(if (fullScreen) Modifier.verticalScroll(rememberScrollState()) else Modifier)
+                    .padding(if (fullScreen) 20.dp else 14.dp),
+                verticalArrangement = Arrangement.spacedBy(if (fullScreen) 16.dp else 10.dp),
+            ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Row(
                         Modifier.weight(1f).semantics(mergeDescendants = true) { contentDescription = spokenSpeed },
                         verticalAlignment = Alignment.Bottom,
                     ) {
-                        Text(speedText, style = NumericStyle.copy(fontSize = 72.sp, lineHeight = 72.sp), color = speedColor)
+                        val size = if (fullScreen) 120.sp else 72.sp
+                        Text(speedText, style = NumericStyle.copy(fontSize = size, lineHeight = size), color = speedColor)
                         Spacer(Modifier.width(6.dp))
                         TextButton(onClick = viewModel::toggleUnit, modifier = Modifier.heightIn(min = 48.dp)) {
                             Text(Units.speedLabel(unit), style = MaterialTheme.typography.titleLarge)
@@ -130,8 +141,10 @@ fun SpeedOverlay(
                     }
                     Column(horizontalAlignment = Alignment.End) {
                         StatusChip(snap.status, state.isNewRecord)
-                        IconButton(onClick = { viewModel.setExpanded(false) }, modifier = Modifier.size(48.dp)) {
-                            Icon(Icons.Default.ExpandMore, contentDescription = "Shrink speedometer")
+                        if (!fullScreen) {
+                            IconButton(onClick = { viewModel.setExpanded(false) }, modifier = Modifier.size(48.dp)) {
+                                Icon(Icons.Default.ExpandMore, contentDescription = "Shrink speedometer")
+                            }
                         }
                     }
                 }

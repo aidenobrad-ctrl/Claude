@@ -49,6 +49,8 @@ jobs:
           RIDEDECK_KEYSTORE_PASSWORD: ${{ secrets.RIDEDECK_KEYSTORE_PASSWORD }}
           RIDEDECK_KEY_ALIAS: ${{ secrets.RIDEDECK_KEY_ALIAS }}
           RIDEDECK_KEY_PASSWORD: ${{ secrets.RIDEDECK_KEY_PASSWORD }}
+          # Optional: enables the built-in Google map. Leave unset for an OpenStreetMap-only build.
+          MAPS_API_KEY: ${{ secrets.MAPS_API_KEY }}
         run: ./gradlew --no-daemon :app:assembleRelease
 
       - name: Rename APK

@@ -8,8 +8,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Map
-import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.MusicOff
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -44,8 +42,6 @@ import com.ridedeck.app.tracking.TrackingEvent
 import com.ridedeck.app.ui.components.RideModeBanner
 import com.ridedeck.app.ui.history.HistoryScreen
 import com.ridedeck.app.ui.history.SessionDetailScreen
-import com.ridedeck.app.ui.map.MapScreen
-import com.ridedeck.app.ui.music.MusicPanel
 import com.ridedeck.app.ui.permissions.PermissionsScreen
 import com.ridedeck.app.ui.settings.SettingsScreen
 import com.ridedeck.app.ui.theme.RideDeckTheme
@@ -126,58 +122,39 @@ fun RideDeckRoot(viewModel: MainViewModel = hiltViewModel()) {
                                 label = { Text(stringResource(item.label)) },
                             )
                         }
-                        val panelOn = state.preferences.musicPanelVisible
-                        NavigationBarItem(
-                            selected = panelOn,
-                            onClick = { viewModel.setMusicPanelVisible(!panelOn) },
-                            icon = { Icon(if (panelOn) Icons.Default.MusicNote else Icons.Default.MusicOff, contentDescription = null) },
-                            label = { Text("Music") },
-                        )
                     }
                 }
             },
         ) { padding ->
             Column(Modifier.padding(padding).fillMaxSize()) {
                 if (state.rideLocked) RideModeBanner()
-                SplitPanelLayout(
-                    showPanel = showChrome && state.preferences.musicPanelVisible,
-                    fraction = state.preferences.musicPanelFraction,
-                    onFractionCommitted = viewModel::setMusicPanelFraction,
-                    onHidePanel = { viewModel.setMusicPanelVisible(false) },
-                    top = {
-                        NavHost(navController = navController, startDestination = Routes.RIDE) {
-                            composable(Routes.PERMISSIONS) {
-                                PermissionsScreen(onDone = { navController.popBackStack() })
-                            }
-                            composable(Routes.RIDE) {
-                                MapScreen(
-                                    rideLocked = state.rideLocked,
-                                    onOpenPermissions = { navController.navigate(Routes.PERMISSIONS) },
-                                )
-                            }
-                            composable(Routes.HISTORY) {
-                                HistoryScreen(onOpenSession = { navController.navigate(Routes.session(it)) })
-                            }
-                            composable(
-                                Routes.SESSION,
-                                arguments = listOf(navArgument("sessionId") { type = NavType.LongType }),
-                            ) {
-                                SessionDetailScreen(onBack = { navController.popBackStack() })
-                            }
-                            composable(Routes.SETTINGS) {
-                                SettingsScreen(onOpenPermissions = { navController.navigate(Routes.PERMISSIONS) })
-                            }
-                        }
-                    },
-                    panel = {
-                        MusicPanel(
-                            lyricsEnabled = state.preferences.lyricsEnabled,
-                            spotifyEnabled = state.preferences.spotifyEnabled,
-                            source = state.preferences.musicSource,
-                            onSourceChange = viewModel::setMusicSource,
+                NavHost(navController = navController, startDestination = Routes.RIDE, modifier = Modifier.weight(1f)) {
+                    composable(Routes.PERMISSIONS) {
+                        PermissionsScreen(onDone = { navController.popBackStack() })
+                    }
+                    composable(Routes.RIDE) {
+                        RideScreen(
+                            prefs = state.preferences,
+                            rideLocked = state.rideLocked,
+                            onToggleView = viewModel::setView,
+                            onMusicFraction = viewModel::setMusicPanelFraction,
+                            onMusicSource = viewModel::setMusicSource,
+                            onOpenPermissions = { navController.navigate(Routes.PERMISSIONS) },
                         )
-                    },
-                )
+                    }
+                    composable(Routes.HISTORY) {
+                        HistoryScreen(onOpenSession = { navController.navigate(Routes.session(it)) })
+                    }
+                    composable(
+                        Routes.SESSION,
+                        arguments = listOf(navArgument("sessionId") { type = NavType.LongType }),
+                    ) {
+                        SessionDetailScreen(onBack = { navController.popBackStack() })
+                    }
+                    composable(Routes.SETTINGS) {
+                        SettingsScreen(onOpenPermissions = { navController.navigate(Routes.PERMISSIONS) })
+                    }
+                }
             }
         }
     }

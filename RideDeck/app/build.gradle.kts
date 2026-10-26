@@ -19,6 +19,13 @@ android {
         versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Optional Google Maps SDK key: from the MAPS_API_KEY environment variable (a CI secret) or
+        // a mapsApiKey Gradle property. Without it the app uses OpenStreetMap only.
+        val mapsApiKey = System.getenv("MAPS_API_KEY")?.takeIf { it.isNotBlank() }
+            ?: (project.findProperty("mapsApiKey") as String?).orEmpty()
+        manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
+        buildConfigField("String", "MAPS_API_KEY", "\"$mapsApiKey\"")
         vectorDrawables { useSupportLibrary = true }
     }
 
@@ -116,6 +123,8 @@ dependencies {
 
     // Open-source map (OpenStreetMap) and music playback.
     implementation(libs.osmdroid)
+    // Optional built-in Google map; only used when the APK is built with a MAPS_API_KEY.
+    implementation(libs.maps.compose)
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.session)
 

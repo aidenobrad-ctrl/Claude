@@ -42,6 +42,7 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ridedeck.app.data.prefs.MapProvider
 import com.ridedeck.app.data.prefs.ThemeMode
 import com.ridedeck.app.ui.components.GloveTouchTarget
 import com.ridedeck.app.ui.theme.GoGreen
@@ -62,7 +63,6 @@ fun SettingsScreen(
         onPauseOrDispose { }
     }
     val p = state.prefs
-    var showSystems by rememberSaveable { mutableStateOf(false) }
 
     LazyColumn(
         Modifier.fillMaxSize(),
@@ -109,34 +109,50 @@ fun SettingsScreen(
         }
 
         item { Header("Map") }
-        item { SwitchRow("Bike shops", p.showBikeShops, viewModel::setShowBikeShops) }
-        item { SwitchRow("Cycling map style", p.showCycleLanes, viewModel::setShowCycleLanes) }
-        item { SwitchRow("Bike-share stations", p.showBikeShare, viewModel::setShowBikeShare) }
-        item { SwitchRow("Only stations with bikes", p.onlyStationsWithBikes, viewModel::setOnlyWithBikes) }
         item {
-            Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
-                Text("Bike-share system", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    p.gbfsSystemName?.takeIf { it.isNotBlank() } ?: p.gbfsDiscoveryUrl ?: "None selected",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+            Choice(
+                label = "Map",
+                options = listOf(MapProvider.OSM to "OpenStreetMap", MapProvider.GOOGLE to "Google Maps"),
+                selected = p.mapProvider,
+                onSelect = viewModel::setMapProvider,
+            )
+        }
+        if (p.mapProvider == MapProvider.GOOGLE) {
+            item {
+                SetupSteps(
+                    listOf(
+                        SetupStep(
+                            if (state.googleMapKeyBuiltIn) {
+                                "This build includes a Google Maps key, so the Google map is shown on the Ride screen."
+                            } else {
+                                "This build has no Google Maps key yet, so the map stays on OpenStreetMap. " +
+                                    "Google only shows its map inside apps that have a key. It is free for this use."
+                            },
+                            done = state.googleMapKeyBuiltIn,
+                        ),
+                        SetupStep(
+                            "Get a key: open the Google Cloud console, create a project, enable \"Maps SDK for Android\" " +
+                                "and create an API key under APIs & Services → Credentials. Google asks for a billing " +
+                                "account, but the Android map itself has no usage charge.",
+                            done = state.googleMapKeyBuiltIn,
+                            action = if (state.googleMapKeyBuiltIn) null else "Open Google Cloud" to viewModel::openGoogleCloud,
+                        ),
+                        SetupStep(
+                            "Restrict the key to Android apps with package com.ridedeck.app and SHA-1 " +
+                                "${SettingsViewModel.SIGNING_SHA1}, and to the Maps SDK for Android.",
+                            done = state.googleMapKeyBuiltIn,
+                        ),
+                        SetupStep(
+                            "On GitHub open the repository → Settings → Secrets and variables → Actions, add a secret " +
+                                "named MAPS_API_KEY with the key, then re-run the RideDeck APK build and install the new APK.",
+                            done = state.googleMapKeyBuiltIn,
+                        ),
+                    ),
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
-                    Button(
-                        onClick = {
-                            showSystems = true
-                            viewModel.findBikeShareSystems()
-                        },
-                        modifier = Modifier.heightIn(min = GloveTouchTarget),
-                    ) { Text("Choose") }
-                    if (p.gbfsDiscoveryUrl != null) {
-                        OutlinedButton(
-                            onClick = { viewModel.chooseBikeShareSystem(null, null) },
-                            modifier = Modifier.heightIn(min = GloveTouchTarget),
-                        ) { Text("Clear") }
-                    }
-                }
             }
+        }
+        if (p.mapProvider == MapProvider.OSM) {
+            item { SwitchRow("Cycling map style", p.showCycleLanes, viewModel::setShowCycleLanes) }
         }
 
         item { Header("Music") }
@@ -240,18 +256,6 @@ fun SettingsScreen(
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
             )
         }
-    }
-
-    if (showSystems) {
-        BikeShareDialog(
-            search = state.bikeShare,
-            currentUrl = p.gbfsDiscoveryUrl.orEmpty(),
-            onPick = { name, url ->
-                viewModel.chooseBikeShareSystem(name, url)
-                showSystems = false
-            },
-            onDismiss = { showSystems = false },
-        )
     }
 
     state.message?.let { msg ->
@@ -369,61 +373,3 @@ private fun SpeedLimitSlider(limitMps: Double, unit: SpeedUnit, onChange: (Float
     }
 }
 
-@Composable
-private fun BikeShareDialog(
-    search: BikeShareSearch,
-    currentUrl: String,
-    onPick: (String?, String?) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    var customUrl by rememberSaveable { mutableStateOf(currentUrl) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Bike-share system") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                when {
-                    search.loading -> Row(verticalAlignment = Alignment.CenterVertically) {
-                        CircularProgressIndicator(Modifier.padding(end = 12.dp))
-                        Text("Finding systems near you…")
-                    }
-                    search.error != null -> Text(search.error)
-                }
-                if (search.systems.isNotEmpty()) {
-                    LazyColumn(Modifier.heightIn(max = 300.dp)) {
-                        items(search.systems, key = { it.systemId + it.autoDiscoveryUrl }) { system ->
-                            Column(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(min = GloveTouchTarget)
-                                    .clickable(role = Role.Button) { onPick(system.name, system.autoDiscoveryUrl) }
-                                    .padding(vertical = 8.dp),
-                            ) {
-                                Text(system.name, style = MaterialTheme.typography.titleMedium)
-                                Text(system.location, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            HorizontalDivider()
-                        }
-                    }
-                }
-                OutlinedTextField(
-                    value = customUrl,
-                    onValueChange = { customUrl = it },
-                    label = { Text("Or paste a gbfs.json URL") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = { onPick(null, customUrl) },
-                enabled = customUrl.isNotBlank(),
-                modifier = Modifier.heightIn(min = GloveTouchTarget),
-            ) { Text("Use URL") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = GloveTouchTarget)) { Text("Cancel") }
-        },
-    )
-}

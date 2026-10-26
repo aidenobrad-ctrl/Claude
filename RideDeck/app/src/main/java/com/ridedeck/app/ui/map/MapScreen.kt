@@ -38,48 +38,43 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
-import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import android.annotation.SuppressLint
-import android.view.MotionEvent
-import androidx.compose.runtime.mutableDoubleStateOf
-import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.viewinterop.AndroidView
 import com.ridedeck.app.data.maps.MapTiles
-import com.ridedeck.app.ui.components.GloveTouchTarget
+import com.ridedeck.app.data.prefs.MapProvider
 import com.ridedeck.app.integrations.GoogleMapsLauncher
+import com.ridedeck.app.ui.components.GloveTouchTarget
 import com.ridedeck.app.ui.home.SpeedOverlay
 import com.ridedeck.core.format.Formatters
 import com.ridedeck.core.geo.Geo
-import com.ridedeck.core.model.ActivityMode
-import com.ridedeck.core.model.GeoPoint
 import com.ridedeck.core.routing.RerouteReason
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 
+/**
+ * The map view: search, directions and the rider's position on either OpenStreetMap or the
+ * built-in Google map. The speedometer floats over it when [showSpeedOverlay] is on.
+ */
 @Composable
 fun MapScreen(
     rideLocked: Boolean,
+    showSpeedOverlay: Boolean,
     onOpenPermissions: () -> Unit,
     viewModel: MapViewModel = hiltViewModel(),
 ) {
@@ -93,74 +88,13 @@ fun MapScreen(
         onPauseOrDispose { }
     }
 
-    val mapView = rememberOsmMapView()
-    // Camera centre, updated as the map moves; drives station filtering and "Shops in this area".
-    var centerLat by remember { mutableDoubleStateOf(20.0) }
-    var centerLon by remember { mutableDoubleStateOf(0.0) }
-
-    val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    val cycleStyle = state.showCycleLanes
-    LaunchedEffect(cycleStyle, dark) {
-        mapView.applyStyle(if (cycleStyle) MapTiles.CYCLE else MapTiles.STANDARD, dark)
-    }
-
-    // Follow the rider until they pan the map themselves.
-    LaunchedEffect(state.myLocation, state.followUser) {
-        val loc = state.myLocation ?: return@LaunchedEffect
-        if (state.followUser) {
-            val zoom = mapView.zoomLevelDouble.coerceAtLeast(16.0)
-            mapView.controller.animateTo(loc.toOsm(), zoom, 600L)
-        }
-    }
-
-    val routeColor = MaterialTheme.colorScheme.secondary.toArgb()
-    val primary = MaterialTheme.colorScheme.primary.toArgb()
-    val visibleStations = remember(state.stations, centerLat.toFloat(), centerLon.toFloat()) {
-        // Only draw stations near the camera; thousands of markers would make the map sluggish.
-        val center = GeoPoint(centerLat, centerLon)
-        state.stations
-            .asSequence()
-            .map { it to Geo.distanceMeters(center, GeoPoint(it.latitude, it.longitude)) }
-            .filter { it.second < STATION_RADIUS_M }
-            .sortedBy { it.second }
-            .take(MAX_STATION_MARKERS)
-            .map { it.first }
-            .toList()
-    }
-    val overlays = remember(mapView) { MapOverlays(mapView) }
-    LaunchedEffect(state.route, routeColor) { overlays.setRoute(state.route?.polyline, routeColor) }
-    LaunchedEffect(state.destination) { overlays.setDestination(state.destination, primary) }
-    LaunchedEffect(state.bikeShops, state.showShops) { overlays.setShops(if (state.showShops) state.bikeShops else emptyList()) }
-    LaunchedEffect(visibleStations, state.showStations) { overlays.setStations(if (state.showStations) visibleStations else emptyList()) }
-    LaunchedEffect(state.myLocation, state.hasLocationPermission) {
-        overlays.setMyLocation(state.myLocation.takeIf { state.hasLocationPermission })
-    }
-
     Box(Modifier.fillMaxSize()) {
-        AndroidView(
-            factory = {
-                mapView.apply {
-                    addMapListener(
-                        org.osmdroid.events.DelayedMapListener(
-                            object : org.osmdroid.events.MapListener {
-                                override fun onScroll(event: org.osmdroid.events.ScrollEvent?): Boolean {
-                                    centerLat = mapCenter.latitude
-                                    centerLon = mapCenter.longitude
-                                    return false
-                                }
+        when (state.provider) {
+            MapProvider.GOOGLE -> GoogleMapLayer(state, onUserGesture = { viewModel.setFollowUser(false) })
+            MapProvider.OSM -> OsmMapLayer(state, onUserGesture = { viewModel.setFollowUser(false) })
+        }
 
-                                override fun onZoom(event: org.osmdroid.events.ZoomEvent?): Boolean = onScroll(null)
-                            },
-                            250,
-                        ),
-                    )
-                    setOnTouchListenerCompat { viewModel.setFollowUser(false) }
-                }
-            },
-            modifier = Modifier.fillMaxSize(),
-        )
-
-        // Top overlay: mode toggle, search and layer filters.
+        // Top overlay: search and map style.
         Column(
             Modifier
                 .fillMaxWidth()
@@ -210,12 +144,19 @@ fun MapScreen(
                     }
                 }
             }
-            LayerChips(state = state, rideLocked = rideLocked, viewModel = viewModel, searchHere = {
-                viewModel.searchShopsHere(GeoPoint(centerLat, centerLon))
-            })
+            if (state.provider == MapProvider.OSM) {
+                Row(Modifier.horizontalScroll(rememberScrollState())) {
+                    FilterChip(
+                        selected = state.cycleMapStyle,
+                        onClick = { viewModel.setCycleMapStyle(!state.cycleMapStyle) },
+                        label = { Text("Cycling map") },
+                        modifier = Modifier.heightIn(min = 48.dp),
+                    )
+                }
+            }
         }
 
-        // Bottom overlay: recentre button, attribution and the navigation card.
+        // Bottom overlay: speedometer, recentre button, attribution and the navigation card.
         Column(
             Modifier
                 .align(Alignment.BottomCenter)
@@ -223,17 +164,19 @@ fun MapScreen(
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            SpeedOverlay(rideLocked = rideLocked, onOpenPermissions = onOpenPermissions)
+            if (showSpeedOverlay) SpeedOverlay(rideLocked = rideLocked, onOpenPermissions = onOpenPermissions)
             Row(verticalAlignment = Alignment.Bottom) {
-                // OpenStreetMap's licence requires visible attribution.
                 Box(Modifier.weight(1f)) {
-                    Text(
-                        if (state.showCycleLanes) MapTiles.CYCLE_ATTRIBUTION else MapTiles.STANDARD_ATTRIBUTION,
-                        style = MaterialTheme.typography.labelSmall,
-                        modifier = Modifier
-                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.8f))
-                            .padding(4.dp),
-                    )
+                    // OpenStreetMap's licence requires visible attribution; Google draws its own logo.
+                    if (state.provider == MapProvider.OSM) {
+                        Text(
+                            if (state.cycleMapStyle) MapTiles.CYCLE_ATTRIBUTION else MapTiles.STANDARD_ATTRIBUTION,
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier
+                                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.8f))
+                                .padding(4.dp),
+                        )
+                    }
                 }
                 if (!state.followUser && state.myLocation != null) {
                     FloatingActionButton(
@@ -248,6 +191,7 @@ fun MapScreen(
                 NavigationCard(
                     state = state,
                     onGoogleMaps = { state.destination?.let { GoogleMapsLauncher.navigate(context, it.location) } },
+                    onRetry = viewModel::retryRoute,
                     showSteps = showSteps,
                     onToggleSteps = { showSteps = !showSteps },
                     onEnd = {
@@ -311,66 +255,10 @@ private fun SearchField(
 }
 
 @Composable
-private fun LayerChips(
-    state: MapUiState,
-    rideLocked: Boolean,
-    viewModel: MapViewModel,
-    searchHere: () -> Unit,
-) {
-    Row(
-        Modifier.horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        FilterChip(
-            selected = state.showShops,
-            onClick = { viewModel.setShowShops(!state.showShops) },
-            label = { Text("Bike shops") },
-            modifier = Modifier.heightIn(min = 48.dp),
-        )
-        FilterChip(
-            selected = state.showStations,
-            onClick = { viewModel.setShowStations(!state.showStations) },
-            label = { Text("Bike share") },
-            modifier = Modifier.heightIn(min = 48.dp),
-        )
-        FilterChip(
-            selected = state.cycleLanesEnabled,
-            onClick = { viewModel.setShowCycleLanes(!state.cycleLanesEnabled) },
-            label = { Text("Cycling map") },
-            modifier = Modifier.heightIn(min = 48.dp),
-        )
-        if (state.showStations) {
-            FilterChip(
-                selected = state.onlyStationsWithBikes,
-                onClick = { viewModel.setOnlyWithBikes(!state.onlyStationsWithBikes) },
-                label = { Text("Has bikes") },
-                modifier = Modifier.heightIn(min = 48.dp),
-            )
-        }
-        if (state.showShops && !rideLocked) {
-            FilterChip(
-                selected = false,
-                onClick = searchHere,
-                label = { Text(if (state.loadingShops) "Searching…" else "Shops in this area") },
-                modifier = Modifier.heightIn(min = 48.dp),
-            )
-        }
-    }
-    if (state.showStations && !state.bikeShareConfigured) {
-        Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
-            Text(
-                "Choose your bike-share system in Settings to see stations.",
-                modifier = Modifier.padding(10.dp),
-                style = MaterialTheme.typography.bodyMedium,
-            )
-        }
-    }
-}
-
-@Composable
 private fun NavigationCard(
     state: MapUiState,
     onGoogleMaps: () -> Unit,
+    onRetry: () -> Unit,
     showSteps: Boolean,
     onToggleSteps: () -> Unit,
     onEnd: () -> Unit,
@@ -387,6 +275,14 @@ private fun NavigationCard(
                     Icon(Icons.Default.Flag, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(36.dp))
                     Spacer(Modifier.width(12.dp))
                     Text("You have arrived", style = MaterialTheme.typography.headlineSmall)
+                }
+                route == null && !state.routing -> Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "No route yet.",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.weight(1f),
+                    )
+                    OutlinedButton(onClick = onRetry, modifier = Modifier.heightIn(min = GloveTouchTarget)) { Text("Try again") }
                 }
                 state.routing || route == null -> Row(verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(Modifier.size(28.dp))
@@ -437,7 +333,7 @@ private fun NavigationCard(
                     )
                 }
             }
-            if (state.googleMapsEnabled && !state.arrived) {
+            if (state.googleMapsHandOff && !state.arrived) {
                 Button(
                     onClick = onGoogleMaps,
                     modifier = Modifier.fillMaxWidth().heightIn(min = GloveTouchTarget),
@@ -482,15 +378,3 @@ private fun NavigationCard(
         }
     }
 }
-
-/** Any drag or pinch on the map means the rider is exploring, so stop following their position. */
-@SuppressLint("ClickableViewAccessibility")
-private fun org.osmdroid.views.MapView.setOnTouchListenerCompat(onUserGesture: () -> Unit) {
-    setOnTouchListener { _, event ->
-        if (event.actionMasked == MotionEvent.ACTION_MOVE) onUserGesture()
-        false
-    }
-}
-
-private const val STATION_RADIUS_M = 2_500.0
-private const val MAX_STATION_MARKERS = 150

@@ -8,12 +8,12 @@ import com.ridedeck.app.integrations.GoogleMapsLauncher
 import com.ridedeck.app.integrations.SpotifyControl
 import com.ridedeck.app.ui.permissions.openAppSettings
 import dagger.hilt.android.qualifiers.ApplicationContext
-import com.ridedeck.app.data.maps.GbfsRepository
+import com.ridedeck.app.BuildConfig
+import com.ridedeck.app.data.prefs.MapProvider
 import com.ridedeck.app.data.prefs.ThemeMode
 import com.ridedeck.app.data.prefs.UserPreferences
 import com.ridedeck.app.data.prefs.UserPreferencesRepository
 import com.ridedeck.core.format.Units
-import com.ridedeck.core.gbfs.GbfsSystem
 import com.ridedeck.core.model.SpeedUnit
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
@@ -26,19 +26,13 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-data class BikeShareSearch(
-    val loading: Boolean = false,
-    val systems: List<GbfsSystem> = emptyList(),
-    val error: String? = null,
-)
-
 data class SettingsUiState(
     val prefs: UserPreferences = UserPreferences(),
-    val bikeShare: BikeShareSearch = BikeShareSearch(),
     val message: String? = null,
     val spotifyInstalled: Boolean = false,
     val spotifyAccess: Boolean = false,
     val googleMapsInstalled: Boolean = false,
+    val googleMapKeyBuiltIn: Boolean = BuildConfig.MAPS_API_KEY.isNotBlank(),
 )
 
 private data class IntegrationStatus(
@@ -50,7 +44,6 @@ private data class IntegrationStatus(
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val prefs: UserPreferencesRepository,
-    private val gbfsRepository: GbfsRepository,
     private val locationRepository: LocationRepository,
     private val spotify: SpotifyControl,
     @ApplicationContext private val appContext: Context,
@@ -58,18 +51,15 @@ class SettingsViewModel @Inject constructor(
 
     private val integrations = MutableStateFlow(IntegrationStatus())
 
-    private val bikeShare = MutableStateFlow(BikeShareSearch())
     private val message = MutableStateFlow<String?>(null)
 
     val uiState: StateFlow<SettingsUiState> = combine(
         prefs.preferences,
-        bikeShare,
         message,
         integrations,
-    ) { p, share, msg, i ->
+    ) { p, msg, i ->
         SettingsUiState(
             prefs = p,
-            bikeShare = share,
             message = msg,
             spotifyInstalled = i.spotifyInstalled,
             spotifyAccess = i.spotifyAccess,
@@ -85,8 +75,6 @@ class SettingsViewModel @Inject constructor(
     fun setSpeedAlertEnabled(v: Boolean) = launch { prefs.setSpeedAlertEnabled(v) }
     fun setSpeedAlertSound(v: Boolean) = launch { prefs.setSpeedAlertSound(v) }
     fun setSpeedAlertVibrate(v: Boolean) = launch { prefs.setSpeedAlertVibrate(v) }
-    fun setShowBikeShops(v: Boolean) = launch { prefs.setShowBikeShops(v) }
-    fun setShowBikeShare(v: Boolean) = launch { prefs.setShowBikeShare(v) }
     fun setSpotifyEnabled(v: Boolean) = launch { prefs.setSpotifyEnabled(v) }
     fun setGoogleMapsEnabled(v: Boolean) = launch { prefs.setGoogleMapsEnabled(v) }
 
@@ -100,9 +88,17 @@ class SettingsViewModel @Inject constructor(
 
     fun openSpotify() = spotify.openSpotify()
     fun openNotificationAccess() = spotify.openAccessSettings()
+    fun setMapProvider(provider: MapProvider) = launch { prefs.setMapProvider(provider) }
+
+    fun openGoogleCloud() {
+        appContext.startActivity(
+            android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://console.cloud.google.com/google/maps-apis/start"))
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+    }
+
     fun openGoogleMapsStore() = GoogleMapsLauncher.openStore(appContext)
     fun openAppInfo() = appContext.openAppSettings()
-    fun setOnlyWithBikes(v: Boolean) = launch { prefs.setOnlyStationsWithBikes(v) }
     fun setShowCycleLanes(v: Boolean) = launch { prefs.setShowCycleLanes(v) }
     fun setLyricsEnabled(v: Boolean) = launch { prefs.setLyricsEnabled(v) }
 
@@ -111,38 +107,14 @@ class SettingsViewModel @Inject constructor(
         prefs.setSpeedAlertLimitMps(Units.toMps(value.toDouble(), unit))
     }
 
-    fun findBikeShareSystems() {
-        bikeShare.update { it.copy(loading = true, error = null) }
-        viewModelScope.launch {
-            try {
-                val here = locationRepository.lastKnown()?.point
-                val systems = gbfsRepository.systemsNear(here).take(MAX_SYSTEMS)
-                bikeShare.value = BikeShareSearch(systems = systems, error = if (systems.isEmpty()) "No public systems found nearby" else null)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                bikeShare.value = BikeShareSearch(error = "Couldn't load the bike-share catalogue")
-            }
-        }
-    }
-
-    fun chooseBikeShareSystem(name: String?, url: String?) = launch {
-        val clean = url?.trim()
-        if (clean != null && clean.isNotEmpty() && !clean.startsWith("https://") && !clean.startsWith("http://")) {
-            message.value = "Feed URL must start with https://"
-            return@launch
-        }
-        prefs.setGbfsSystem(name, clean)
-        bikeShare.value = BikeShareSearch()
-    }
-
     fun dismissMessage() {
         message.value = null
     }
 
     private fun launch(block: suspend () -> Unit) = viewModelScope.launch { block() }
 
-    private companion object {
-        const val MAX_SYSTEMS = 40
+    companion object {
+        /** SHA-1 of the shared CI signing key (ci/ridedeck-ci.jks), needed to restrict a Maps API key. */
+        const val SIGNING_SHA1 = "F8:07:B5:F6:DA:43:80:81:59:0C:47:46:E0:37:2F:A3:E0:73:29:9F"
     }
 }

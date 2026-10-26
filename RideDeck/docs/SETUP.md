@@ -8,6 +8,17 @@ The GitHub Actions workflow `.github/workflows/ridedeck-apk.yml` (at the reposit
 
 To install: download `RideDeck.apk` on the phone, open it, and allow installs from that app when Android asks.
 
+## Optional: built-in Google map
+
+The APK uses OpenStreetMap unless it is built with a Google Maps SDK key.
+
+1. In the [Google Cloud console](https://console.cloud.google.com/google/maps-apis/start) create a project, enable **Maps SDK for Android**, and create an API key (APIs & Services → Credentials). Google requires a billing account; the Android map itself has no usage charge.
+2. Restrict the key to Android apps: package `com.ridedeck.app`, SHA-1 `F8:07:B5:F6:DA:43:80:81:59:0C:47:46:E0:37:2F:A3:E0:73:29:9F` (the shared CI key; use your own key's SHA-1 if you set signing secrets), and to the Maps SDK for Android API.
+3. Add it as the repository secret `MAPS_API_KEY` (Settings → Secrets and variables → Actions) and re-run the "RideDeck APK" workflow.
+4. Install the new APK and pick **Settings → Map → Google Maps**.
+
+For local builds, put `mapsApiKey=...` in `~/.gradle/gradle.properties` or export `MAPS_API_KEY`.
+
 ## Signing
 
 - By default CI signs with `ci/ridedeck-ci.jks` (password and alias `ridedeck`). It is committed on purpose so every build is signed with the same key and installs as an update. Anyone with the repo can sign APKs with it, so it is only suitable for personal or test builds.
@@ -32,8 +43,7 @@ You need Android Studio (or the Android SDK command-line tools) with JDK 17+.
 On first launch RideDeck explains and requests permissions. Only precise location is required.
 
 - **Ride tab**: pick Bike or Walk, tap Start. Recording continues with the screen off; use the notification to pause or stop.
-- **Map tab**: search a destination for cycling or walking directions; toggle bike shops, bike-share and the cycling map style.
-- **Settings → Bike-share system → Choose** to pick your city's GBFS feed.
+- **Ride screen**: use the Map, Speed and Music chips to choose what's on screen. Search a destination on the map for cycling directions.
 - **Music** (bottom bar) opens the player. Copy music files into the phone's Music folder; they appear in the library. Tap a song to play, the heart to add it to favourites, and use the Lyrics tab for synced lyrics. Drag the panel's handle to resize it.
 
 ## Troubleshooting
@@ -45,4 +55,4 @@ On first launch RideDeck explains and requests permissions. Only precise locatio
 | "No cycling route found" | OSRM could not connect the points by bike (for example across water). Try Walk mode or a nearby destination. |
 | Music panel says "No music found" | The files must be in shared storage (for example `Music/`) and at least 30 seconds long. Tap "Scan again". |
 | Music stops when the screen locks | Some phones kill background apps aggressively; set RideDeck's battery usage to "Unrestricted". |
-| No bike-share stations | Choose a system in Settings. In Walk mode, turn on "Bike share (walk)". |
+| Picked Google Maps but still see OpenStreetMap | The APK was built without `MAPS_API_KEY`; see the Google map section above. |

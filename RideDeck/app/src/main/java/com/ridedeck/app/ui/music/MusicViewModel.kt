@@ -150,6 +150,7 @@ class MusicViewModel @Inject constructor(
     fun next() = controller.next()
     fun previous() = controller.previous()
     fun toggleShuffle() = controller.toggleShuffle()
+    fun seekTo(positionMs: Long) = controller.seekTo(positionMs)
     fun setFavouritesOnly(value: Boolean) {
         favouritesOnly.value = value
     }

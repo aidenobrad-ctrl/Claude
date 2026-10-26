@@ -25,6 +25,12 @@ enum class ThemeMode { SYSTEM, DARK, OLED }
 /** Where the music panel gets its music from. */
 enum class MusicSource { PHONE, SPOTIFY }
 
+/** The three views of the Ride screen. */
+enum class RideView { MAP, SPEEDOMETER, MUSIC }
+
+/** Which map is drawn inside the app. */
+enum class MapProvider { OSM, GOOGLE }
+
 data class UserPreferences(
     /** Always BIKE: Walk mode was removed. Kept so the tracking engine and old sessions keep working. */
     val mode: ActivityMode = ActivityMode.BIKE,
@@ -37,14 +43,8 @@ data class UserPreferences(
     val keepScreenOn: Boolean = true,
     val rideModeLockEnabled: Boolean = true,
     val themeMode: ThemeMode = ThemeMode.OLED,
-    val showBikeShops: Boolean = true,
-    val showBikeShare: Boolean = true,
-    val showBikeShareInWalkMode: Boolean = false,
-    val onlyStationsWithBikes: Boolean = false,
     val showCycleLanes: Boolean = true,
-    val gbfsDiscoveryUrl: String? = null,
-    val gbfsSystemName: String? = null,
-    val musicPanelVisible: Boolean = false,
+    val musicPanelVisible: Boolean = true,
     val musicPanelFraction: Float = DEFAULT_PANEL_FRACTION,
     val lyricsEnabled: Boolean = true,
     val onboardingDone: Boolean = false,
@@ -54,6 +54,10 @@ data class UserPreferences(
     /** Optional Google Maps integration: hand turn-by-turn directions to the Google Maps app. */
     val googleMapsEnabled: Boolean = false,
     val speedOverlayExpanded: Boolean = true,
+    val mapProvider: MapProvider = MapProvider.OSM,
+    /** Which views the Ride screen shows; any combination, at least one. Music uses [musicPanelVisible]. */
+    val showMap: Boolean = true,
+    val showSpeedometer: Boolean = true,
 ) {
     companion object {
         const val DEFAULT_ALERT_LIMIT_MPS = 30.0 / 3.6
@@ -77,13 +81,7 @@ class UserPreferencesRepository @Inject constructor(
         val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
         val RIDE_MODE_LOCK = booleanPreferencesKey("ride_mode_lock")
         val THEME = stringPreferencesKey("theme")
-        val SHOW_SHOPS = booleanPreferencesKey("show_bike_shops")
-        val SHOW_SHARE = booleanPreferencesKey("show_bike_share")
-        val SHARE_IN_WALK = booleanPreferencesKey("show_bike_share_walk")
-        val ONLY_WITH_BIKES = booleanPreferencesKey("only_stations_with_bikes")
         val CYCLE_LANES = booleanPreferencesKey("show_cycle_lanes")
-        val GBFS_URL = stringPreferencesKey("gbfs_url")
-        val GBFS_NAME = stringPreferencesKey("gbfs_name")
         val PANEL_VISIBLE = booleanPreferencesKey("music_panel_visible")
         val PANEL_FRACTION = floatPreferencesKey("music_panel_fraction")
         val LYRICS = booleanPreferencesKey("lyrics_enabled")
@@ -92,6 +90,9 @@ class UserPreferencesRepository @Inject constructor(
         val MUSIC_SOURCE = stringPreferencesKey("music_source")
         val GOOGLE_MAPS = booleanPreferencesKey("google_maps_enabled")
         val OVERLAY_EXPANDED = booleanPreferencesKey("speed_overlay_expanded")
+        val MAP_PROVIDER = stringPreferencesKey("map_provider")
+        val SHOW_MAP = booleanPreferencesKey("show_map")
+        val SHOW_SPEEDOMETER = booleanPreferencesKey("show_speedometer")
     }
 
     val preferences: Flow<UserPreferences> = dataStore.data
@@ -109,13 +110,7 @@ class UserPreferencesRepository @Inject constructor(
                 keepScreenOn = p[Keys.KEEP_SCREEN_ON] ?: defaults.keepScreenOn,
                 rideModeLockEnabled = p[Keys.RIDE_MODE_LOCK] ?: defaults.rideModeLockEnabled,
                 themeMode = ThemeMode.entries.firstOrNull { it.name == p[Keys.THEME] } ?: defaults.themeMode,
-                showBikeShops = p[Keys.SHOW_SHOPS] ?: defaults.showBikeShops,
-                showBikeShare = p[Keys.SHOW_SHARE] ?: defaults.showBikeShare,
-                showBikeShareInWalkMode = p[Keys.SHARE_IN_WALK] ?: defaults.showBikeShareInWalkMode,
-                onlyStationsWithBikes = p[Keys.ONLY_WITH_BIKES] ?: defaults.onlyStationsWithBikes,
                 showCycleLanes = p[Keys.CYCLE_LANES] ?: defaults.showCycleLanes,
-                gbfsDiscoveryUrl = p[Keys.GBFS_URL]?.takeIf { it.isNotBlank() },
-                gbfsSystemName = p[Keys.GBFS_NAME]?.takeIf { it.isNotBlank() },
                 musicPanelVisible = p[Keys.PANEL_VISIBLE] ?: defaults.musicPanelVisible,
                 musicPanelFraction = (p[Keys.PANEL_FRACTION] ?: defaults.musicPanelFraction)
                     .coerceIn(UserPreferences.MIN_PANEL_FRACTION, UserPreferences.MAX_PANEL_FRACTION),
@@ -125,6 +120,9 @@ class UserPreferencesRepository @Inject constructor(
                 musicSource = MusicSource.entries.firstOrNull { it.name == p[Keys.MUSIC_SOURCE] } ?: defaults.musicSource,
                 googleMapsEnabled = p[Keys.GOOGLE_MAPS] ?: defaults.googleMapsEnabled,
                 speedOverlayExpanded = p[Keys.OVERLAY_EXPANDED] ?: defaults.speedOverlayExpanded,
+                mapProvider = MapProvider.entries.firstOrNull { it.name == p[Keys.MAP_PROVIDER] } ?: defaults.mapProvider,
+                showMap = p[Keys.SHOW_MAP] ?: defaults.showMap,
+                showSpeedometer = p[Keys.SHOW_SPEEDOMETER] ?: defaults.showSpeedometer,
             )
         }
         .distinctUntilChanged()
@@ -139,6 +137,26 @@ class UserPreferencesRepository @Inject constructor(
     }
     suspend fun setMusicSource(source: MusicSource) = dataStore.edit { it[Keys.MUSIC_SOURCE] = source.name }
     suspend fun setGoogleMapsEnabled(enabled: Boolean) = dataStore.edit { it[Keys.GOOGLE_MAPS] = enabled }
+    suspend fun setMapProvider(provider: MapProvider) = dataStore.edit { it[Keys.MAP_PROVIDER] = provider.name }
+
+    /** Shows or hides one view of the Ride screen; refuses to hide the last visible one. */
+    suspend fun setView(view: RideView, visible: Boolean) = dataStore.edit {
+        val defaults = UserPreferences()
+        val map = it[Keys.SHOW_MAP] ?: defaults.showMap
+        val speed = it[Keys.SHOW_SPEEDOMETER] ?: defaults.showSpeedometer
+        val music = it[Keys.PANEL_VISIBLE] ?: defaults.musicPanelVisible
+        val next = when (view) {
+            RideView.MAP -> Triple(visible, speed, music)
+            RideView.SPEEDOMETER -> Triple(map, visible, music)
+            RideView.MUSIC -> Triple(map, speed, visible)
+        }
+        if (next.first || next.second || next.third) {
+            it[Keys.SHOW_MAP] = next.first
+            it[Keys.SHOW_SPEEDOMETER] = next.second
+            it[Keys.PANEL_VISIBLE] = next.third
+        }
+    }
+
     suspend fun setSpeedOverlayExpanded(expanded: Boolean) = dataStore.edit { it[Keys.OVERLAY_EXPANDED] = expanded }
     suspend fun setSpeedUnit(unit: SpeedUnit) = dataStore.edit { it[Keys.SPEED_UNIT] = unit.name }
     suspend fun setSpeedAlertEnabled(enabled: Boolean) = dataStore.edit { it[Keys.ALERT_ENABLED] = enabled }
@@ -149,10 +167,6 @@ class UserPreferencesRepository @Inject constructor(
     suspend fun setKeepScreenOn(enabled: Boolean) = dataStore.edit { it[Keys.KEEP_SCREEN_ON] = enabled }
     suspend fun setRideModeLock(enabled: Boolean) = dataStore.edit { it[Keys.RIDE_MODE_LOCK] = enabled }
     suspend fun setTheme(theme: ThemeMode) = dataStore.edit { it[Keys.THEME] = theme.name }
-    suspend fun setShowBikeShops(enabled: Boolean) = dataStore.edit { it[Keys.SHOW_SHOPS] = enabled }
-    suspend fun setShowBikeShare(enabled: Boolean) = dataStore.edit { it[Keys.SHOW_SHARE] = enabled }
-    suspend fun setShowBikeShareInWalkMode(enabled: Boolean) = dataStore.edit { it[Keys.SHARE_IN_WALK] = enabled }
-    suspend fun setOnlyStationsWithBikes(enabled: Boolean) = dataStore.edit { it[Keys.ONLY_WITH_BIKES] = enabled }
     suspend fun setShowCycleLanes(enabled: Boolean) = dataStore.edit { it[Keys.CYCLE_LANES] = enabled }
     suspend fun setLyricsEnabled(enabled: Boolean) = dataStore.edit { it[Keys.LYRICS] = enabled }
     suspend fun setOnboardingDone() = dataStore.edit { it[Keys.ONBOARDING_DONE] = true }
@@ -160,15 +174,5 @@ class UserPreferencesRepository @Inject constructor(
 
     suspend fun setMusicPanelFraction(fraction: Float) = dataStore.edit {
         it[Keys.PANEL_FRACTION] = fraction.coerceIn(UserPreferences.MIN_PANEL_FRACTION, UserPreferences.MAX_PANEL_FRACTION)
-    }
-
-    suspend fun setGbfsSystem(name: String?, discoveryUrl: String?) = dataStore.edit {
-        if (discoveryUrl.isNullOrBlank()) {
-            it.remove(Keys.GBFS_URL)
-            it.remove(Keys.GBFS_NAME)
-        } else {
-            it[Keys.GBFS_URL] = discoveryUrl.trim()
-            it[Keys.GBFS_NAME] = name?.trim().orEmpty()
-        }
     }
 }

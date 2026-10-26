@@ -114,6 +114,7 @@ class SpotifyViewModel @Inject constructor(
     fun playPause() = spotify.playPause()
     fun next() = spotify.next()
     fun previous() = spotify.previous()
+    fun seekTo(positionMs: Long) = spotify.seekTo(positionMs)
     fun openSpotify() = spotify.openSpotify()
     fun openAccessSettings() = spotify.openAccessSettings()
 
@@ -173,23 +174,19 @@ fun SpotifyPanel(lyricsEnabled: Boolean, viewModel: SpotifyViewModel = hiltViewM
                     }
                     if (compact) Transport(p.isPlaying, viewModel, small = true)
                 }
+                val playback = PlaybackState(
+                    connected = true,
+                    trackId = (p.artist + p.title).hashCode().toLong(),
+                    title = p.title,
+                    artist = p.artist,
+                    durationMs = p.durationMs,
+                    isPlaying = p.isPlaying,
+                    positionMs = p.positionMs,
+                    sampledAtMs = p.sampledAtMs,
+                )
+                SeekBar(playback, onSeek = viewModel::seekTo)
                 if (!compact) Transport(p.isPlaying, viewModel, small = false)
-                if (showLyrics) {
-                    LyricsView(
-                        state.lyrics,
-                        PlaybackState(
-                            connected = true,
-                            trackId = (p.artist + p.title).hashCode().toLong(),
-                            title = p.title,
-                            artist = p.artist,
-                            durationMs = p.durationMs,
-                            isPlaying = p.isPlaying,
-                            positionMs = p.positionMs,
-                            sampledAtMs = p.sampledAtMs,
-                        ),
-                        Modifier.weight(1f),
-                    )
-                }
+                if (showLyrics) LyricsView(state.lyrics, playback, Modifier.weight(1f))
             }
         }
     }

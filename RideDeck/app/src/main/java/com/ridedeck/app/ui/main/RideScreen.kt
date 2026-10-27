@@ -1,7 +1,15 @@
 package com.ridedeck.app.ui.main
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.VerticalDivider
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -44,14 +52,20 @@ fun RideScreen(
     val showSpeed = prefs.showSpeedometer
     val showMusic = prefs.musicPanelVisible
 
+    // The last view left on can't be turned off, so its chip is shown as locked on.
+    val onlyOne = listOf(showMap, showSpeed, showMusic).count { it } == 1
+
     Column(Modifier.fillMaxSize()) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+            Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 12.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            ViewChip("Map", Icons.Default.Map, showMap) { onToggleView(RideView.MAP, !showMap) }
-            ViewChip("Speed", Icons.Default.Speed, showSpeed) { onToggleView(RideView.SPEEDOMETER, !showSpeed) }
-            ViewChip("Music", Icons.Default.MusicNote, showMusic) { onToggleView(RideView.MUSIC, !showMusic) }
+            ViewChip("Map", Icons.Default.Map, showMap, enabled = !(onlyOne && showMap)) { onToggleView(RideView.MAP, !showMap) }
+            ViewChip("Speed", Icons.Default.Speed, showSpeed, enabled = !(onlyOne && showSpeed)) { onToggleView(RideView.SPEEDOMETER, !showSpeed) }
+            ViewChip("Music", Icons.Default.MusicNote, showMusic, enabled = !(onlyOne && showMusic)) { onToggleView(RideView.MUSIC, !showMusic) }
         }
 
         val music: @Composable () -> Unit = {
@@ -72,9 +86,18 @@ fun RideScreen(
             else -> null
         }
 
-        Box(Modifier.weight(1f)) {
+        BoxWithConstraints(Modifier.weight(1f)) {
+            // Landscape on a phone, a tablet or a wide window: music sits beside the map or
+            // speedometer instead of squeezing both into a short strip.
+            val sideBySide = maxWidth > maxHeight && maxWidth >= 600.dp
             if (top == null) {
                 music()
+            } else if (sideBySide && showMusic) {
+                Row(Modifier.fillMaxSize()) {
+                    Box(Modifier.weight(0.58f).fillMaxHeight()) { top() }
+                    VerticalDivider()
+                    Box(Modifier.weight(0.42f).fillMaxHeight()) { music() }
+                }
             } else {
                 SplitPanelLayout(
                     showPanel = showMusic,
@@ -90,13 +113,15 @@ fun RideScreen(
 }
 
 @Composable
-private fun ViewChip(label: String, icon: ImageVector, selected: Boolean, onClick: () -> Unit) {
+private fun ViewChip(label: String, icon: ImageVector, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
     FilterChip(
         selected = selected,
         onClick = onClick,
-        label = { Text(label) },
-        leadingIcon = { Icon(icon, contentDescription = null, modifier = Modifier.padding(0.dp)) },
-        colors = FilterChipDefaults.filterChipColors(),
-        modifier = Modifier.heightIn(min = 48.dp),
+        enabled = enabled,
+        label = { Text(label, maxLines = 1) },
+        leadingIcon = { Icon(icon, contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize)) },
+        modifier = Modifier
+            .heightIn(min = 48.dp)
+            .semantics { if (!enabled) stateDescription = "On. At least one view stays on." },
     )
 }

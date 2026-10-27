@@ -2,7 +2,13 @@ package com.ridedeck.app.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import android.annotation.SuppressLint
+import android.content.ActivityNotFoundException
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.PowerManager
+import android.provider.Settings
 import com.ridedeck.app.data.location.LocationRepository
 import com.ridedeck.app.integrations.GoogleMapsLauncher
 import com.ridedeck.app.integrations.SpotifyControl
@@ -33,12 +39,15 @@ data class SettingsUiState(
     val spotifyAccess: Boolean = false,
     val googleMapsInstalled: Boolean = false,
     val googleMapKeyBuiltIn: Boolean = BuildConfig.MAPS_API_KEY.isNotBlank(),
+    val batteryUnrestricted: Boolean = true,
+    val isSamsung: Boolean = android.os.Build.MANUFACTURER.equals("samsung", ignoreCase = true),
 )
 
 private data class IntegrationStatus(
     val spotifyInstalled: Boolean = false,
     val spotifyAccess: Boolean = false,
     val googleMapsInstalled: Boolean = false,
+    val batteryUnrestricted: Boolean = true,
 )
 
 @HiltViewModel
@@ -64,6 +73,7 @@ class SettingsViewModel @Inject constructor(
             spotifyInstalled = i.spotifyInstalled,
             spotifyAccess = i.spotifyAccess,
             googleMapsInstalled = i.googleMapsInstalled,
+            batteryUnrestricted = i.batteryUnrestricted,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 
@@ -83,7 +93,24 @@ class SettingsViewModel @Inject constructor(
             spotifyInstalled = spotify.isInstalled(),
             spotifyAccess = spotify.hasAccess(),
             googleMapsInstalled = GoogleMapsLauncher.isInstalled(appContext),
+            batteryUnrestricted = appContext.getSystemService(PowerManager::class.java)
+                ?.isIgnoringBatteryOptimizations(appContext.packageName) ?: true,
         )
+    }
+
+    /**
+     * Asks Android to stop battery optimisation from pausing RideDeck. One UI is aggressive about
+     * this and can end a ride recording or music some time after the screen goes off.
+     */
+    @SuppressLint("BatteryLife")
+    fun requestBatteryUnrestricted() {
+        val direct = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${appContext.packageName}"))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        try {
+            appContext.startActivity(direct)
+        } catch (e: ActivityNotFoundException) {
+            appContext.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
     }
 
     fun openSpotify() = spotify.openSpotify()

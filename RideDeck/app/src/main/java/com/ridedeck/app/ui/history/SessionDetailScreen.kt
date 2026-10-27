@@ -32,6 +32,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -144,7 +145,8 @@ fun SessionDetailScreen(
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(320.dp)
+                // A fixed 320 dp would fill the whole screen in landscape; scale with the window.
+                .height(minOf(320.dp, (LocalConfiguration.current.screenHeightDp * 0.45f).dp))
                 .semantics { contentDescription = "Map of the recorded route" },
         ) {
             AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())

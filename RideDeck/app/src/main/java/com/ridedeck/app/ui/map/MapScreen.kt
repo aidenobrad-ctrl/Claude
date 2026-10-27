@@ -39,6 +39,10 @@ import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -59,7 +63,7 @@ import com.ridedeck.app.data.maps.MapTiles
 import com.ridedeck.app.data.prefs.MapProvider
 import com.ridedeck.app.integrations.GoogleMapsLauncher
 import com.ridedeck.app.ui.components.GloveTouchTarget
-import com.ridedeck.app.ui.home.SpeedOverlay
+import com.ridedeck.app.ui.home.FloatingSpeedOverlay
 import com.ridedeck.core.format.Formatters
 import com.ridedeck.core.geo.Geo
 import com.ridedeck.core.routing.RerouteReason
@@ -88,17 +92,91 @@ fun MapScreen(
         onPauseOrDispose { }
     }
 
-    Box(Modifier.fillMaxSize()) {
+    var area by remember { mutableStateOf(IntSize.Zero) }
+    var bottomHeight by remember { mutableIntStateOf(0) }
+
+    Box(Modifier.fillMaxSize().onSizeChanged { area = it }) {
         when (state.provider) {
             MapProvider.GOOGLE -> GoogleMapLayer(state, onUserGesture = { viewModel.setFollowUser(false) })
             MapProvider.OSM -> OsmMapLayer(state, onUserGesture = { viewModel.setFollowUser(false) })
+        }
+
+        // Bottom overlay: recentre button, attribution and the navigation card.
+        Column(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .onSizeChanged { bottomHeight = it.height }
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(verticalAlignment = Alignment.Bottom) {
+                Box(Modifier.weight(1f)) {
+                    // OpenStreetMap's licence requires visible attribution; Google draws its own logo.
+                    if (state.provider == MapProvider.OSM) {
+                        Text(
+                            if (state.cycleMapStyle) MapTiles.CYCLE_ATTRIBUTION else MapTiles.STANDARD_ATTRIBUTION,
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier
+                                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.8f))
+                                .padding(4.dp),
+                        )
+                    }
+                }
+                if (!state.followUser && state.myLocation != null) {
+                    FloatingActionButton(
+                        onClick = { viewModel.setFollowUser(true) },
+                        modifier = Modifier.size(GloveTouchTarget),
+                    ) {
+                        Icon(Icons.Default.MyLocation, contentDescription = "Recentre on my location")
+                    }
+                }
+            }
+            if (state.destination != null) {
+                NavigationCard(
+                    state = state,
+                    onGoogleMaps = { state.destination?.let { GoogleMapsLauncher.navigate(context, it.location) } },
+                    onRetry = viewModel::retryRoute,
+                    showSteps = showSteps,
+                    onToggleSteps = { showSteps = !showSteps },
+                    onEnd = {
+                        showSteps = false
+                        viewModel.clearRoute()
+                    },
+                )
+            }
+            state.message?.let { msg ->
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                    shape = MaterialTheme.shapes.medium,
+                    modifier = Modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite },
+                ) {
+                    Row(Modifier.padding(start = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(msg, modifier = Modifier.weight(1f))
+                        IconButton(onClick = viewModel::dismissMessage, modifier = Modifier.size(GloveTouchTarget)) {
+                            Icon(Icons.Default.Close, contentDescription = "Dismiss")
+                        }
+                    }
+                }
+            }
+        }
+
+        // The speedometer floats above the map and bottom controls; drag it anywhere.
+        if (showSpeedOverlay) {
+            FloatingSpeedOverlay(
+                rideLocked = rideLocked,
+                onOpenPermissions = onOpenPermissions,
+                area = area,
+                bottomReservedPx = bottomHeight,
+            )
         }
 
         // Top overlay: search and map style.
         Column(
             Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
+                .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             SearchField(
@@ -152,67 +230,6 @@ fun MapScreen(
                         label = { Text("Cycling map") },
                         modifier = Modifier.heightIn(min = 48.dp),
                     )
-                }
-            }
-        }
-
-        // Bottom overlay: speedometer, recentre button, attribution and the navigation card.
-        Column(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            if (showSpeedOverlay) SpeedOverlay(rideLocked = rideLocked, onOpenPermissions = onOpenPermissions)
-            Row(verticalAlignment = Alignment.Bottom) {
-                Box(Modifier.weight(1f)) {
-                    // OpenStreetMap's licence requires visible attribution; Google draws its own logo.
-                    if (state.provider == MapProvider.OSM) {
-                        Text(
-                            if (state.cycleMapStyle) MapTiles.CYCLE_ATTRIBUTION else MapTiles.STANDARD_ATTRIBUTION,
-                            style = MaterialTheme.typography.labelSmall,
-                            modifier = Modifier
-                                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.8f))
-                                .padding(4.dp),
-                        )
-                    }
-                }
-                if (!state.followUser && state.myLocation != null) {
-                    FloatingActionButton(
-                        onClick = { viewModel.setFollowUser(true) },
-                        modifier = Modifier.size(GloveTouchTarget),
-                    ) {
-                        Icon(Icons.Default.MyLocation, contentDescription = "Recentre on my location")
-                    }
-                }
-            }
-            if (state.destination != null) {
-                NavigationCard(
-                    state = state,
-                    onGoogleMaps = { state.destination?.let { GoogleMapsLauncher.navigate(context, it.location) } },
-                    onRetry = viewModel::retryRoute,
-                    showSteps = showSteps,
-                    onToggleSteps = { showSteps = !showSteps },
-                    onEnd = {
-                        showSteps = false
-                        viewModel.clearRoute()
-                    },
-                )
-            }
-            state.message?.let { msg ->
-                Surface(
-                    color = MaterialTheme.colorScheme.errorContainer,
-                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                    shape = MaterialTheme.shapes.medium,
-                    modifier = Modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite },
-                ) {
-                    Row(Modifier.padding(start = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(msg, modifier = Modifier.weight(1f))
-                        IconButton(onClick = viewModel::dismissMessage, modifier = Modifier.size(GloveTouchTarget)) {
-                            Icon(Icons.Default.Close, contentDescription = "Dismiss")
-                        }
-                    }
                 }
             }
         }

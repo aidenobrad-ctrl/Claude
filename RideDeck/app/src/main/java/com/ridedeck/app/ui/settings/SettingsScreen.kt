@@ -100,6 +100,32 @@ fun SettingsScreen(
             )
         }
 
+        item { Header("Battery") }
+        item {
+            SetupSteps(
+                buildList {
+                    add(
+                        SetupStep(
+                            "Let RideDeck run without battery limits, so a ride keeps recording and music keeps playing with the screen off.",
+                            done = state.batteryUnrestricted,
+                            action = if (state.batteryUnrestricted) null else "Allow" to viewModel::requestBatteryUnrestricted,
+                        ),
+                    )
+                    if (state.isSamsung) {
+                        add(
+                            SetupStep(
+                                "On Samsung Galaxy phones, also open App info → Battery and choose Unrestricted. One UI can " +
+                                    "otherwise put RideDeck to sleep during a long ride.",
+                                done = false,
+                                action = "Open App info" to viewModel::openAppInfo,
+                            ),
+                        )
+                    }
+                },
+                title = if (state.batteryUnrestricted) "Battery: all set" else "Battery",
+            )
+        }
+
         item { Header("Speed alert") }
         item { SwitchRow("Alert when over the limit", p.speedAlertEnabled, viewModel::setSpeedAlertEnabled) }
         if (p.speedAlertEnabled) {
@@ -248,8 +274,7 @@ fun SettingsScreen(
             Text(
                 "RideDeck is built on open-source software and open data; Spotify and Google Maps are optional add-ons. " +
                     "Map data © OpenStreetMap contributors (ODbL); cycling map style © CyclOSM. " +
-                    "Routing by OSRM (FOSSGIS servers), search by Photon (komoot), bike shops via Overpass API. " +
-                    "Bike-share data from public GBFS feeds (MobilityData catalogue). Lyrics from LRCLIB. " +
+                    "Routing by OSRM (FOSSGIS servers), search by Photon (komoot). Lyrics from LRCLIB. " +
                     "Music playback by AndroidX Media3 ExoPlayer.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -287,12 +312,12 @@ private data class SetupStep(
 
 /** Numbered setup instructions with a tick for each step that is already done. */
 @Composable
-private fun SetupSteps(steps: List<SetupStep>) {
+private fun SetupSteps(steps: List<SetupStep>, title: String = "Setup") {
     Column(
         Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Text("Setup", style = MaterialTheme.typography.titleSmall)
+        Text(title, style = MaterialTheme.typography.titleSmall)
         steps.forEachIndexed { index, step ->
             Row(verticalAlignment = Alignment.Top) {
                 Text(

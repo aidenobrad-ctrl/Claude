@@ -56,6 +56,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -166,13 +167,21 @@ private fun PhoneMusicPanel(
 private fun Player(state: MusicUiState, lyricsEnabled: Boolean, viewModel: MusicViewModel) {
     val playback = state.playback
     BoxWithConstraints(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp)) {
-        val compact = maxHeight < 150.dp
-        val roomForList = maxHeight >= 240.dp
+        // Breakpoints grow with the font size setting so large text never gets squeezed.
+        val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+        val compact = maxHeight < 150.dp * fontScale
+        val roomForList = maxHeight >= 240.dp * fontScale
+        // Music on its own on a tall screen gets big album art instead of a thumbnail.
+        val artSize = when {
+            compact -> 56.dp
+            maxHeight >= 520.dp -> minOf(maxWidth * 0.34f, maxHeight * 0.22f, 180.dp)
+            else -> 88.dp
+        }
         // 0 = lyrics, 1 = library. Start on the library until something is playing.
         var tab by rememberSaveable { mutableIntStateOf(if (playback.trackId == null || !lyricsEnabled) 1 else 0) }
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                AlbumArt(state, if (compact) 56.dp else 88.dp)
+                AlbumArt(state, artSize)
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(

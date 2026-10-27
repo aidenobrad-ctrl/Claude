@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.ridedeck.app.data.local.LifetimeTotals
 import com.ridedeck.app.data.location.LocationAccuracy
 import com.ridedeck.app.data.location.LocationRepository
+import com.ridedeck.app.data.prefs.OverlayPosition
 import com.ridedeck.app.data.prefs.UserPreferences
 import com.ridedeck.app.data.prefs.UserPreferencesRepository
 import com.ridedeck.app.data.session.SessionRepository
@@ -45,6 +46,7 @@ data class HomeUiState(
     val speedAlertEnabled: Boolean = false,
     val speedAlertLimitMps: Double = UserPreferences.DEFAULT_ALERT_LIMIT_MPS,
     val expanded: Boolean = true,
+    val position: OverlayPosition? = null,
 ) {
     val sessionActive: Boolean get() = snapshot.isActive
     val profile: ModeProfile get() = ModeProfile.of(mode)
@@ -113,6 +115,7 @@ class HomeViewModel @Inject constructor(
             speedAlertEnabled = prefs.speedAlertEnabled,
             speedAlertLimitMps = prefs.speedAlertLimitMps,
             expanded = prefs.speedOverlayExpanded,
+            position = prefs.speedOverlayPosition,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
 
@@ -122,6 +125,8 @@ class HomeViewModel @Inject constructor(
     }
 
     fun setExpanded(expanded: Boolean) = viewModelScope.launch { preferencesRepository.setSpeedOverlayExpanded(expanded) }
+
+    fun setPosition(position: OverlayPosition?) = viewModelScope.launch { preferencesRepository.setSpeedOverlayPosition(position) }
 
     fun toggleUnit() = viewModelScope.launch {
         val current = preferencesRepository.current().speedUnit

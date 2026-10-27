@@ -1,6 +1,12 @@
 package com.ridedeck.app.ui.components
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.TextAutoSize
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.isSpecified
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -84,11 +90,13 @@ fun StatTile(
                 overflow = TextOverflow.Ellipsis,
             )
             Row(verticalAlignment = Alignment.Bottom) {
-                Text(
+                AutoSizeText(
                     value,
-                    style = NumericStyle.copy(fontSize = MaterialTheme.typography.headlineSmall.fontSize),
-                    color = if (highlight) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
+                    style = NumericStyle.copy(
+                        fontSize = MaterialTheme.typography.headlineSmall.fontSize,
+                        color = if (highlight) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                    ),
+                    modifier = Modifier.weight(1f, fill = false),
                 )
                 if (unit != null) {
                     Spacer(Modifier.width(4.dp))
@@ -122,4 +130,26 @@ fun RideModeBanner(modifier: Modifier = Modifier) {
             Text("Ride Mode: menus locked while moving", style = MaterialTheme.typography.labelLarge)
         }
     }
+}
+
+/**
+ * Single-line text that steps its font size down (to half of [maxSize] at most) until it fits,
+ * so numbers and button labels never clip or wrap with large display or font size settings.
+ */
+@Composable
+fun AutoSizeText(
+    text: String,
+    style: TextStyle,
+    modifier: Modifier = Modifier,
+    maxSize: TextUnit = style.fontSize,
+) {
+    val top = if (maxSize.isSpecified) maxSize else MaterialTheme.typography.bodyLarge.fontSize
+    BasicText(
+        text = text,
+        modifier = modifier,
+        style = style,
+        maxLines = 1,
+        softWrap = false,
+        autoSize = TextAutoSize.StepBased(minFontSize = top * 0.5f, maxFontSize = top, stepSize = 1.sp),
+    )
 }

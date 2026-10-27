@@ -1,6 +1,19 @@
 package com.ridedeck.app.ui.home
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.DragIndicator
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.TextUnit
+import com.ridedeck.app.ui.components.AutoSizeText
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -69,6 +82,8 @@ fun SpeedOverlay(
     onOpenPermissions: () -> Unit,
     modifier: Modifier = Modifier,
     fullScreen: Boolean = false,
+    /** Floating over the map: shows a grab handle, and double-tapping it calls this (docks the card). */
+    onHandleDoubleTap: (() -> Unit)? = null,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -92,91 +107,117 @@ fun SpeedOverlay(
         color = if (fullScreen) MaterialTheme.colorScheme.background else MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
         tonalElevation = if (fullScreen) 0.dp else 3.dp,
         shadowElevation = if (fullScreen) 0.dp else 6.dp,
-        modifier = if (fullScreen) modifier.fillMaxSize() else modifier.widthIn(max = 420.dp),
+        modifier = if (fullScreen) modifier.fillMaxSize() else modifier.widthIn(max = 480.dp),
     ) {
-        if (!fullScreen && !state.expanded) {
-            Row(
-                Modifier
-                    .clickable(onClickLabel = "Show speedometer") { viewModel.setExpanded(true) }
-                    .padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    speedText,
-                    style = NumericStyle.copy(fontSize = 40.sp),
-                    color = speedColor,
-                    modifier = Modifier.semantics { contentDescription = spokenSpeed },
-                )
-                Spacer(Modifier.width(4.dp))
-                Text(Units.speedLabel(unit), style = MaterialTheme.typography.labelLarge)
-                if (state.sessionActive) {
-                    Spacer(Modifier.width(12.dp))
-                    Text(
-                        "${Formatters.distance(snap.distanceM, unit)} ${Units.distanceLabel(unit)}",
-                        style = MaterialTheme.typography.titleMedium,
-                    )
+        BoxWithConstraints {
+            // Size the speed to the space it has, so it fills a phone held either way, a tablet, or a
+            // split-screen window, instead of a fixed size that clips at large font settings.
+            val density = LocalDensity.current
+            val wide = fullScreen && maxWidth > maxHeight && maxWidth >= 560.dp
+            val heroSize = with(density) {
+                when {
+                    !fullScreen -> minOf(maxWidth * 0.2f, 76.dp).toSp()
+                    wide -> minOf(maxWidth * 0.22f, maxHeight * 0.45f).toSp()
+                    else -> minOf(maxWidth * 0.34f, maxHeight * 0.24f, 200.dp).toSp()
                 }
-                Spacer(Modifier.width(4.dp))
-                PrimaryControl(snap.status, state, viewModel, onOpenPermissions)
-                Icon(Icons.Default.ExpandLess, contentDescription = null, modifier = Modifier.padding(horizontal = 8.dp))
             }
-        } else {
-            Column(
-                Modifier
-                    .then(if (fullScreen) Modifier.verticalScroll(rememberScrollState()) else Modifier)
-                    .padding(if (fullScreen) 20.dp else 14.dp),
-                verticalArrangement = Arrangement.spacedBy(if (fullScreen) 16.dp else 10.dp),
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Row(
-                        Modifier.weight(1f).semantics(mergeDescendants = true) { contentDescription = spokenSpeed },
-                        verticalAlignment = Alignment.Bottom,
-                    ) {
-                        val size = if (fullScreen) 120.sp else 72.sp
-                        Text(speedText, style = NumericStyle.copy(fontSize = size, lineHeight = size), color = speedColor)
-                        Spacer(Modifier.width(6.dp))
-                        TextButton(onClick = viewModel::toggleUnit, modifier = Modifier.heightIn(min = 48.dp)) {
-                            Text(Units.speedLabel(unit), style = MaterialTheme.typography.titleLarge)
-                        }
+            if (!fullScreen && !state.expanded) {
+                Row(
+                    Modifier
+                        .clickable(onClickLabel = "Show speedometer") { viewModel.setExpanded(true) }
+                        .padding(start = if (onHandleDoubleTap != null) 0.dp else 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (onHandleDoubleTap != null) SideHandle(onHandleDoubleTap)
+                    Text(
+                        speedText,
+                        style = NumericStyle.copy(fontSize = 40.sp),
+                        color = speedColor,
+                        modifier = Modifier.semantics { contentDescription = spokenSpeed },
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(Units.speedLabel(unit), style = MaterialTheme.typography.labelLarge)
+                    if (state.sessionActive) {
+                        Spacer(Modifier.width(12.dp))
+                        Text(
+                            "${Formatters.distance(snap.distanceM, unit)} ${Units.distanceLabel(unit)}",
+                            style = MaterialTheme.typography.titleMedium,
+                        )
                     }
-                    Column(horizontalAlignment = Alignment.End) {
-                        StatusChip(snap.status, state.isNewRecord)
-                        if (!fullScreen) {
-                            IconButton(onClick = { viewModel.setExpanded(false) }, modifier = Modifier.size(48.dp)) {
-                                Icon(Icons.Default.ExpandMore, contentDescription = "Shrink speedometer")
+                    Spacer(Modifier.width(4.dp))
+                    PrimaryControl(snap.status, state, viewModel, onOpenPermissions)
+                    Icon(Icons.Default.ExpandLess, contentDescription = null, modifier = Modifier.padding(horizontal = 8.dp))
+                }
+            } else {
+                Column(
+                    Modifier
+                        .then(if (fullScreen) Modifier.verticalScroll(rememberScrollState()) else Modifier)
+                        .padding(
+                            start = if (fullScreen) 20.dp else 14.dp,
+                            end = if (fullScreen) 20.dp else 14.dp,
+                            top = if (onHandleDoubleTap != null) 0.dp else if (fullScreen) 20.dp else 14.dp,
+                            bottom = if (fullScreen) 20.dp else 14.dp,
+                        ),
+                    verticalArrangement = Arrangement.spacedBy(if (fullScreen) 16.dp else 10.dp),
+                ) {
+                    if (onHandleDoubleTap != null) TopHandle(onHandleDoubleTap)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            Modifier.weight(1f).semantics(mergeDescendants = true) { contentDescription = spokenSpeed },
+                            verticalAlignment = Alignment.Bottom,
+                        ) {
+                            Text(
+                                speedText,
+                                style = NumericStyle.copy(fontSize = heroSize, lineHeight = heroSize),
+                                color = speedColor,
+                                maxLines = 1,
+                                softWrap = false,
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            TextButton(onClick = viewModel::toggleUnit, modifier = Modifier.heightIn(min = 48.dp)) {
+                                Text(Units.speedLabel(unit), style = MaterialTheme.typography.titleLarge)
+                            }
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            StatusChip(snap.status, state.isNewRecord)
+                            if (!fullScreen) {
+                                IconButton(onClick = { viewModel.setExpanded(false) }, modifier = Modifier.size(48.dp)) {
+                                    Icon(Icons.Default.ExpandMore, contentDescription = "Shrink speedometer")
+                                }
                             }
                         }
                     }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    MiniStat(stringResource(R.string.stat_distance), Formatters.distance(snap.distanceM, unit), Units.distanceLabel(unit), Modifier.weight(1f))
-                    MiniStat(stringResource(R.string.stat_time), Formatters.duration(snap.movingTimeMs), null, Modifier.weight(1f))
-                    MiniStat(stringResource(R.string.stat_avg), Formatters.speed(snap.averageSpeedMps, unit, 1), null, Modifier.weight(1f))
-                    MiniStat(stringResource(R.string.stat_max), Formatters.speed(snap.maxSpeedMps, unit, 1), null, Modifier.weight(1f))
-                }
-                if (!state.hasLocationPermission) {
-                    OutlinedButton(
-                        onClick = onOpenPermissions,
-                        modifier = Modifier.fillMaxWidth().heightIn(min = GloveTouchTarget),
-                    ) { Text("Precise location is off. Tap to allow it.") }
-                }
-                Controls(
-                    status = snap.status,
-                    onStart = { if (!viewModel.start()) onOpenPermissions() },
-                    onPause = viewModel::pause,
-                    onResume = viewModel::resume,
-                    onStop = { confirmStop = true },
-                )
-                if (state.sessionActive && !rideLocked) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            "Odometer ${Formatters.distance(state.odometerM, unit, 1)} ${Units.distanceLabel(unit)}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.weight(1f),
-                        )
-                        TextButton(onClick = viewModel::resetMax, modifier = Modifier.heightIn(min = 48.dp)) {
-                            Text(stringResource(R.string.reset_max))
+                    val statSize = if (fullScreen) (if (wide) 30.sp else 26.sp) else 20.sp
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        MiniStat(stringResource(R.string.stat_distance), Formatters.distance(snap.distanceM, unit), Units.distanceLabel(unit), statSize, Modifier.weight(1f))
+                        MiniStat(stringResource(R.string.stat_time), Formatters.duration(snap.movingTimeMs), null, statSize, Modifier.weight(1f))
+                        MiniStat(stringResource(R.string.stat_avg), Formatters.speed(snap.averageSpeedMps, unit, 1), null, statSize, Modifier.weight(1f))
+                        MiniStat(stringResource(R.string.stat_max), Formatters.speed(snap.maxSpeedMps, unit, 1), null, statSize, Modifier.weight(1f))
+                    }
+                    if (!state.hasLocationPermission) {
+                        OutlinedButton(
+                            onClick = onOpenPermissions,
+                            modifier = Modifier.fillMaxWidth().heightIn(min = GloveTouchTarget),
+                        ) { Text("Precise location is off. Tap to allow it.") }
+                    }
+                    Controls(
+                        status = snap.status,
+                        onStart = { if (!viewModel.start()) onOpenPermissions() },
+                        onPause = viewModel::pause,
+                        onResume = viewModel::resume,
+                        onStop = { confirmStop = true },
+                    )
+                    if (state.sessionActive && !rideLocked) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "Odometer ${Formatters.distance(state.odometerM, unit, 1)} ${Units.distanceLabel(unit)}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.weight(1f),
+                            )
+                            TextButton(onClick = viewModel::resetMax, modifier = Modifier.heightIn(min = 48.dp)) {
+                                Text(stringResource(R.string.reset_max))
+                            }
                         }
                     }
                 }
@@ -231,18 +272,55 @@ private fun PrimaryControl(status: TripStatus, state: HomeUiState, viewModel: Ho
     }
 }
 
+/** One trip figure. The value shrinks to fit its column instead of clipping at large font sizes. */
 @Composable
-private fun MiniStat(label: String, value: String, unit: String?, modifier: Modifier = Modifier) {
+private fun MiniStat(label: String, value: String, unit: String?, size: TextUnit, modifier: Modifier = Modifier) {
     Column(modifier.semantics(mergeDescendants = true) { contentDescription = "$label: $value ${unit.orEmpty()}" }) {
-        Text(label.uppercase(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-        Row(verticalAlignment = Alignment.Bottom) {
-            Text(value, style = NumericStyle.copy(fontSize = 20.sp), maxLines = 1)
-            if (unit != null) {
-                Spacer(Modifier.width(2.dp))
-                Text(unit, style = MaterialTheme.typography.labelSmall, maxLines = 1)
-            }
-        }
+        Text(
+            label.uppercase(),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        AutoSizeText(
+            if (unit != null) "$value $unit" else value,
+            style = NumericStyle.copy(color = MaterialTheme.colorScheme.onSurface),
+            maxSize = size,
+        )
     }
+}
+
+/** Grab handle along the top of the floating card; drag anywhere on the card to move it. */
+@Composable
+private fun TopHandle(onDoubleTap: () -> Unit) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(20.dp)
+            .pointerInput(onDoubleTap) { detectTapGestures(onDoubleTap = { onDoubleTap() }) }
+            .semantics { contentDescription = "Drag to move the speedometer. Double-tap to dock it." },
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            Modifier
+                .size(width = 40.dp, height = 4.dp)
+                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f), RoundedCornerShape(50)),
+        )
+    }
+}
+
+/** Grab handle at the start of the collapsed speed pill. */
+@Composable
+private fun SideHandle(onDoubleTap: () -> Unit) {
+    Icon(
+        Icons.Default.DragIndicator,
+        contentDescription = "Drag to move the speedometer. Double-tap to dock it.",
+        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier
+            .padding(horizontal = 4.dp)
+            .pointerInput(onDoubleTap) { detectTapGestures(onDoubleTap = { onDoubleTap() }) },
+    )
 }
 
 @Composable
@@ -293,9 +371,9 @@ private fun Controls(
             ) {
                 Icon(if (paused) Icons.Default.PlayArrow else Icons.Default.Pause, contentDescription = null, modifier = Modifier.size(28.dp))
                 Spacer(Modifier.width(8.dp))
-                Text(
+                AutoSizeText(
                     stringResource(if (paused) R.string.action_resume else R.string.action_pause),
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.titleLarge.copy(color = LocalContentColor.current),
                 )
             }
             Button(
@@ -305,7 +383,10 @@ private fun Controls(
             ) {
                 Icon(Icons.Default.Stop, contentDescription = null, modifier = Modifier.size(28.dp))
                 Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.action_stop), style = MaterialTheme.typography.titleLarge)
+                AutoSizeText(
+                    stringResource(R.string.action_stop),
+                    style = MaterialTheme.typography.titleLarge.copy(color = LocalContentColor.current),
+                )
             }
         }
     }

@@ -31,6 +31,8 @@ enum class RideView { MAP, SPEEDOMETER, MUSIC }
 /** Which map is drawn inside the app. */
 enum class MapProvider { OSM, GOOGLE }
 
+data class OverlayPosition(val x: Float, val y: Float)
+
 data class UserPreferences(
     /** Always BIKE: Walk mode was removed. Kept so the tracking engine and old sessions keep working. */
     val mode: ActivityMode = ActivityMode.BIKE,
@@ -58,6 +60,11 @@ data class UserPreferences(
     /** Which views the Ride screen shows; any combination, at least one. Music uses [musicPanelVisible]. */
     val showMap: Boolean = true,
     val showSpeedometer: Boolean = true,
+    /**
+     * Where the speedometer floats over the map, as fractions (0..1) of the free space across and
+     * down. Null means docked: centred just above the bottom controls.
+     */
+    val speedOverlayPosition: OverlayPosition? = null,
 ) {
     companion object {
         const val DEFAULT_ALERT_LIMIT_MPS = 30.0 / 3.6
@@ -93,6 +100,8 @@ class UserPreferencesRepository @Inject constructor(
         val MAP_PROVIDER = stringPreferencesKey("map_provider")
         val SHOW_MAP = booleanPreferencesKey("show_map")
         val SHOW_SPEEDOMETER = booleanPreferencesKey("show_speedometer")
+        val OVERLAY_X = floatPreferencesKey("speed_overlay_x")
+        val OVERLAY_Y = floatPreferencesKey("speed_overlay_y")
     }
 
     val preferences: Flow<UserPreferences> = dataStore.data
@@ -123,6 +132,9 @@ class UserPreferencesRepository @Inject constructor(
                 mapProvider = MapProvider.entries.firstOrNull { it.name == p[Keys.MAP_PROVIDER] } ?: defaults.mapProvider,
                 showMap = p[Keys.SHOW_MAP] ?: defaults.showMap,
                 showSpeedometer = p[Keys.SHOW_SPEEDOMETER] ?: defaults.showSpeedometer,
+                speedOverlayPosition = p[Keys.OVERLAY_X]?.let { x ->
+                    p[Keys.OVERLAY_Y]?.let { y -> OverlayPosition(x.coerceIn(0f, 1f), y.coerceIn(0f, 1f)) }
+                },
             )
         }
         .distinctUntilChanged()
@@ -154,6 +166,17 @@ class UserPreferencesRepository @Inject constructor(
             it[Keys.SHOW_MAP] = next.first
             it[Keys.SHOW_SPEEDOMETER] = next.second
             it[Keys.PANEL_VISIBLE] = next.third
+        }
+    }
+
+    /** Null docks the speedometer back above the bottom controls. */
+    suspend fun setSpeedOverlayPosition(position: OverlayPosition?) = dataStore.edit {
+        if (position == null) {
+            it.remove(Keys.OVERLAY_X)
+            it.remove(Keys.OVERLAY_Y)
+        } else {
+            it[Keys.OVERLAY_X] = position.x.coerceIn(0f, 1f)
+            it[Keys.OVERLAY_Y] = position.y.coerceIn(0f, 1f)
         }
     }
 

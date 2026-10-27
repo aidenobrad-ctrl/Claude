@@ -1,6 +1,19 @@
 package com.ridedeck.app.ui.main
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -106,57 +119,103 @@ fun RideDeckRoot(viewModel: MainViewModel = hiltViewModel()) {
         }
 
         val showChrome = currentRoute != Routes.PERMISSIONS
+        // Landscape or any wide window: a side rail instead of a bottom bar, which keeps the
+        // map and speedometer as tall as possible.
+        val config = LocalConfiguration.current
+        val useRail = config.screenWidthDp > config.screenHeightDp && config.screenWidthDp >= 600
+
+        val navItems = topLevels.map { item ->
+            NavEntry(
+                item = item,
+                locked = item.lockable && state.rideLocked,
+                selected = currentRoute == item.route ||
+                    (item.route == Routes.HISTORY && currentRoute == Routes.SESSION),
+            )
+        }
+
         Scaffold(
             snackbarHost = { SnackbarHost(snackbarHostState) },
+            // System bars plus the camera cutout, which sits at the side in landscape.
+            contentWindowInsets = WindowInsets.systemBars.union(WindowInsets.displayCutout),
             bottomBar = {
-                if (showChrome) {
+                if (showChrome && !useRail) {
                     NavigationBar {
-                        topLevels.forEach { item ->
-                            val locked = item.lockable && state.rideLocked
+                        navItems.forEach { e ->
                             NavigationBarItem(
-                                selected = currentRoute == item.route ||
-                                    (item.route == Routes.HISTORY && currentRoute == Routes.SESSION),
-                                onClick = { navController.navigateTopLevel(item.route) },
-                                enabled = !locked,
-                                icon = { Icon(if (locked) Icons.Default.Lock else item.icon, contentDescription = null) },
-                                label = { Text(stringResource(item.label)) },
+                                selected = e.selected,
+                                onClick = { navController.navigateTopLevel(e.item.route) },
+                                enabled = !e.locked,
+                                icon = { NavIcon(e) },
+                                label = { Text(stringResource(e.item.label), maxLines = 1) },
                             )
                         }
                     }
                 }
             },
         ) { padding ->
-            Column(Modifier.padding(padding).fillMaxSize()) {
-                if (state.rideLocked) RideModeBanner()
-                NavHost(navController = navController, startDestination = Routes.RIDE, modifier = Modifier.weight(1f)) {
-                    composable(Routes.PERMISSIONS) {
-                        PermissionsScreen(onDone = { navController.popBackStack() })
+            Row(Modifier.padding(padding).fillMaxSize()) {
+                if (showChrome && useRail) {
+                    NavigationRail(windowInsets = WindowInsets(0)) {
+                        Spacer(Modifier.weight(1f))
+                        navItems.forEach { e ->
+                            NavigationRailItem(
+                                selected = e.selected,
+                                onClick = { navController.navigateTopLevel(e.item.route) },
+                                enabled = !e.locked,
+                                icon = { NavIcon(e) },
+                                label = { Text(stringResource(e.item.label), maxLines = 1) },
+                            )
+                        }
+                        Spacer(Modifier.weight(1f))
                     }
-                    composable(Routes.RIDE) {
-                        RideScreen(
-                            prefs = state.preferences,
-                            rideLocked = state.rideLocked,
-                            onToggleView = viewModel::setView,
-                            onMusicFraction = viewModel::setMusicPanelFraction,
-                            onMusicSource = viewModel::setMusicSource,
-                            onOpenPermissions = { navController.navigate(Routes.PERMISSIONS) },
-                        )
-                    }
-                    composable(Routes.HISTORY) {
-                        HistoryScreen(onOpenSession = { navController.navigate(Routes.session(it)) })
-                    }
-                    composable(
-                        Routes.SESSION,
-                        arguments = listOf(navArgument("sessionId") { type = NavType.LongType }),
-                    ) {
-                        SessionDetailScreen(onBack = { navController.popBackStack() })
-                    }
-                    composable(Routes.SETTINGS) {
-                        SettingsScreen(onOpenPermissions = { navController.navigate(Routes.PERMISSIONS) })
+                }
+                Column(Modifier.weight(1f).fillMaxHeight()) {
+                    if (state.rideLocked) RideModeBanner()
+                    NavHost(navController = navController, startDestination = Routes.RIDE, modifier = Modifier.weight(1f)) {
+                        composable(Routes.PERMISSIONS) {
+                            Readable { PermissionsScreen(onDone = { navController.popBackStack() }) }
+                        }
+                        composable(Routes.RIDE) {
+                            RideScreen(
+                                prefs = state.preferences,
+                                rideLocked = state.rideLocked,
+                                onToggleView = viewModel::setView,
+                                onMusicFraction = viewModel::setMusicPanelFraction,
+                                onMusicSource = viewModel::setMusicSource,
+                                onOpenPermissions = { navController.navigate(Routes.PERMISSIONS) },
+                            )
+                        }
+                        composable(Routes.HISTORY) {
+                            Readable { HistoryScreen(onOpenSession = { navController.navigate(Routes.session(it)) }) }
+                        }
+                        composable(
+                            Routes.SESSION,
+                            arguments = listOf(navArgument("sessionId") { type = NavType.LongType }),
+                        ) {
+                            Readable { SessionDetailScreen(onBack = { navController.popBackStack() }) }
+                        }
+                        composable(Routes.SETTINGS) {
+                            Readable { SettingsScreen(onOpenPermissions = { navController.navigate(Routes.PERMISSIONS) }) }
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+private data class NavEntry(val item: TopLevel, val locked: Boolean, val selected: Boolean)
+
+@Composable
+private fun NavIcon(e: NavEntry) {
+    Icon(if (e.locked) Icons.Default.Lock else e.item.icon, contentDescription = null)
+}
+
+/** Lists and forms stay a comfortable reading width when the window is wide (landscape, DeX, tablets). */
+@Composable
+private fun Readable(content: @Composable () -> Unit) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        Box(Modifier.widthIn(max = 720.dp).fillMaxSize()) { content() }
     }
 }
 

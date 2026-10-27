@@ -21,6 +21,9 @@ class RideDeckApp : Application() {
             osmdroidBasePath = File(filesDir, "osmdroid")
             osmdroidTileCache = File(cacheDir, "osmdroid-tiles")
             tileFileSystemCacheMaxBytes = 200L * 1024 * 1024
+            // Large high-density screens (Galaxy S Ultra, QHD+) show many more tiles at once than
+            // osmdroid's default memory cache of 9 holds, which makes panning flicker and re-decode.
+            cacheMapTileCount = 48
         }
     }
 }

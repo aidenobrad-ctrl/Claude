@@ -179,7 +179,6 @@ fun RideDeckRoot(viewModel: MainViewModel = hiltViewModel()) {
                             RideScreen(
                                 prefs = state.preferences,
                                 rideLocked = state.rideLocked,
-                                onToggleView = viewModel::setView,
                                 onMusicFraction = viewModel::setMusicPanelFraction,
                                 onMusicSource = viewModel::setMusicSource,
                                 onOpenPermissions = { navController.navigate(Routes.PERMISSIONS) },

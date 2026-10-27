@@ -34,15 +34,15 @@ import com.ridedeck.app.data.prefs.UserPreferences
 
 /**
  * Splits the screen between [top] content (map or speedometer) and the music [panel].
- * The handle between them can be dragged to resize; dragging below the minimum hides the panel,
- * and double-tapping toggles between compact and large. TalkBack users get equivalent actions.
+ * The handle between them can be dragged to resize (views are turned on and off in Settings, so
+ * the panel snaps back at its minimum size), and double-tapping toggles between compact and large.
+ * TalkBack users get equivalent actions.
  */
 @Composable
 fun SplitPanelLayout(
     showPanel: Boolean,
     fraction: Float,
     onFractionCommitted: (Float) -> Unit,
-    onHidePanel: () -> Unit,
     top: @Composable () -> Unit,
     panel: @Composable () -> Unit,
     modifier: Modifier = Modifier,
@@ -52,7 +52,6 @@ fun SplitPanelLayout(
         var liveFraction by remember { mutableFloatStateOf(fraction) }
         LaunchedEffect(fraction) { liveFraction = fraction }
         val commit by rememberUpdatedState(onFractionCommitted)
-        val hide by rememberUpdatedState(onHidePanel)
 
         Column(Modifier.fillMaxSize()) {
             val panelFraction = if (showPanel) liveFraction else 0f
@@ -60,7 +59,7 @@ fun SplitPanelLayout(
             if (showPanel) {
                 val dragState = rememberDraggableState { delta ->
                     // Dragging up (negative delta) grows the panel.
-                    liveFraction = (liveFraction - delta / totalPx).coerceIn(HIDE_THRESHOLD, UserPreferences.MAX_PANEL_FRACTION)
+                    liveFraction = (liveFraction - delta / totalPx).coerceIn(UserPreferences.MIN_PANEL_FRACTION, UserPreferences.MAX_PANEL_FRACTION)
                 }
                 Box(
                     Modifier
@@ -70,14 +69,7 @@ fun SplitPanelLayout(
                         .draggable(
                             state = dragState,
                             orientation = Orientation.Vertical,
-                            onDragStopped = {
-                                if (liveFraction < UserPreferences.MIN_PANEL_FRACTION) {
-                                    liveFraction = fraction
-                                    hide()
-                                } else {
-                                    commit(liveFraction)
-                                }
-                            },
+                            onDragStopped = { commit(liveFraction) },
                         )
                         .pointerInput(Unit) {
                             detectTapGestures(onDoubleTap = {
@@ -99,10 +91,6 @@ fun SplitPanelLayout(
                                     commit(liveFraction)
                                     true
                                 },
-                                CustomAccessibilityAction("Hide music panel") {
-                                    hide()
-                                    true
-                                },
                             )
                         },
                     contentAlignment = Alignment.Center,
@@ -118,5 +106,3 @@ fun SplitPanelLayout(
         }
     }
 }
-
-private const val HIDE_THRESHOLD = 0.08f

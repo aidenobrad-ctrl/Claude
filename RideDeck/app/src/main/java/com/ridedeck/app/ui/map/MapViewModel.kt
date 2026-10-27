@@ -98,6 +98,11 @@ class MapViewModel @Inject constructor(
     private val offRouteDetector = OffRouteDetector()
     private val reroutePolicy = ReroutePolicy()
 
+    // The rider's own cruising speed, so the ETA fits how fast they actually ride rather than
+    // the routing server's average cyclist.
+    private var riderSpeedMps = 0.0
+    private var riderSpeedSamples = 0
+
     /**
      * Location only flows while the map is on screen. High accuracy at 1 Hz while navigating,
      * balanced power every 3 s otherwise.
@@ -199,9 +204,10 @@ class MapViewModel @Inject constructor(
 
     private fun onLocation(fix: LocationFix) {
         lastFix = fix
+        trackRiderSpeed(fix)
         val n = nav.value
         val route = n.route ?: return
-        val progress = RouteProgressCalculator.progress(route, fix.point) ?: return
+        val progress = RouteProgressCalculator.progress(route, fix.point)?.let(::withRiderEta) ?: return
         announce(route, progress)
         if (progress.arrived) {
             nav.update { it.copy(progress = progress, arrived = true) }
@@ -215,6 +221,18 @@ class MapViewModel @Inject constructor(
         nav.update { it.copy(progress = progress) }
         val reason = reroutePolicy.evaluate(prefs.mode, offRoute, SystemClock.elapsedRealtime())
         if (reason != null && !n.routing) computeRoute(reason)
+    }
+
+    private fun trackRiderSpeed(fix: LocationFix) {
+        // Only moving samples count, so stops at lights don't drag the ETA out.
+        val speed = fix.speedMps?.toDouble()?.takeIf { it in RIDING_SPEED_MPS } ?: return
+        riderSpeedMps = if (riderSpeedSamples == 0) speed else riderSpeedMps + (speed - riderSpeedMps) * 0.05
+        riderSpeedSamples++
+    }
+
+    private fun withRiderEta(progress: RouteProgress): RouteProgress {
+        if (riderSpeedSamples < MIN_RIDER_SAMPLES || progress.arrived) return progress
+        return progress.copy(remainingDurationSec = (progress.remainingDistanceM / riderSpeedMps).toLong())
     }
 
     private fun computeRoute(reason: RerouteReason?) {
@@ -233,10 +251,15 @@ class MapViewModel @Inject constructor(
                     reroutePolicy.onRouteComputed(mode, SystemClock.elapsedRealtime())
                     offRouteDetector.reset()
                     val unit = prefs.speedUnit
+                    val durationSec = if (riderSpeedSamples >= MIN_RIDER_SAMPLES) {
+                        (route.distanceM / riderSpeedMps).toLong()
+                    } else {
+                        route.durationSec
+                    }
                     announcer.onNewRoute(
                         firstInstruction = route.steps.firstOrNull()?.instruction,
                         summary = "${TurnAnnouncer.spoken(Formatters.navDistance(route.distanceM.toDouble(), unit))}, " +
-                            "about ${Formatters.spokenDuration(route.durationSec)}.",
+                            "about ${Formatters.spokenDuration(durationSec)}.",
                         rerouted = reason != null,
                     )
                     nav.update {
@@ -279,5 +302,11 @@ class MapViewModel @Inject constructor(
 
     companion object {
         private const val SEARCH_DEBOUNCE_MS = 300L
+
+        /** About 5 to 65 km/h: slower is walking the bike or stopped, faster is a GPS glitch. */
+        private val RIDING_SPEED_MPS = 1.5..18.0
+
+        /** About half a minute of riding at one fix a second before the ETA uses the rider's speed. */
+        private const val MIN_RIDER_SAMPLES = 30
     }
 }

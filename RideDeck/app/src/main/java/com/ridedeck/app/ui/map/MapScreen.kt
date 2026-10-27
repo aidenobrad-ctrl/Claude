@@ -20,6 +20,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
@@ -84,6 +86,7 @@ fun MapScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val focusManager = LocalFocusManager.current
     var showSteps by rememberSaveable { mutableStateOf(false) }
+    var navCollapsed by rememberSaveable { mutableStateOf(false) }
 
     LifecycleResumeEffect(Unit) {
         viewModel.refreshPermissions()
@@ -132,8 +135,11 @@ fun MapScreen(
                     onRetry = viewModel::retryRoute,
                     showSteps = showSteps,
                     onToggleSteps = { showSteps = !showSteps },
+                    collapsed = navCollapsed,
+                    onToggleCollapsed = { navCollapsed = !navCollapsed },
                     onEnd = {
                         showSteps = false
+                        navCollapsed = false
                         viewModel.clearRoute()
                     },
                 )
@@ -261,80 +267,98 @@ private fun NavigationCard(
     onRetry: () -> Unit,
     showSteps: Boolean,
     onToggleSteps: () -> Unit,
+    collapsed: Boolean,
+    onToggleCollapsed: () -> Unit,
     onEnd: () -> Unit,
 ) {
     val route = state.route
     val progress = state.progress
+    // Collapsing keeps only the next turn and arrival; the buttons and steps come back on expand.
+    val canCollapse = route != null && !state.arrived && !state.routing
+    val compact = collapsed && canCollapse
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            when {
-                state.arrived -> Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Flag, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(36.dp))
-                    Spacer(Modifier.width(12.dp))
-                    Text("You have arrived", style = MaterialTheme.typography.headlineSmall)
-                }
-                route == null && !state.routing -> Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        "No route yet.",
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.weight(1f),
-                    )
-                    OutlinedButton(onClick = onRetry, modifier = Modifier.heightIn(min = GloveTouchTarget)) { Text("Try again") }
-                }
-                state.routing || route == null -> Row(verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(Modifier.size(28.dp))
-                    Spacer(Modifier.width(12.dp))
-                    Text(
-                        when (state.rerouteReason) {
-                            RerouteReason.MODE_CHANGED, RerouteReason.OFF_ROUTE -> "Off route, re-routing…"
-                            null -> "Finding a cycling route…"
-                        },
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-                    )
-                }
-                else -> {
-                    // Each OSRM step's instruction happens at its start, so the turn ahead is the
-                    // next step's (the last step is the arrival).
-                    val stepIndex = progress?.currentStepIndex ?: 0
-                    val step = route.steps.getOrNull(stepIndex + 1) ?: route.steps.getOrNull(stepIndex)
-                    if (step != null) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                maneuverIcon(step.maneuver),
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(48.dp),
-                            )
+            Row(verticalAlignment = Alignment.Top) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    when {
+                        state.arrived -> Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Flag, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(36.dp))
                             Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
-                                progress?.let {
-                                    Text(
-                                        Formatters.navDistance(it.distanceToManeuverM, state.unit),
-                                        style = MaterialTheme.typography.headlineSmall,
+                            Text("You have arrived", style = MaterialTheme.typography.headlineSmall)
+                        }
+                        route == null && !state.routing -> Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "No route yet.",
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.weight(1f),
+                            )
+                            OutlinedButton(onClick = onRetry, modifier = Modifier.heightIn(min = GloveTouchTarget)) { Text("Try again") }
+                        }
+                        state.routing || route == null -> Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(Modifier.size(28.dp))
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                when (state.rerouteReason) {
+                                    RerouteReason.MODE_CHANGED, RerouteReason.OFF_ROUTE -> "Off route, re-routing…"
+                                    null -> "Finding a cycling route…"
+                                },
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                            )
+                        }
+                        else -> {
+                            // Each OSRM step's instruction happens at its start, so the turn ahead is the
+                            // next step's (the last step is the arrival).
+                            val stepIndex = progress?.currentStepIndex ?: 0
+                            val step = route.steps.getOrNull(stepIndex + 1) ?: route.steps.getOrNull(stepIndex)
+                            if (step != null) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        maneuverIcon(step.maneuver),
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(48.dp),
                                     )
+                                    Spacer(Modifier.width(12.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        progress?.let {
+                                            Text(
+                                                Formatters.navDistance(it.distanceToManeuverM, state.unit),
+                                                style = MaterialTheme.typography.headlineSmall,
+                                            )
+                                        }
+                                        Text(step.instruction, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    }
                                 }
-                                Text(step.instruction, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             }
+                            val remainingSec = progress?.remainingDurationSec ?: route.durationSec
+                            val remainingM = progress?.remainingDistanceM ?: route.distanceM.toDouble()
+                            val eta = LocalTime.now().plusSeconds(remainingSec).format(DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT))
+                            Text(
+                                "Arrive $eta · ${remainingSec / 60} min · ${Formatters.navDistance(remainingM, state.unit)}",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.semantics {
+                                    contentDescription = "Arrival at $eta, ${Formatters.spokenDuration(remainingSec)} remaining, " +
+                                        Formatters.navDistance(remainingM, state.unit)
+                                },
+                            )
                         }
                     }
-                    val remainingSec = progress?.remainingDurationSec ?: route.durationSec
-                    val remainingM = progress?.remainingDistanceM ?: route.distanceM.toDouble()
-                    val eta = LocalTime.now().plusSeconds(remainingSec).format(DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT))
-                    Text(
-                        "Arrive $eta · ${remainingSec / 60} min · ${Formatters.navDistance(remainingM, state.unit)}",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.semantics {
-                            contentDescription = "Arrival at $eta, ${Formatters.spokenDuration(remainingSec)} remaining, " +
-                                Formatters.navDistance(remainingM, state.unit)
-                        },
-                    )
+                }
+                if (canCollapse) {
+                    IconButton(onClick = onToggleCollapsed, modifier = Modifier.size(GloveTouchTarget)) {
+                        Icon(
+                            if (compact) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                            contentDescription = if (compact) "Show navigation buttons" else "Hide navigation buttons",
+                        )
+                    }
                 }
             }
+            if (compact) return@Column
             if (state.googleMapsHandOff && !state.arrived) {
                 Button(
                     onClick = onGoogleMaps,

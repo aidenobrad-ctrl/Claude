@@ -36,6 +36,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -76,6 +77,7 @@ class PermissionsViewModel @Inject constructor(
 @Composable
 fun PermissionsScreen(
     onDone: () -> Unit,
+    onOpenPrivacy: () -> Unit,
     viewModel: PermissionsViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
@@ -161,6 +163,10 @@ fun PermissionsScreen(
             onOpenSettings = { context.openAppSettings() },
         )
 
+        TextButton(
+            onClick = onOpenPrivacy,
+            modifier = Modifier.heightIn(min = GloveTouchTarget),
+        ) { Text("Read the privacy policy: we can't see your data and never sell it") }
         Spacer(Modifier.size(8.dp))
         Button(
             onClick = {

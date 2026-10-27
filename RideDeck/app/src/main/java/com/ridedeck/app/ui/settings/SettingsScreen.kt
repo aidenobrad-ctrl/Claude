@@ -66,6 +66,7 @@ import kotlin.math.roundToInt
 @Composable
 fun SettingsScreen(
     onOpenPermissions: () -> Unit,
+    onOpenPrivacy: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -300,6 +301,12 @@ fun SettingsScreen(
         }
 
         item { Header("Privacy") }
+        item {
+            Button(
+                onClick = onOpenPrivacy,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp).fillMaxWidth().heightIn(min = GloveTouchTarget),
+            ) { Text("Privacy policy") }
+        }
         item {
             TextButton(
                 onClick = onOpenPermissions,

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import com.ridedeck.app.ui.privacy.PrivacyPolicyScreen
 import com.ridedeck.app.ui.startup.StartupScreen
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -76,6 +77,7 @@ object Routes {
     const val HISTORY = "history"
     const val SESSION = "history/{sessionId}"
     const val SETTINGS = "settings"
+    const val PRIVACY = "privacy"
 
     fun session(id: Long) = "history/$id"
 }
@@ -155,7 +157,8 @@ private fun RideDeckContent(state: MainUiState, viewModel: MainViewModel) {
                 item = item,
                 locked = item.lockable && state.rideLocked,
                 selected = currentRoute == item.route ||
-                    (item.route == Routes.HISTORY && currentRoute == Routes.SESSION),
+                    (item.route == Routes.HISTORY && currentRoute == Routes.SESSION) ||
+                    (item.route == Routes.SETTINGS && currentRoute == Routes.PRIVACY),
             )
         }
 
@@ -207,7 +210,12 @@ private fun RideDeckContent(state: MainUiState, viewModel: MainViewModel) {
                         popExitTransition = { fadeOut(tween(160)) + scaleOut(tween(160), targetScale = 0.98f) },
                     ) {
                         composable(Routes.PERMISSIONS) {
-                            Readable { PermissionsScreen(onDone = { navController.popBackStack() }) }
+                            Readable {
+                                PermissionsScreen(
+                                    onDone = { navController.popBackStack() },
+                                    onOpenPrivacy = { navController.navigate(Routes.PRIVACY) },
+                                )
+                            }
                         }
                         composable(Routes.RIDE) {
                             RideScreen(
@@ -228,7 +236,15 @@ private fun RideDeckContent(state: MainUiState, viewModel: MainViewModel) {
                             Readable { SessionDetailScreen(onBack = { navController.popBackStack() }) }
                         }
                         composable(Routes.SETTINGS) {
-                            Readable { SettingsScreen(onOpenPermissions = { navController.navigate(Routes.PERMISSIONS) }) }
+                            Readable {
+                                SettingsScreen(
+                                    onOpenPermissions = { navController.navigate(Routes.PERMISSIONS) },
+                                    onOpenPrivacy = { navController.navigate(Routes.PRIVACY) },
+                                )
+                            }
+                        }
+                        composable(Routes.PRIVACY) {
+                            Readable { PrivacyPolicyScreen(onBack = { navController.popBackStack() }) }
                         }
                     }
                 }

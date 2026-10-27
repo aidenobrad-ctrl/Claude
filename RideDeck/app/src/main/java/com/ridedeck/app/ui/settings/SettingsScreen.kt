@@ -43,7 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ridedeck.app.BuildConfig
-import com.ridedeck.app.data.prefs.MapProvider
+import com.ridedeck.app.data.prefs.MapStyle
 import com.ridedeck.app.ui.startup.RideDeckLogo
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -57,6 +57,7 @@ import com.ridedeck.app.data.prefs.RideStat
 import com.ridedeck.app.data.prefs.RideView
 import com.ridedeck.app.data.prefs.ThemeMode
 import com.ridedeck.app.ui.components.GloveTouchTarget
+import com.ridedeck.app.ui.components.LinkText
 import com.ridedeck.app.ui.theme.GoGreen
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.ridedeck.core.format.Units
@@ -176,48 +177,24 @@ fun SettingsScreen(
         item { Header("Map") }
         item {
             Choice(
-                label = "Map",
-                options = listOf(MapProvider.OSM to "OpenStreetMap", MapProvider.GOOGLE to "Google Maps"),
-                selected = p.mapProvider,
-                onSelect = viewModel::setMapProvider,
+                label = "Map look",
+                options = listOf(
+                    MapStyle.AUTO to "Auto",
+                    MapStyle.COLOURFUL to "Colour",
+                    MapStyle.CLEAN to "Clean",
+                    MapStyle.DARK to "Dark",
+                ),
+                selected = p.mapStyle,
+                onSelect = viewModel::setMapStyle,
             )
         }
-        if (p.mapProvider == MapProvider.GOOGLE) {
-            item {
-                SetupSteps(
-                    listOf(
-                        SetupStep(
-                            if (state.googleMapKeyBuiltIn) {
-                                "This build includes a Google Maps key, so the Google map is shown on the Ride screen."
-                            } else {
-                                "This build has no Google Maps key yet, so the map stays on OpenStreetMap. " +
-                                    "Google only shows its map inside apps that have a key. It is free for this use."
-                            },
-                            done = state.googleMapKeyBuiltIn,
-                        ),
-                        SetupStep(
-                            "Get a key: open the Google Cloud console, create a project, enable \"Maps SDK for Android\" " +
-                                "and create an API key under APIs & Services → Credentials. Google asks for a billing " +
-                                "account, but the Android map itself has no usage charge.",
-                            done = state.googleMapKeyBuiltIn,
-                            action = if (state.googleMapKeyBuiltIn) null else "Open Google Cloud" to viewModel::openGoogleCloud,
-                        ),
-                        SetupStep(
-                            "Restrict the key to Android apps with package com.ridedeck.app and SHA-1 " +
-                                "${SettingsViewModel.SIGNING_SHA1}, and to the Maps SDK for Android.",
-                            done = state.googleMapKeyBuiltIn,
-                        ),
-                        SetupStep(
-                            "On GitHub open the repository → Settings → Secrets and variables → Actions, add a secret " +
-                                "named MAPS_API_KEY with the key, then re-run the RideDeck APK build and install the new APK.",
-                            done = state.googleMapKeyBuiltIn,
-                        ),
-                    ),
-                )
-            }
-        }
-        if (p.mapProvider == MapProvider.OSM) {
-            item { SwitchRow("Cycling map style", p.showCycleLanes, viewModel::setShowCycleLanes) }
+        item {
+            SwitchRow(
+                "Spoken directions",
+                p.voiceDirections,
+                viewModel::setVoiceDirections,
+                supporting = "Announces each turn while you navigate. Music turns down while it speaks.",
+            )
         }
 
         item { Header("Music") }
@@ -302,10 +279,7 @@ fun SettingsScreen(
 
         item { Header("Privacy") }
         item {
-            Button(
-                onClick = onOpenPrivacy,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp).fillMaxWidth().heightIn(min = GloveTouchTarget),
-            ) { Text("Privacy policy") }
+            LinkText("Privacy policy", onClick = onOpenPrivacy, modifier = Modifier.padding(horizontal = 20.dp))
         }
         item {
             TextButton(
@@ -334,7 +308,7 @@ fun SettingsScreen(
         item {
             Text(
                 "RideDeck is built on open-source software and open data; Spotify and Google Maps are optional add-ons. " +
-                    "Map data © OpenStreetMap contributors (ODbL); cycling map style © CyclOSM. " +
+                    "Maps by OpenFreeMap and MapLibre; map data © OpenStreetMap contributors (ODbL), © OpenMapTiles. " +
                     "Routing by OSRM (FOSSGIS servers), search by Photon (komoot). Lyrics from LRCLIB. " +
                     "Music playback by AndroidX Media3 ExoPlayer.",
                 style = MaterialTheme.typography.bodySmall,

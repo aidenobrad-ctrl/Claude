@@ -2,8 +2,8 @@
 -keepclassmembers class kotlinx.serialization.json.** { *** Companion; }
 -keepclasseswithmembers class kotlinx.serialization.json.** { kotlinx.serialization.KSerializer serializer(...); }
 
-# osmdroid
--dontwarn org.osmdroid.**
+# MapLibre ships its own consumer rules.
+
 
 # OkHttp platform warnings
 -dontwarn okhttp3.internal.platform.**

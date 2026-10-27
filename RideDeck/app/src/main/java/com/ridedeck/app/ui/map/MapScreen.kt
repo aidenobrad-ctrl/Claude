@@ -59,8 +59,6 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.ridedeck.app.data.maps.MapTiles
-import com.ridedeck.app.data.prefs.MapProvider
 import com.ridedeck.app.integrations.GoogleMapsLauncher
 import com.ridedeck.app.ui.components.GloveTouchTarget
 import com.ridedeck.app.ui.home.FloatingSpeedOverlay
@@ -96,10 +94,7 @@ fun MapScreen(
     var bottomHeight by remember { mutableIntStateOf(0) }
 
     Box(Modifier.fillMaxSize().onSizeChanged { area = it }) {
-        when (state.provider) {
-            MapProvider.GOOGLE -> GoogleMapLayer(state, onUserGesture = { viewModel.setFollowUser(false) })
-            MapProvider.OSM -> OsmMapLayer(state, onUserGesture = { viewModel.setFollowUser(false) })
-        }
+        VectorMapLayer(state, onUserGesture = { viewModel.setFollowUser(false) })
 
         // Bottom overlay: recentre button, attribution and the navigation card.
         Column(
@@ -112,16 +107,14 @@ fun MapScreen(
         ) {
             Row(verticalAlignment = Alignment.Bottom) {
                 Box(Modifier.weight(1f)) {
-                    // OpenStreetMap's licence requires visible attribution; Google draws its own logo.
-                    if (state.provider == MapProvider.OSM) {
-                        Text(
-                            if (state.cycleMapStyle) MapTiles.CYCLE_ATTRIBUTION else MapTiles.STANDARD_ATTRIBUTION,
-                            style = MaterialTheme.typography.labelSmall,
-                            modifier = Modifier
-                                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.8f))
-                                .padding(4.dp),
-                        )
-                    }
+                    // The map data licences require visible attribution.
+                    Text(
+                        MAP_ATTRIBUTION,
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier
+                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.8f), MaterialTheme.shapes.extraSmall)
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                    )
                 }
                 if (!state.followUser && state.myLocation != null) {
                     FloatingActionButton(
@@ -222,16 +215,6 @@ fun MapScreen(
                     }
                 }
             }
-            if (state.provider == MapProvider.OSM) {
-                Row(Modifier.horizontalScroll(rememberScrollState())) {
-                    FilterChip(
-                        selected = state.cycleMapStyle,
-                        onClick = { viewModel.setCycleMapStyle(!state.cycleMapStyle) },
-                        label = { Text("Cycling map") },
-                        modifier = Modifier.heightIn(min = 48.dp),
-                    )
-                }
-            }
         }
     }
 }
@@ -314,8 +297,10 @@ private fun NavigationCard(
                     )
                 }
                 else -> {
+                    // Each OSRM step's instruction happens at its start, so the turn ahead is the
+                    // next step's (the last step is the arrival).
                     val stepIndex = progress?.currentStepIndex ?: 0
-                    val step = route.steps.getOrNull(stepIndex)
+                    val step = route.steps.getOrNull(stepIndex + 1) ?: route.steps.getOrNull(stepIndex)
                     if (step != null) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
@@ -369,7 +354,7 @@ private fun NavigationCard(
             if (showSteps && route != null) {
                 LazyColumn(Modifier.heightIn(max = 220.dp)) {
                     itemsIndexed(route.steps) { index, step ->
-                        val current = index == (progress?.currentStepIndex ?: 0)
+                        val current = index == (progress?.currentStepIndex ?: 0) + 1
                         Row(
                             Modifier
                                 .fillMaxWidth()

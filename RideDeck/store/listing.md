@@ -16,10 +16,9 @@ SPEEDOMETER AND RIDE TRACKING
 • Keeps recording with the screen off; every ride saved to History with a map of your route
 
 MAPS AND DIRECTIONS
-• OpenStreetMap with a cycling style that shows bike lanes, or the Google map
-• Search any destination and get cycling directions with turn-by-turn steps
+• Beautiful, smooth vector maps that rotate and tilt, with colour, clean and dark looks
+• Search any destination and get cycling directions with turn-by-turn steps, ETA and spoken turns
 • Automatic re-routing when you go off route
-• Hand directions to Google Maps for spoken navigation
 
 MUSIC
 • Built-in player for the music on your phone, with synced lyrics

@@ -21,13 +21,10 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // Optional Google Maps SDK key: from the MAPS_API_KEY environment variable (a CI secret) or
-        // a mapsApiKey Gradle property. Without it the app uses OpenStreetMap only.
-        val mapsApiKey = System.getenv("MAPS_API_KEY")?.takeIf { it.isNotBlank() }
-            ?: (project.findProperty("mapsApiKey") as String?).orEmpty()
-        manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
-        buildConfigField("String", "MAPS_API_KEY", "\"$mapsApiKey\"")
         vectorDrawables { useSupportLibrary = true }
+        // MapLibre's renderer is native code; phones and the emulator (x86_64) only. The Play
+        // Store bundle splits this per device anyway.
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
     }
 
     signingConfigs {
@@ -123,10 +120,8 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.okhttp)
 
-    // Open-source map (OpenStreetMap) and music playback.
-    implementation(libs.osmdroid)
-    // Optional built-in Google map; only used when the APK is built with a MAPS_API_KEY.
-    implementation(libs.maps.compose)
+    // Open-source vector map (MapLibre, with OpenFreeMap's OpenStreetMap tiles) and music playback.
+    implementation(libs.maplibre)
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.session)
 

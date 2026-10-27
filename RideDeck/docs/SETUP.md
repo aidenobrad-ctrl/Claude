@@ -1,23 +1,12 @@
 # RideDeck setup guide
 
-RideDeck needs no API keys or accounts. Everything it talks to is free and open: OpenStreetMap tiles, OSRM routing, Photon search, the Overpass API, public GBFS feeds and LRCLIB.
+RideDeck needs no API keys or accounts. Everything it talks to is free and open: OpenFreeMap vector map tiles (OpenStreetMap data), OSRM routing, Photon search and LRCLIB.
 
 ## Getting the APK without building
 
 The GitHub Actions workflow `.github/workflows/ridedeck-apk.yml` (at the repository root, building the `RideDeck/` folder) runs on every push to `main` or `ridedeck` that touches RideDeck. It runs the `:core` unit tests, builds a signed release APK, attaches it to the workflow run as the `RideDeck-apk` artifact, and replaces the `ridedeck-latest` GitHub Release with the new `RideDeck.apk`. Pushing a tag such as `ridedeck-v1.0.0` also creates a versioned release.
 
 To install: download `RideDeck.apk` on the phone, open it, and allow installs from that app when Android asks.
-
-## Optional: built-in Google map
-
-The APK uses OpenStreetMap unless it is built with a Google Maps SDK key.
-
-1. In the [Google Cloud console](https://console.cloud.google.com/google/maps-apis/start) create a project, enable **Maps SDK for Android**, and create an API key (APIs & Services → Credentials). Google requires a billing account; the Android map itself has no usage charge.
-2. Restrict the key to Android apps: package `com.ridedeck.app`, SHA-1 `F8:07:B5:F6:DA:43:80:81:59:0C:47:46:E0:37:2F:A3:E0:73:29:9F` (the shared CI key; use your own key's SHA-1 if you set signing secrets), and to the Maps SDK for Android API.
-3. Add it as the repository secret `MAPS_API_KEY` (Settings → Secrets and variables → Actions) and re-run the "RideDeck APK" workflow.
-4. Install the new APK and pick **Settings → Map → Google Maps**.
-
-For local builds, put `mapsApiKey=...` in `~/.gradle/gradle.properties` or export `MAPS_API_KEY`.
 
 ## Signing
 
@@ -55,4 +44,3 @@ On first launch RideDeck explains and requests permissions. Only precise locatio
 | "No cycling route found" | OSRM could not connect the points by bike (for example across water). Try Walk mode or a nearby destination. |
 | Music panel says "No music found" | The files must be in shared storage (for example `Music/`) and at least 30 seconds long. Tap "Scan again". |
 | Music stops when the screen locks | Some phones kill background apps aggressively; set RideDeck's battery usage to "Unrestricted". |
-| Picked Google Maps but still see OpenStreetMap | The APK was built without `MAPS_API_KEY`; see the Google map section above. |

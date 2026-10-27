@@ -5,7 +5,7 @@
 | Module | Type | Purpose |
 | --- | --- | --- |
 | `:core` | Pure Kotlin/JVM | All domain logic with no Android dependency: geo maths, speed smoothing, trip state machine, pace/units, Bike/Walk mode rules, OSRM response mapping, Photon and Overpass parsing, route progress and off-route detection, LRC lyrics parsing, GBFS parsing. Fully unit-tested on the JVM. |
-| `:app` | Android application | Compose UI, Hilt DI, Room, DataStore, foreground tracking service, osmdroid map, OSM web services, Media3 music player, lyrics provider. |
+| `:app` | Android application | Compose UI, Hilt DI, Room, DataStore, foreground tracking service, MapLibre vector map, OSM web services, Media3 music player, lyrics provider. |
 
 `app` packages (`com.ridedeck.app`):
 
@@ -67,7 +67,7 @@ UI (Start) ──startForegroundService──► TrackingService (type=location,
 
 ## Maps and navigation
 
-- osmdroid `MapView` inside Compose (`AndroidView`), tied to the lifecycle. CyclOSM tiles in Bike mode, standard OSM tiles otherwise, inverted for dark themes, cached on disk (200 MB). Attribution is always visible.
+- MapLibre `MapView` inside Compose (`AndroidView`, `ui/map/VectorMap.kt`), tied to the lifecycle, with OpenFreeMap vector styles (`data/maps/MapStyles.kt`). Route, destination and rider are GeoJSON sources with line/circle layers, re-added whenever the style reloads. While navigating the camera follows the rider tilted 50° and turned to the direction of travel. Spoken turns: `navigation/VoiceGuide.kt` (TextToSpeech with transient ducking audio focus) driven by `TurnAnnouncer` from `MapViewModel`.
 - Overlays (`MapOverlays`) are long-lived objects updated in place: route polyline, bike shops, bike-share stations, destination and the rider's position.
 - Search: Photon with a 300 ms debounce, biased to the rider's position.
 - Directions: OSRM `route/v1` on `routed-bike` or `routed-foot` (from the mode) with full polyline geometry and steps; maneuvers are mapped to icons and English instructions in `:core`.

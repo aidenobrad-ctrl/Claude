@@ -58,6 +58,7 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.viewModelScope
 import com.ridedeck.app.data.prefs.UserPreferencesRepository
 import com.ridedeck.app.ui.components.GloveTouchTarget
+import com.ridedeck.app.ui.components.LinkText
 import com.ridedeck.app.ui.theme.GoGreen
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.launch
@@ -163,10 +164,7 @@ fun PermissionsScreen(
             onOpenSettings = { context.openAppSettings() },
         )
 
-        TextButton(
-            onClick = onOpenPrivacy,
-            modifier = Modifier.heightIn(min = GloveTouchTarget),
-        ) { Text("Privacy policy") }
+        LinkText("Privacy policy", onClick = onOpenPrivacy)
         Spacer(Modifier.size(8.dp))
         Button(
             onClick = {

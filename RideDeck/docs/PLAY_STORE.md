@@ -80,6 +80,5 @@ Every build gets a higher version code automatically, which Play requires for ea
 
 ## Things to know
 
-- **Google map:** if you add a `MAPS_API_KEY`, add the **app signing key SHA-1** to the key's restrictions in Google Cloud too. You'll find it under Play Console → Test and release → App integrity. The upload key SHA-1 isn't enough, because Play re-signs the app.
 - **Spotify control** uses notification access. Play allows this, but say so in the description, which `store/listing.md` already does.
-- **OpenStreetMap tiles:** the public OSM tile servers are fine for a small app. If RideDeck gets popular, switch to a tile provider with a free tier (MapTiler, Stadia, Thunderforest), because OSM's usage policy forbids heavy use.
+- **Map tiles** come from OpenFreeMap, which is free with no key and no usage limits for apps; consider a small donation to the project if RideDeck takes off.

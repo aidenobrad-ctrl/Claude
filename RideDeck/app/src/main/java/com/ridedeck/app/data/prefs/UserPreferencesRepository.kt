@@ -31,8 +31,8 @@ enum class RideView { MAP, SPEEDOMETER, MUSIC }
 /** Trip figures that can be hidden from the speedometer. */
 enum class RideStat { DISTANCE, TIME, AVERAGE, MAX, ODOMETER }
 
-/** Which map is drawn inside the app. */
-enum class MapProvider { OSM, GOOGLE }
+/** How the map looks. AUTO follows the app theme (colourful by day, dark at night). */
+enum class MapStyle { AUTO, COLOURFUL, CLEAN, DARK }
 
 data class OverlayPosition(val x: Float, val y: Float)
 
@@ -48,7 +48,6 @@ data class UserPreferences(
     val keepScreenOn: Boolean = true,
     val rideModeLockEnabled: Boolean = true,
     val themeMode: ThemeMode = ThemeMode.OLED,
-    val showCycleLanes: Boolean = true,
     val musicPanelVisible: Boolean = true,
     val musicPanelFraction: Float = DEFAULT_PANEL_FRACTION,
     val lyricsEnabled: Boolean = true,
@@ -59,7 +58,9 @@ data class UserPreferences(
     /** Optional Google Maps integration: hand turn-by-turn directions to the Google Maps app. */
     val googleMapsEnabled: Boolean = false,
     val speedOverlayExpanded: Boolean = true,
-    val mapProvider: MapProvider = MapProvider.OSM,
+    val mapStyle: MapStyle = MapStyle.AUTO,
+    /** Speak upcoming turns while navigating. */
+    val voiceDirections: Boolean = true,
     /** Which views the Ride screen shows; any combination, at least one. Music uses [musicPanelVisible]. */
     val showMap: Boolean = true,
     val showSpeedometer: Boolean = true,
@@ -106,7 +107,6 @@ class UserPreferencesRepository @Inject constructor(
         val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
         val RIDE_MODE_LOCK = booleanPreferencesKey("ride_mode_lock")
         val THEME = stringPreferencesKey("theme")
-        val CYCLE_LANES = booleanPreferencesKey("show_cycle_lanes")
         val PANEL_VISIBLE = booleanPreferencesKey("music_panel_visible")
         val PANEL_FRACTION = floatPreferencesKey("music_panel_fraction")
         val LYRICS = booleanPreferencesKey("lyrics_enabled")
@@ -115,7 +115,8 @@ class UserPreferencesRepository @Inject constructor(
         val MUSIC_SOURCE = stringPreferencesKey("music_source")
         val GOOGLE_MAPS = booleanPreferencesKey("google_maps_enabled")
         val OVERLAY_EXPANDED = booleanPreferencesKey("speed_overlay_expanded")
-        val MAP_PROVIDER = stringPreferencesKey("map_provider")
+        val MAP_STYLE = stringPreferencesKey("map_style")
+        val VOICE_DIRECTIONS = booleanPreferencesKey("voice_directions")
         val SHOW_MAP = booleanPreferencesKey("show_map")
         val SHOW_SPEEDOMETER = booleanPreferencesKey("show_speedometer")
         val SHOW_MAP_LAND = booleanPreferencesKey("show_map_landscape")
@@ -145,7 +146,6 @@ class UserPreferencesRepository @Inject constructor(
                 keepScreenOn = p[Keys.KEEP_SCREEN_ON] ?: defaults.keepScreenOn,
                 rideModeLockEnabled = p[Keys.RIDE_MODE_LOCK] ?: defaults.rideModeLockEnabled,
                 themeMode = ThemeMode.entries.firstOrNull { it.name == p[Keys.THEME] } ?: defaults.themeMode,
-                showCycleLanes = p[Keys.CYCLE_LANES] ?: defaults.showCycleLanes,
                 musicPanelVisible = p[Keys.PANEL_VISIBLE] ?: defaults.musicPanelVisible,
                 musicPanelFraction = (p[Keys.PANEL_FRACTION] ?: defaults.musicPanelFraction)
                     .coerceIn(UserPreferences.MIN_PANEL_FRACTION, UserPreferences.MAX_PANEL_FRACTION),
@@ -155,7 +155,8 @@ class UserPreferencesRepository @Inject constructor(
                 musicSource = MusicSource.entries.firstOrNull { it.name == p[Keys.MUSIC_SOURCE] } ?: defaults.musicSource,
                 googleMapsEnabled = p[Keys.GOOGLE_MAPS] ?: defaults.googleMapsEnabled,
                 speedOverlayExpanded = p[Keys.OVERLAY_EXPANDED] ?: defaults.speedOverlayExpanded,
-                mapProvider = MapProvider.entries.firstOrNull { it.name == p[Keys.MAP_PROVIDER] } ?: defaults.mapProvider,
+                mapStyle = MapStyle.entries.firstOrNull { it.name == p[Keys.MAP_STYLE] } ?: defaults.mapStyle,
+                voiceDirections = p[Keys.VOICE_DIRECTIONS] ?: defaults.voiceDirections,
                 showMap = p[Keys.SHOW_MAP] ?: defaults.showMap,
                 showSpeedometer = p[Keys.SHOW_SPEEDOMETER] ?: defaults.showSpeedometer,
                 showMapLandscape = p[Keys.SHOW_MAP_LAND] ?: defaults.showMapLandscape,
@@ -183,7 +184,8 @@ class UserPreferencesRepository @Inject constructor(
     }
     suspend fun setMusicSource(source: MusicSource) = dataStore.edit { it[Keys.MUSIC_SOURCE] = source.name }
     suspend fun setGoogleMapsEnabled(enabled: Boolean) = dataStore.edit { it[Keys.GOOGLE_MAPS] = enabled }
-    suspend fun setMapProvider(provider: MapProvider) = dataStore.edit { it[Keys.MAP_PROVIDER] = provider.name }
+    suspend fun setMapStyle(style: MapStyle) = dataStore.edit { it[Keys.MAP_STYLE] = style.name }
+    suspend fun setVoiceDirections(enabled: Boolean) = dataStore.edit { it[Keys.VOICE_DIRECTIONS] = enabled }
 
     /**
      * Shows or hides one view of the Ride screen, for portrait or for [landscape]; refuses to hide
@@ -244,7 +246,6 @@ class UserPreferencesRepository @Inject constructor(
     suspend fun setKeepScreenOn(enabled: Boolean) = dataStore.edit { it[Keys.KEEP_SCREEN_ON] = enabled }
     suspend fun setRideModeLock(enabled: Boolean) = dataStore.edit { it[Keys.RIDE_MODE_LOCK] = enabled }
     suspend fun setTheme(theme: ThemeMode) = dataStore.edit { it[Keys.THEME] = theme.name }
-    suspend fun setShowCycleLanes(enabled: Boolean) = dataStore.edit { it[Keys.CYCLE_LANES] = enabled }
     suspend fun setLyricsEnabled(enabled: Boolean) = dataStore.edit { it[Keys.LYRICS] = enabled }
     suspend fun setOnboardingDone() = dataStore.edit { it[Keys.ONBOARDING_DONE] = true }
     suspend fun setMusicPanelVisible(visible: Boolean) = dataStore.edit { it[Keys.PANEL_VISIBLE] = visible }

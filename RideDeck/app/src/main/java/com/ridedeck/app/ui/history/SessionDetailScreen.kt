@@ -32,6 +32,15 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.ridedeck.app.data.maps.MapStyles
+import com.ridedeck.app.data.prefs.MapStyle
+import com.ridedeck.app.ui.map.MAP_ATTRIBUTION
+import com.ridedeck.app.ui.map.VectorOverlays
+import com.ridedeck.app.ui.map.rememberVectorMap
+import com.ridedeck.app.ui.map.toLatLng
+import com.ridedeck.core.model.GeoPoint
+import org.maplibre.android.camera.CameraUpdateFactory
+import org.maplibre.android.geometry.LatLngBounds
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.semantics.contentDescription
@@ -39,17 +48,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import android.graphics.Color
-import android.graphics.Paint
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.viewinterop.AndroidView
-import com.ridedeck.app.data.maps.MapTiles
-import com.ridedeck.app.ui.map.applyStyle
-import com.ridedeck.app.ui.map.dotIcon
-import com.ridedeck.app.ui.map.rememberOsmMapView
-import org.osmdroid.util.BoundingBox
-import org.osmdroid.views.overlay.Marker
-import org.osmdroid.views.overlay.Polyline
 import com.ridedeck.app.ui.components.GloveTouchTarget
 import com.ridedeck.app.ui.components.StatTile
 import com.ridedeck.app.ui.theme.AlertRed
@@ -72,59 +72,28 @@ fun SessionDetailScreen(
     val unit = state.unit
     val routeColor = MaterialTheme.colorScheme.primary.toArgb()
     val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    val mapView = rememberOsmMapView()
-    val allPoints = remember(state.segments) {
-        state.segments.flatten().map { org.osmdroid.util.GeoPoint(it.latitude, it.longitude) }
+    val vectorMap = rememberVectorMap()
+    val segments = remember(state.segments) {
+        state.segments.map { seg -> seg.map { GeoPoint(it.latitude, it.longitude) } }
     }
+    val allPoints = remember(segments) { segments.flatten() }
 
-    LaunchedEffect(dark) { mapView.applyStyle(MapTiles.STANDARD, dark) }
-    LaunchedEffect(state.segments, routeColor) {
-        mapView.overlays.clear()
-        val density = mapView.context.resources.displayMetrics.density
-        state.segments.forEach { segment ->
-            mapView.overlays.add(
-                Polyline(mapView).apply {
-                    setPoints(segment.map { org.osmdroid.util.GeoPoint(it.latitude, it.longitude) })
-                    outlinePaint.color = routeColor
-                    outlinePaint.strokeWidth = 6f * density
-                    outlinePaint.strokeCap = Paint.Cap.ROUND
-                    outlinePaint.strokeJoin = Paint.Join.ROUND
-                    infoWindow = null
-                },
-            )
-        }
-        allPoints.firstOrNull()?.let { start ->
-            mapView.overlays.add(
-                Marker(mapView).apply {
-                    position = start
-                    title = "Start"
-                    icon = dotIcon(mapView.context, Color.rgb(0x2E, 0xB8, 0x5C))
-                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-                },
-            )
-        }
-        allPoints.lastOrNull()?.takeIf { allPoints.size > 1 }?.let { end ->
-            mapView.overlays.add(
-                Marker(mapView).apply {
-                    position = end
-                    title = "Finish"
-                    icon = dotIcon(mapView.context, Color.rgb(0xE5, 0x39, 0x35))
-                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-                },
-            )
-        }
+    LaunchedEffect(dark) { vectorMap.setStyleUrl(MapStyles.url(MapStyle.AUTO, dark)) }
+    LaunchedEffect(vectorMap.style, segments, routeColor) {
+        val style = vectorMap.style ?: return@LaunchedEffect
+        VectorOverlays.setTrack(style, segments, routeColor, start = 0xFF2EB85C.toInt(), finish = 0xFFE53935.toInt())
+    }
+    LaunchedEffect(vectorMap.map, allPoints) {
+        val map = vectorMap.map ?: return@LaunchedEffect
         when {
             allPoints.isEmpty() -> Unit
-            allPoints.size == 1 -> {
-                mapView.controller.setZoom(16.0)
-                mapView.controller.setCenter(allPoints.first())
-            }
-            // Zooming to bounds needs the view laid out; post runs after the first layout pass.
-            else -> mapView.post {
-                mapView.zoomToBoundingBox(BoundingBox.fromGeoPointsSafe(allPoints).increaseByScale(1.2f), false, 48)
+            allPoints.size == 1 -> map.moveCamera(CameraUpdateFactory.newLatLngZoom(allPoints.first().toLatLng(), 16.0))
+            // Fitting bounds needs the view laid out; post runs after the first layout pass.
+            else -> vectorMap.view.post {
+                val bounds = LatLngBounds.Builder().includes(allPoints.map { it.toLatLng() }).build()
+                map.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds, 64))
             }
         }
-        mapView.invalidate()
     }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
@@ -149,9 +118,9 @@ fun SessionDetailScreen(
                 .height(minOf(320.dp, (LocalConfiguration.current.screenHeightDp * 0.45f).dp))
                 .semantics { contentDescription = "Map of the recorded route" },
         ) {
-            AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
+            AndroidView(factory = { vectorMap.view }, modifier = Modifier.fillMaxSize())
             Text(
-                MapTiles.STANDARD_ATTRIBUTION,
+                MAP_ATTRIBUTION,
                 style = MaterialTheme.typography.labelSmall,
                 modifier = Modifier
                     .align(Alignment.BottomStart)

@@ -4,7 +4,7 @@ An Android app for bike rides: a map with cycling directions, a speedometer and 
 
 RideDeck is built on open-source libraries and open data. It needs **no API keys, no Google Play services and no accounts**, so it also runs on de-Googled phones (LineageOS, GrapheneOS, /e/OS). Spotify control and Google Maps navigation are optional switches in Settings, each with setup steps in the app.
 
-**Stack:** Kotlin · Jetpack Compose · Material 3 · MVVM · Hilt · Room · DataStore · Coroutines/Flow · osmdroid · Media3 ExoPlayer · minSdk 26 / targetSdk 35
+**Stack:** Kotlin · Jetpack Compose · Material 3 · MVVM · Hilt · Room · DataStore · Coroutines/Flow · MapLibre · Media3 ExoPlayer · minSdk 26 / targetSdk 36
 
 ## Install the APK
 
@@ -24,7 +24,7 @@ The app targets Android 16 (API 36) and CI builds a Play-ready app bundle once y
 - **Speedometer and trip tracking**: smoothed GPS speed (km/h or mph), max/average speed, distance, moving time, lifetime odometer and top speed, a speed alert, auto-pause, and foreground recording with the screen off.
 - **History** with mode filters and a route map per session.
 - **Fits any screen**: the speedometer, stats and album art size themselves to the window, text shrinks instead of clipping at large font sizes, and landscape puts music beside the map with a side navigation rail. Tuned for the Galaxy S26 Ultra (QHD+ tile cache, edge-to-edge with cutout insets, smooth 120 Hz dragging, and a Settings step that stops One UI from putting rides to sleep).
-- **Maps**: OpenStreetMap (osmdroid, CyclOSM cycling style) by default, or the built-in Google map when the APK is built with a Maps API key (Settings → Map shows the steps). Search (Photon), cycling directions with steps and ETA (OSRM) and automatic re-routing work on both.
+- **Maps**: smooth vector maps (MapLibre with OpenFreeMap's OpenStreetMap tiles; no key, no limits) that rotate and tilt, in Auto, Colour, Clean or Dark looks. Search (Photon), cycling directions with turn-by-turn steps, ETA and spoken turns (Android text-to-speech, music ducks while it speaks), automatic re-routing, and an optional hand-off to the Google Maps app.
 - **Optional Google Maps**: a "Start in Google Maps" button hands the destination to the Google Maps app for voice turn-by-turn cycling navigation.
 - **Optional Spotify**: a Spotify tab in the music panel shows what Spotify is playing, with play/pause/skip, a seek bar and synced lyrics. It uses Android's media controls (notification access), so no Spotify account linking or API key is needed.
 - **Music player**: plays the songs stored on the phone (MP3, FLAC, OGG, M4A, WAV) with Media3 ExoPlayer. Library, seek bar, shuffle, favourites, album art, lock-screen and headset controls, background playback, and synced lyrics from LRCLIB.

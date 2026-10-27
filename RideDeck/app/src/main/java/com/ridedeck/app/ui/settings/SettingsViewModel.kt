@@ -12,8 +12,7 @@ import com.ridedeck.app.integrations.GoogleMapsLauncher
 import com.ridedeck.app.integrations.SpotifyControl
 import com.ridedeck.app.ui.permissions.openAppSettings
 import dagger.hilt.android.qualifiers.ApplicationContext
-import com.ridedeck.app.BuildConfig
-import com.ridedeck.app.data.prefs.MapProvider
+import com.ridedeck.app.data.prefs.MapStyle
 import com.ridedeck.app.data.prefs.RideStat
 import com.ridedeck.app.data.prefs.RideView
 import com.ridedeck.app.data.prefs.ThemeMode
@@ -38,7 +37,6 @@ data class SettingsUiState(
     val spotifyInstalled: Boolean = false,
     val spotifyAccess: Boolean = false,
     val googleMapsInstalled: Boolean = false,
-    val googleMapKeyBuiltIn: Boolean = BuildConfig.MAPS_API_KEY.isNotBlank(),
     val batteryUnrestricted: Boolean = true,
     val isSamsung: Boolean = android.os.Build.MANUFACTURER.equals("samsung", ignoreCase = true),
 )
@@ -116,18 +114,11 @@ class SettingsViewModel @Inject constructor(
     fun openNotificationAccess() = spotify.openAccessSettings()
     fun setView(view: RideView, visible: Boolean, landscape: Boolean) = launch { prefs.setView(view, visible, landscape) }
     fun setStatVisible(stat: RideStat, visible: Boolean) = launch { prefs.setStatVisible(stat, visible) }
-    fun setMapProvider(provider: MapProvider) = launch { prefs.setMapProvider(provider) }
-
-    fun openGoogleCloud() {
-        appContext.startActivity(
-            android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://console.cloud.google.com/google/maps-apis/start"))
-                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
-        )
-    }
+    fun setMapStyle(style: MapStyle) = launch { prefs.setMapStyle(style) }
+    fun setVoiceDirections(v: Boolean) = launch { prefs.setVoiceDirections(v) }
 
     fun openGoogleMapsStore() = GoogleMapsLauncher.openStore(appContext)
     fun openAppInfo() = appContext.openAppSettings()
-    fun setShowCycleLanes(v: Boolean) = launch { prefs.setShowCycleLanes(v) }
     fun setLyricsEnabled(v: Boolean) = launch { prefs.setLyricsEnabled(v) }
 
     /** [value] is in the user's display unit. */
@@ -140,9 +131,4 @@ class SettingsViewModel @Inject constructor(
     }
 
     private fun launch(block: suspend () -> Unit) = viewModelScope.launch { block() }
-
-    companion object {
-        /** SHA-1 of the shared CI signing key (ci/ridedeck-ci.jks), needed to restrict a Maps API key. */
-        const val SIGNING_SHA1 = "F8:07:B5:F6:DA:43:80:81:59:0C:47:46:E0:37:2F:A3:E0:73:29:9F"
-    }
 }

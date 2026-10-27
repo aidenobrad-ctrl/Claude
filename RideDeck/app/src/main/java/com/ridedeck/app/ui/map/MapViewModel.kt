@@ -3,12 +3,14 @@ package com.ridedeck.app.ui.map
 import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.ridedeck.app.BuildConfig
 import com.ridedeck.app.data.location.LocationAccuracy
 import com.ridedeck.app.data.location.LocationRepository
 import com.ridedeck.app.data.maps.NoRouteException
 import com.ridedeck.app.data.maps.OsmRepository
-import com.ridedeck.app.data.prefs.MapProvider
+import com.ridedeck.app.data.prefs.MapStyle
+import com.ridedeck.app.navigation.TurnAnnouncer
+import com.ridedeck.app.navigation.VoiceGuide
+import com.ridedeck.core.format.Formatters
 import com.ridedeck.app.data.prefs.UserPreferences
 import com.ridedeck.app.data.prefs.UserPreferencesRepository
 import com.ridedeck.core.mode.ModeProfile
@@ -58,9 +60,7 @@ data class MapUiState(
     val rerouteReason: RerouteReason? = null,
     val arrived: Boolean = false,
     val message: String? = null,
-    /** Map drawn inside the app; Google only when chosen and this build has a Maps API key. */
-    val provider: MapProvider = MapProvider.OSM,
-    val cycleMapStyle: Boolean = true,
+    val mapStyle: MapStyle = MapStyle.AUTO,
     val googleMapsHandOff: Boolean = false,
 )
 
@@ -84,7 +84,10 @@ class MapViewModel @Inject constructor(
     private val locationRepository: LocationRepository,
     private val osmRepository: OsmRepository,
     private val preferencesRepository: UserPreferencesRepository,
+    private val voiceGuide: VoiceGuide,
 ) : ViewModel() {
+
+    private val announcer = TurnAnnouncer { text -> if (prefs.voiceDirections) voiceGuide.speak(text) }
 
     private val nav = MutableStateFlow(NavState())
     private val permissionTick = MutableStateFlow(0)
@@ -137,8 +140,7 @@ class MapViewModel @Inject constructor(
             rerouteReason = n.rerouteReason,
             arrived = n.arrived,
             message = n.message,
-            provider = if (p.mapProvider == MapProvider.GOOGLE && googleMapsAvailable) MapProvider.GOOGLE else MapProvider.OSM,
-            cycleMapStyle = p.showCycleLanes,
+            mapStyle = p.mapStyle,
             googleMapsHandOff = p.googleMapsEnabled,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), MapUiState())
@@ -151,7 +153,7 @@ class MapViewModel @Inject constructor(
 
     fun dismissMessage() = nav.update { it.copy(message = null) }
 
-    fun setCycleMapStyle(on: Boolean) = viewModelScope.launch { preferencesRepository.setShowCycleLanes(on) }
+    fun setMapStyle(style: MapStyle) = viewModelScope.launch { preferencesRepository.setMapStyle(style) }
 
     fun onQueryChange(query: String) {
         nav.update { it.copy(query = query) }
@@ -186,6 +188,8 @@ class MapViewModel @Inject constructor(
 
     fun clearRoute() {
         routeJob?.cancel()
+        announcer.reset()
+        voiceGuide.shutdown()
         reroutePolicy.clear()
         offRouteDetector.reset()
         nav.update {
@@ -198,6 +202,7 @@ class MapViewModel @Inject constructor(
         val n = nav.value
         val route = n.route ?: return
         val progress = RouteProgressCalculator.progress(route, fix.point) ?: return
+        announce(route, progress)
         if (progress.arrived) {
             nav.update { it.copy(progress = progress, arrived = true) }
             return
@@ -227,6 +232,13 @@ class MapViewModel @Inject constructor(
                 .onSuccess { route ->
                     reroutePolicy.onRouteComputed(mode, SystemClock.elapsedRealtime())
                     offRouteDetector.reset()
+                    val unit = prefs.speedUnit
+                    announcer.onNewRoute(
+                        firstInstruction = route.steps.firstOrNull()?.instruction,
+                        summary = "${TurnAnnouncer.spoken(Formatters.navDistance(route.distanceM.toDouble(), unit))}, " +
+                            "about ${Formatters.spokenDuration(route.durationSec)}.",
+                        rerouted = reason != null,
+                    )
                     nav.update {
                         it.copy(
                             route = route,
@@ -248,10 +260,24 @@ class MapViewModel @Inject constructor(
         }
     }
 
+    /** Speaks the turn at the end of the current step (OSRM puts each instruction at its step's start). */
+    private fun announce(route: Route, progress: RouteProgress) {
+        val upcoming = route.steps.getOrNull(progress.currentStepIndex + 1)?.instruction
+        announcer.onProgress(
+            stepIndex = progress.currentStepIndex,
+            upcoming = upcoming,
+            distanceM = progress.distanceToManeuverM,
+            spokenDistance = TurnAnnouncer.spoken(Formatters.navDistance(progress.distanceToManeuverM, prefs.speedUnit)),
+            arrived = progress.arrived,
+        )
+    }
+
+    override fun onCleared() {
+        voiceGuide.shutdown()
+        super.onCleared()
+    }
+
     companion object {
         private const val SEARCH_DEBOUNCE_MS = 300L
-
-        /** Built-in Google Maps needs a Maps SDK key baked into the APK at build time. */
-        val googleMapsAvailable: Boolean get() = BuildConfig.MAPS_API_KEY.isNotBlank()
     }
 }

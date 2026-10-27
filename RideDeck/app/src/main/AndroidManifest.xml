@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Network: OpenStreetMap tiles, OSRM routing, Photon search, LRCLIB lyrics -->
+    <!-- Network: OpenFreeMap map tiles, OSRM routing, Photon search, LRCLIB lyrics -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
@@ -51,11 +51,6 @@
         android:enableOnBackInvokedCallback="true"
         android:theme="@style/Theme.RideDeck"
         tools:targetApi="36">
-
-        <!-- Optional built-in Google map. Empty unless the APK was built with MAPS_API_KEY. -->
-        <meta-data
-            android:name="com.google.android.geo.API_KEY"
-            android:value="${MAPS_API_KEY}" />
 
         <activity
             android:name=".MainActivity"

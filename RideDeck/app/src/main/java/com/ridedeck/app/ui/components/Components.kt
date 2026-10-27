@@ -1,5 +1,9 @@
 package com.ridedeck.app.ui.components
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.TextAutoSize
@@ -151,5 +155,19 @@ fun AutoSizeText(
         maxLines = 1,
         softWrap = false,
         autoSize = TextAutoSize.StepBased(minFontSize = top * 0.5f, maxFontSize = top, stepSize = 1.sp),
+    )
+}
+
+/** A plain text link in the accent colour, underlined, with a full-size touch target. */
+@Composable
+fun LinkText(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Text(
+        text,
+        style = MaterialTheme.typography.bodyLarge.copy(textDecoration = TextDecoration.Underline),
+        color = MaterialTheme.colorScheme.primary,
+        modifier = modifier
+            .heightIn(min = 48.dp)
+            .clickable(role = Role.Button, onClick = onClick)
+            .wrapContentHeight(),
     )
 }

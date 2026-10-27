@@ -7,6 +7,7 @@ import com.ridedeck.app.data.local.LifetimeTotals
 import com.ridedeck.app.data.location.LocationAccuracy
 import com.ridedeck.app.data.location.LocationRepository
 import com.ridedeck.app.data.prefs.OverlayPosition
+import com.ridedeck.app.data.prefs.RideStat
 import com.ridedeck.app.data.prefs.UserPreferences
 import com.ridedeck.app.data.prefs.UserPreferencesRepository
 import com.ridedeck.app.data.session.SessionRepository
@@ -47,6 +48,7 @@ data class HomeUiState(
     val speedAlertLimitMps: Double = UserPreferences.DEFAULT_ALERT_LIMIT_MPS,
     val expanded: Boolean = true,
     val position: OverlayPosition? = null,
+    val visibleStats: Set<RideStat> = RideStat.entries.toSet(),
 ) {
     val sessionActive: Boolean get() = snapshot.isActive
     val profile: ModeProfile get() = ModeProfile.of(mode)
@@ -116,6 +118,13 @@ class HomeViewModel @Inject constructor(
             speedAlertLimitMps = prefs.speedAlertLimitMps,
             expanded = prefs.speedOverlayExpanded,
             position = prefs.speedOverlayPosition,
+            visibleStats = buildSet {
+                if (prefs.showDistance) add(RideStat.DISTANCE)
+                if (prefs.showTime) add(RideStat.TIME)
+                if (prefs.showAverage) add(RideStat.AVERAGE)
+                if (prefs.showMax) add(RideStat.MAX)
+                if (prefs.showOdometer) add(RideStat.ODOMETER)
+            },
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
 

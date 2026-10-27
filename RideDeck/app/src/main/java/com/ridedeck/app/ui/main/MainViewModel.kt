@@ -65,8 +65,8 @@ class MainViewModel @Inject constructor(
         preferencesRepository.setMusicPanelVisible(visible)
     }
 
-    fun setView(view: RideView, visible: Boolean) = viewModelScope.launch {
-        preferencesRepository.setView(view, visible)
+    fun setView(view: RideView, visible: Boolean, landscape: Boolean) = viewModelScope.launch {
+        preferencesRepository.setView(view, visible, landscape)
     }
 
     fun setMusicSource(source: MusicSource) = viewModelScope.launch {

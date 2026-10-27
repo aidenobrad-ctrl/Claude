@@ -64,6 +64,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ridedeck.app.R
+import com.ridedeck.app.data.prefs.RideStat
 import com.ridedeck.app.ui.components.GloveTouchTarget
 import com.ridedeck.app.ui.theme.AlertRed
 import com.ridedeck.app.ui.theme.GoGreen
@@ -137,7 +138,7 @@ fun SpeedOverlay(
                     )
                     Spacer(Modifier.width(4.dp))
                     Text(Units.speedLabel(unit), style = MaterialTheme.typography.labelLarge)
-                    if (state.sessionActive) {
+                    if (state.sessionActive && RideStat.DISTANCE in state.visibleStats) {
                         Spacer(Modifier.width(12.dp))
                         Text(
                             "${Formatters.distance(snap.distanceM, unit)} ${Units.distanceLabel(unit)}",
@@ -188,11 +189,23 @@ fun SpeedOverlay(
                         }
                     }
                     val statSize = if (fullScreen) (if (wide) 30.sp else 26.sp) else 20.sp
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        MiniStat(stringResource(R.string.stat_distance), Formatters.distance(snap.distanceM, unit), Units.distanceLabel(unit), statSize, Modifier.weight(1f))
-                        MiniStat(stringResource(R.string.stat_time), Formatters.duration(snap.movingTimeMs), null, statSize, Modifier.weight(1f))
-                        MiniStat(stringResource(R.string.stat_avg), Formatters.speed(snap.averageSpeedMps, unit, 1), null, statSize, Modifier.weight(1f))
-                        MiniStat(stringResource(R.string.stat_max), Formatters.speed(snap.maxSpeedMps, unit, 1), null, statSize, Modifier.weight(1f))
+                    // Only the figures switched on in Settings; the rest share the space.
+                    val stats = state.visibleStats
+                    if (stats.any { it != RideStat.ODOMETER }) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (RideStat.DISTANCE in stats) {
+                                MiniStat(stringResource(R.string.stat_distance), Formatters.distance(snap.distanceM, unit), Units.distanceLabel(unit), statSize, Modifier.weight(1f))
+                            }
+                            if (RideStat.TIME in stats) {
+                                MiniStat(stringResource(R.string.stat_time), Formatters.duration(snap.movingTimeMs), null, statSize, Modifier.weight(1f))
+                            }
+                            if (RideStat.AVERAGE in stats) {
+                                MiniStat(stringResource(R.string.stat_avg), Formatters.speed(snap.averageSpeedMps, unit, 1), null, statSize, Modifier.weight(1f))
+                            }
+                            if (RideStat.MAX in stats) {
+                                MiniStat(stringResource(R.string.stat_max), Formatters.speed(snap.maxSpeedMps, unit, 1), null, statSize, Modifier.weight(1f))
+                            }
+                        }
                     }
                     if (!state.hasLocationPermission) {
                         OutlinedButton(
@@ -207,16 +220,20 @@ fun SpeedOverlay(
                         onResume = viewModel::resume,
                         onStop = { confirmStop = true },
                     )
-                    if (state.sessionActive && !rideLocked) {
+                    val showOdometer = RideStat.ODOMETER in stats
+                    val showResetMax = RideStat.MAX in stats && !rideLocked
+                    if (state.sessionActive && (showOdometer || showResetMax)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                "Odometer ${Formatters.distance(state.odometerM, unit, 1)} ${Units.distanceLabel(unit)}",
+                                if (showOdometer) "Odometer ${Formatters.distance(state.odometerM, unit, 1)} ${Units.distanceLabel(unit)}" else "",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.weight(1f),
                             )
-                            TextButton(onClick = viewModel::resetMax, modifier = Modifier.heightIn(min = 48.dp)) {
-                                Text(stringResource(R.string.reset_max))
+                            if (showResetMax) {
+                                TextButton(onClick = viewModel::resetMax, modifier = Modifier.heightIn(min = 48.dp)) {
+                                    Text(stringResource(R.string.reset_max))
+                                }
                             }
                         }
                     }

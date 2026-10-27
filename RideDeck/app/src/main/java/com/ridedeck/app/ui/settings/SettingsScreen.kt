@@ -43,6 +43,16 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ridedeck.app.data.prefs.MapProvider
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.Icon
+import com.ridedeck.app.data.prefs.RideStat
+import com.ridedeck.app.data.prefs.RideView
 import com.ridedeck.app.data.prefs.ThemeMode
 import com.ridedeck.app.ui.components.GloveTouchTarget
 import com.ridedeck.app.ui.theme.GoGreen
@@ -69,6 +79,31 @@ fun SettingsScreen(
         contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 12.dp),
     ) {
         item { Header("Settings", large = true) }
+
+        // What the Ride screen shows. Turning the phone sideways switches to the landscape set,
+        // so each orientation remembers its own combination.
+        item { Header("Ride screen views") }
+        item {
+            ViewToggles(
+                label = "Portrait",
+                views = p.views(landscape = false),
+                onToggle = { view, on -> viewModel.setView(view, on, landscape = false) },
+            )
+        }
+        item {
+            ViewToggles(
+                label = "Landscape (remembered separately)",
+                views = p.views(landscape = true),
+                onToggle = { view, on -> viewModel.setView(view, on, landscape = true) },
+            )
+        }
+
+        item { Header("Speedometer stats") }
+        item { SwitchRow("Distance", p.showDistance, { viewModel.setStatVisible(RideStat.DISTANCE, it) }) }
+        item { SwitchRow("Moving time", p.showTime, { viewModel.setStatVisible(RideStat.TIME, it) }) }
+        item { SwitchRow("Average speed", p.showAverage, { viewModel.setStatVisible(RideStat.AVERAGE, it) }) }
+        item { SwitchRow("Max speed", p.showMax, { viewModel.setStatVisible(RideStat.MAX, it) }) }
+        item { SwitchRow("Odometer", p.showOdometer, { viewModel.setStatVisible(RideStat.ODOMETER, it) }) }
 
         item { Header("Display") }
         item {
@@ -289,6 +324,37 @@ fun SettingsScreen(
             text = { Text(msg) },
             confirmButton = { TextButton(onClick = viewModel::dismissMessage) { Text("OK") } },
         )
+    }
+}
+
+/** Map, Speed and Music on/off for one orientation; the last one on can't be turned off. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ViewToggles(label: String, views: Triple<Boolean, Boolean, Boolean>, onToggle: (RideView, Boolean) -> Unit) {
+    val (map, speed, music) = views
+    val onlyOne = listOf(map, speed, music).count { it } == 1
+    Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
+        Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(bottom = 6.dp))
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(
+                Triple(RideView.MAP, "Map", map),
+                Triple(RideView.SPEEDOMETER, "Speedometer", speed),
+                Triple(RideView.MUSIC, "Music", music),
+            ).forEach { (view, name, on) ->
+                FilterChip(
+                    selected = on,
+                    onClick = { onToggle(view, !on) },
+                    enabled = !(onlyOne && on),
+                    label = { Text(name, maxLines = 1) },
+                    leadingIcon = if (on) {
+                        { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize)) }
+                    } else {
+                        null
+                    },
+                    modifier = Modifier.heightIn(min = 48.dp),
+                )
+            }
+        }
     }
 }
 

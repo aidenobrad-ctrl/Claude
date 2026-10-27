@@ -28,6 +28,9 @@ enum class MusicSource { PHONE, SPOTIFY }
 /** The three views of the Ride screen. */
 enum class RideView { MAP, SPEEDOMETER, MUSIC }
 
+/** Trip figures that can be hidden from the speedometer. */
+enum class RideStat { DISTANCE, TIME, AVERAGE, MAX, ODOMETER }
+
 /** Which map is drawn inside the app. */
 enum class MapProvider { OSM, GOOGLE }
 
@@ -65,7 +68,22 @@ data class UserPreferences(
      * down. Null means docked: centred just above the bottom controls.
      */
     val speedOverlayPosition: OverlayPosition? = null,
+    /** Views remembered separately for when the phone is turned sideways. */
+    val showMapLandscape: Boolean = true,
+    val showSpeedometerLandscape: Boolean = true,
+    val showMusicLandscape: Boolean = true,
+    /** Which trip figures the speedometer shows. */
+    val showDistance: Boolean = true,
+    val showTime: Boolean = true,
+    val showAverage: Boolean = true,
+    val showMax: Boolean = true,
+    val showOdometer: Boolean = true,
 ) {
+    /** The Ride screen views for the current orientation: map, speedometer, music. */
+    fun views(landscape: Boolean): Triple<Boolean, Boolean, Boolean> =
+        if (landscape) Triple(showMapLandscape, showSpeedometerLandscape, showMusicLandscape)
+        else Triple(showMap, showSpeedometer, musicPanelVisible)
+
     companion object {
         const val DEFAULT_ALERT_LIMIT_MPS = 30.0 / 3.6
         const val DEFAULT_PANEL_FRACTION = 0.38f
@@ -100,6 +118,14 @@ class UserPreferencesRepository @Inject constructor(
         val MAP_PROVIDER = stringPreferencesKey("map_provider")
         val SHOW_MAP = booleanPreferencesKey("show_map")
         val SHOW_SPEEDOMETER = booleanPreferencesKey("show_speedometer")
+        val SHOW_MAP_LAND = booleanPreferencesKey("show_map_landscape")
+        val SHOW_SPEEDOMETER_LAND = booleanPreferencesKey("show_speedometer_landscape")
+        val SHOW_MUSIC_LAND = booleanPreferencesKey("show_music_landscape")
+        val STAT_DISTANCE = booleanPreferencesKey("stat_distance")
+        val STAT_TIME = booleanPreferencesKey("stat_time")
+        val STAT_AVERAGE = booleanPreferencesKey("stat_average")
+        val STAT_MAX = booleanPreferencesKey("stat_max")
+        val STAT_ODOMETER = booleanPreferencesKey("stat_odometer")
         val OVERLAY_X = floatPreferencesKey("speed_overlay_x")
         val OVERLAY_Y = floatPreferencesKey("speed_overlay_y")
     }
@@ -132,6 +158,14 @@ class UserPreferencesRepository @Inject constructor(
                 mapProvider = MapProvider.entries.firstOrNull { it.name == p[Keys.MAP_PROVIDER] } ?: defaults.mapProvider,
                 showMap = p[Keys.SHOW_MAP] ?: defaults.showMap,
                 showSpeedometer = p[Keys.SHOW_SPEEDOMETER] ?: defaults.showSpeedometer,
+                showMapLandscape = p[Keys.SHOW_MAP_LAND] ?: defaults.showMapLandscape,
+                showSpeedometerLandscape = p[Keys.SHOW_SPEEDOMETER_LAND] ?: defaults.showSpeedometerLandscape,
+                showMusicLandscape = p[Keys.SHOW_MUSIC_LAND] ?: defaults.showMusicLandscape,
+                showDistance = p[Keys.STAT_DISTANCE] ?: defaults.showDistance,
+                showTime = p[Keys.STAT_TIME] ?: defaults.showTime,
+                showAverage = p[Keys.STAT_AVERAGE] ?: defaults.showAverage,
+                showMax = p[Keys.STAT_MAX] ?: defaults.showMax,
+                showOdometer = p[Keys.STAT_ODOMETER] ?: defaults.showOdometer,
                 speedOverlayPosition = p[Keys.OVERLAY_X]?.let { x ->
                     p[Keys.OVERLAY_Y]?.let { y -> OverlayPosition(x.coerceIn(0f, 1f), y.coerceIn(0f, 1f)) }
                 },
@@ -151,22 +185,42 @@ class UserPreferencesRepository @Inject constructor(
     suspend fun setGoogleMapsEnabled(enabled: Boolean) = dataStore.edit { it[Keys.GOOGLE_MAPS] = enabled }
     suspend fun setMapProvider(provider: MapProvider) = dataStore.edit { it[Keys.MAP_PROVIDER] = provider.name }
 
-    /** Shows or hides one view of the Ride screen; refuses to hide the last visible one. */
-    suspend fun setView(view: RideView, visible: Boolean) = dataStore.edit {
+    /**
+     * Shows or hides one view of the Ride screen, for portrait or for [landscape]; refuses to hide
+     * the last visible one.
+     */
+    suspend fun setView(view: RideView, visible: Boolean, landscape: Boolean = false) = dataStore.edit {
         val defaults = UserPreferences()
-        val map = it[Keys.SHOW_MAP] ?: defaults.showMap
-        val speed = it[Keys.SHOW_SPEEDOMETER] ?: defaults.showSpeedometer
-        val music = it[Keys.PANEL_VISIBLE] ?: defaults.musicPanelVisible
+        val keys = if (landscape) {
+            Triple(Keys.SHOW_MAP_LAND, Keys.SHOW_SPEEDOMETER_LAND, Keys.SHOW_MUSIC_LAND)
+        } else {
+            Triple(Keys.SHOW_MAP, Keys.SHOW_SPEEDOMETER, Keys.PANEL_VISIBLE)
+        }
+        val (defMap, defSpeed, defMusic) = defaults.views(landscape)
+        val map = it[keys.first] ?: defMap
+        val speed = it[keys.second] ?: defSpeed
+        val music = it[keys.third] ?: defMusic
         val next = when (view) {
             RideView.MAP -> Triple(visible, speed, music)
             RideView.SPEEDOMETER -> Triple(map, visible, music)
             RideView.MUSIC -> Triple(map, speed, visible)
         }
         if (next.first || next.second || next.third) {
-            it[Keys.SHOW_MAP] = next.first
-            it[Keys.SHOW_SPEEDOMETER] = next.second
-            it[Keys.PANEL_VISIBLE] = next.third
+            it[keys.first] = next.first
+            it[keys.second] = next.second
+            it[keys.third] = next.third
         }
+    }
+
+    suspend fun setStatVisible(stat: RideStat, visible: Boolean) = dataStore.edit {
+        val key = when (stat) {
+            RideStat.DISTANCE -> Keys.STAT_DISTANCE
+            RideStat.TIME -> Keys.STAT_TIME
+            RideStat.AVERAGE -> Keys.STAT_AVERAGE
+            RideStat.MAX -> Keys.STAT_MAX
+            RideStat.ODOMETER -> Keys.STAT_ODOMETER
+        }
+        it[key] = visible
     }
 
     /** Null docks the speedometer back above the bottom controls. */

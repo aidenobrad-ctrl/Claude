@@ -13,21 +13,21 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import com.ridedeck.app.data.prefs.ThemeMode
 
-// High-contrast palette: signal yellow on black passes WCAG AAA (contrast ratio > 15:1).
-val SignalYellow = Color(0xFFFFD600)
-val SignalCyan = Color(0xFF00E5FF)
+// Accent #03B7FF. On black it has a contrast ratio of about 9:1 (WCAG AAA for text).
+val AccentBlue = Color(0xFF03B7FF)
+val AccentBlueLight = Color(0xFF8AD8FF)
 val AlertRed = Color(0xFFFF5252)
 val GoGreen = Color(0xFF00E676)
 
 private val OledColors = darkColorScheme(
-    primary = SignalYellow,
+    primary = AccentBlue,
     onPrimary = Color.Black,
-    primaryContainer = Color(0xFF3A3000),
-    onPrimaryContainer = SignalYellow,
-    secondary = SignalCyan,
+    primaryContainer = Color(0xFF00344D),
+    onPrimaryContainer = AccentBlueLight,
+    secondary = AccentBlueLight,
     onSecondary = Color.Black,
-    secondaryContainer = Color(0xFF00363D),
-    onSecondaryContainer = SignalCyan,
+    secondaryContainer = Color(0xFF002A3D),
+    onSecondaryContainer = AccentBlueLight,
     tertiary = GoGreen,
     onTertiary = Color.Black,
     error = AlertRed,
@@ -59,11 +59,11 @@ private val DarkColors = OledColors.copy(
 )
 
 private val LightColors = lightColorScheme(
-    primary = Color(0xFF5C4B00),
-    onPrimary = Color.White,
-    primaryContainer = SignalYellow,
-    onPrimaryContainer = Color.Black,
-    secondary = Color(0xFF00616B),
+    primary = AccentBlue,
+    onPrimary = Color.Black,
+    primaryContainer = Color(0xFFCDEEFF),
+    onPrimaryContainer = Color(0xFF00344D),
+    secondary = Color(0xFF00658F),
     onSecondary = Color.White,
     tertiary = Color(0xFF006D35),
     error = Color(0xFFB3261E),

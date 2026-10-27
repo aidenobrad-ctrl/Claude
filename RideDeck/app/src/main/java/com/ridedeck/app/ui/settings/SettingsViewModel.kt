@@ -16,6 +16,8 @@ import com.ridedeck.app.ui.permissions.openAppSettings
 import dagger.hilt.android.qualifiers.ApplicationContext
 import com.ridedeck.app.BuildConfig
 import com.ridedeck.app.data.prefs.MapProvider
+import com.ridedeck.app.data.prefs.RideStat
+import com.ridedeck.app.data.prefs.RideView
 import com.ridedeck.app.data.prefs.ThemeMode
 import com.ridedeck.app.data.prefs.UserPreferences
 import com.ridedeck.app.data.prefs.UserPreferencesRepository
@@ -115,6 +117,8 @@ class SettingsViewModel @Inject constructor(
 
     fun openSpotify() = spotify.openSpotify()
     fun openNotificationAccess() = spotify.openAccessSettings()
+    fun setView(view: RideView, visible: Boolean, landscape: Boolean) = launch { prefs.setView(view, visible, landscape) }
+    fun setStatVisible(stat: RideStat, visible: Boolean) = launch { prefs.setStatVisible(stat, visible) }
     fun setMapProvider(provider: MapProvider) = launch { prefs.setMapProvider(provider) }
 
     fun openGoogleCloud() {

@@ -1,7 +1,9 @@
 package com.ridedeck.app.ui.main
 
 import androidx.compose.foundation.layout.Arrangement
+import android.content.res.Configuration
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -43,14 +45,14 @@ import com.ridedeck.app.ui.music.MusicPanel
 fun RideScreen(
     prefs: UserPreferences,
     rideLocked: Boolean,
-    onToggleView: (RideView, Boolean) -> Unit,
+    onToggleView: (RideView, Boolean, Boolean) -> Unit,
     onMusicFraction: (Float) -> Unit,
     onMusicSource: (com.ridedeck.app.data.prefs.MusicSource) -> Unit,
     onOpenPermissions: () -> Unit,
 ) {
-    val showMap = prefs.showMap
-    val showSpeed = prefs.showSpeedometer
-    val showMusic = prefs.musicPanelVisible
+    // Portrait and landscape each remember their own views.
+    val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val (showMap, showSpeed, showMusic) = prefs.views(landscape)
 
     // The last view left on can't be turned off, so its chip is shown as locked on.
     val onlyOne = listOf(showMap, showSpeed, showMusic).count { it } == 1
@@ -63,9 +65,9 @@ fun RideScreen(
                 .padding(horizontal = 12.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            ViewChip("Map", Icons.Default.Map, showMap, enabled = !(onlyOne && showMap)) { onToggleView(RideView.MAP, !showMap) }
-            ViewChip("Speed", Icons.Default.Speed, showSpeed, enabled = !(onlyOne && showSpeed)) { onToggleView(RideView.SPEEDOMETER, !showSpeed) }
-            ViewChip("Music", Icons.Default.MusicNote, showMusic, enabled = !(onlyOne && showMusic)) { onToggleView(RideView.MUSIC, !showMusic) }
+            ViewChip("Map", Icons.Default.Map, showMap, enabled = !(onlyOne && showMap)) { onToggleView(RideView.MAP, !showMap, landscape) }
+            ViewChip("Speed", Icons.Default.Speed, showSpeed, enabled = !(onlyOne && showSpeed)) { onToggleView(RideView.SPEEDOMETER, !showSpeed, landscape) }
+            ViewChip("Music", Icons.Default.MusicNote, showMusic, enabled = !(onlyOne && showMusic)) { onToggleView(RideView.MUSIC, !showMusic, landscape) }
         }
 
         val music: @Composable () -> Unit = {
@@ -103,7 +105,7 @@ fun RideScreen(
                     showPanel = showMusic,
                     fraction = prefs.musicPanelFraction,
                     onFractionCommitted = onMusicFraction,
-                    onHidePanel = { onToggleView(RideView.MUSIC, false) },
+                    onHidePanel = { onToggleView(RideView.MUSIC, false, landscape) },
                     top = top,
                     panel = music,
                 )

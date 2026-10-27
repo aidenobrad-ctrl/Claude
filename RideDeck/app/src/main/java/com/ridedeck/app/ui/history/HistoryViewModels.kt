@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.ridedeck.app.data.local.LifetimeTotals
 import com.ridedeck.app.data.local.RoutePointEntity
 import com.ridedeck.app.data.local.SessionEntity
+import com.ridedeck.app.data.prefs.MapStyle
 import com.ridedeck.app.data.prefs.UserPreferencesRepository
 import com.ridedeck.app.data.session.SessionRepository
 import com.ridedeck.core.model.ActivityMode
@@ -29,7 +30,7 @@ data class HistoryUiState(
     val filter: HistoryFilter = HistoryFilter.ALL,
     val sessions: List<SessionEntity> = emptyList(),
     val totals: LifetimeTotals = LifetimeTotals.EMPTY,
-    val unit: SpeedUnit = SpeedUnit.KMH,
+    val unit: SpeedUnit = SpeedUnit.MPH,
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -75,7 +76,8 @@ data class SessionDetailUiState(
     val session: SessionEntity? = null,
     /** Route points grouped into segments (split at pauses and GPS gaps). */
     val segments: List<List<RoutePointEntity>> = emptyList(),
-    val unit: SpeedUnit = SpeedUnit.KMH,
+    val unit: SpeedUnit = SpeedUnit.MPH,
+    val mapStyle: MapStyle = MapStyle.COLOR,
     val deleted: Boolean = false,
 )
 
@@ -106,7 +108,7 @@ class SessionDetailViewModel @Inject constructor(
         preferencesRepository.preferences,
         deleted,
     ) { session, segs, prefs, isDeleted ->
-        SessionDetailUiState(session, segs, prefs.speedUnit, isDeleted)
+        SessionDetailUiState(session, segs, prefs.speedUnit, prefs.mapStyle, isDeleted)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SessionDetailUiState())
 
     fun delete() = viewModelScope.launch {

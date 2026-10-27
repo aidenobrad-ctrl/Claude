@@ -124,7 +124,7 @@ fun MapScreen(
                         onClick = { viewModel.setFollowUser(true) },
                         modifier = Modifier.size(GloveTouchTarget),
                     ) {
-                        Icon(Icons.Default.MyLocation, contentDescription = "Recentre on my location")
+                        Icon(Icons.Default.MyLocation, contentDescription = "Recenter on my location")
                     }
                 }
             }

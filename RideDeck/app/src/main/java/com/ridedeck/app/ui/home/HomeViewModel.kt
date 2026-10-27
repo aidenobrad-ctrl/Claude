@@ -38,7 +38,7 @@ import javax.inject.Inject
 
 data class HomeUiState(
     val mode: ActivityMode = ActivityMode.BIKE,
-    val unit: SpeedUnit = SpeedUnit.KMH,
+    val unit: SpeedUnit = SpeedUnit.MPH,
     val snapshot: TripSnapshot = TripSnapshot.idle(ActivityMode.BIKE),
     /** Live speed while no session is recording (only while this screen is visible). */
     val previewSpeedMps: Double = 0.0,

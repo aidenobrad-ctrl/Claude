@@ -111,10 +111,10 @@ class TurnAnnouncer(private val speak: (String) -> Unit) {
         private const val HEADS_UP_M = 250.0
         private const val NOW_M = 35.0
 
-        /** "250 m" reads as "250 metres", and so on, for the speech engine. */
+        /** "250 m" reads as "250 meters", and so on, for the speech engine. */
         fun spoken(distance: String): String = distance
-            .replace(Regex("(\\d) m$"), "$1 metres")
-            .replace(Regex("(\\d) km$"), "$1 kilometres")
+            .replace(Regex("(\\d) m$"), "$1 meters")
+            .replace(Regex("(\\d) km$"), "$1 kilometers")
             .replace(Regex("(\\d) ft$"), "$1 feet")
             .replace(Regex("(\\d) mi$"), "$1 miles")
     }

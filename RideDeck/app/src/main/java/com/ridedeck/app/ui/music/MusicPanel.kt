@@ -240,7 +240,7 @@ private fun LibraryList(state: MusicUiState, viewModel: MusicViewModel) {
             FilterChip(
                 selected = state.favouritesOnly,
                 onClick = { viewModel.setFavouritesOnly(true) },
-                label = { Text("Favourites") },
+                label = { Text("Favorites") },
             )
             Spacer(Modifier.weight(1f))
             IconButton(onClick = viewModel::shuffleAll, enabled = tracks.isNotEmpty()) {
@@ -249,7 +249,7 @@ private fun LibraryList(state: MusicUiState, viewModel: MusicViewModel) {
         }
         if (tracks.isEmpty()) {
             Text(
-                "No favourites yet. Tap the heart while a song plays.",
+                "No favorites yet. Tap the heart while a song plays.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(8.dp),
             )
@@ -356,7 +356,7 @@ private fun Controls(state: MusicUiState, viewModel: MusicViewModel, small: Bool
             IconButton(onClick = viewModel::toggleFavourite, modifier = Modifier.size(buttonSize)) {
                 Icon(
                     if (state.isFavourite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                    contentDescription = if (state.isFavourite) "Remove from favourites" else "Add to favourites",
+                    contentDescription = if (state.isFavourite) "Remove from favorites" else "Add to favorites",
                     tint = if (state.isFavourite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.size(iconSize),
                 )

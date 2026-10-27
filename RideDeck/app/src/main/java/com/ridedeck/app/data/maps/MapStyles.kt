@@ -9,16 +9,16 @@ import com.ridedeck.app.data.prefs.MapStyle
  */
 object MapStyles {
     private const val BASE = "https://tiles.openfreemap.org/styles/"
-    const val COLOURFUL = BASE + "liberty"
+    const val COLOR = BASE + "liberty"
     const val CLEAN = BASE + "positron"
     const val DARK = BASE + "dark"
 
     /** Used if a style can't be loaded (for example a renamed style). */
-    const val FALLBACK = COLOURFUL
+    const val FALLBACK = COLOR
 
     fun url(style: MapStyle, darkTheme: Boolean): String = when (style) {
-        MapStyle.AUTO -> if (darkTheme) DARK else COLOURFUL
-        MapStyle.COLOURFUL -> COLOURFUL
+        MapStyle.AUTO -> if (darkTheme) DARK else COLOR
+        MapStyle.COLOR -> COLOR
         MapStyle.CLEAN -> CLEAN
         MapStyle.DARK -> DARK
     }

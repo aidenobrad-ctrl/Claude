@@ -78,7 +78,7 @@ fun SessionDetailScreen(
     }
     val allPoints = remember(segments) { segments.flatten() }
 
-    LaunchedEffect(dark) { vectorMap.setStyleUrl(MapStyles.url(MapStyle.AUTO, dark)) }
+    LaunchedEffect(dark, state.mapStyle) { vectorMap.setStyleUrl(MapStyles.url(state.mapStyle, dark)) }
     LaunchedEffect(vectorMap.style, segments, routeColor) {
         val style = vectorMap.style ?: return@LaunchedEffect
         VectorOverlays.setTrack(style, segments, routeColor, start = 0xFF2EB85C.toInt(), finish = 0xFFE53935.toInt())

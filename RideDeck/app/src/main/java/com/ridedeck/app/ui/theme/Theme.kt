@@ -1,7 +1,9 @@
 package com.ridedeck.app.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -10,6 +12,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ridedeck.app.data.prefs.ThemeMode
 
@@ -76,12 +79,29 @@ private val LightColors = lightColorScheme(
 
 private val base = Typography()
 
-/** Slightly larger body and label sizes than Material defaults, for reading at a glance. */
+/**
+ * Slightly larger body and label sizes than Material defaults, for reading at a glance, and
+ * heavier, tighter headings so screens have a clear hierarchy.
+ */
 val RideDeckTypography = base.copy(
+    headlineLarge = base.headlineLarge.copy(fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.5).sp),
+    headlineMedium = base.headlineMedium.copy(fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.5).sp),
+    headlineSmall = base.headlineSmall.copy(fontWeight = FontWeight.Bold),
+    titleLarge = base.titleLarge.copy(fontWeight = FontWeight.Bold),
+    titleMedium = base.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+    titleSmall = base.titleSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 0.6.sp),
     bodyLarge = base.bodyLarge.copy(fontSize = 18.sp),
     bodyMedium = base.bodyMedium.copy(fontSize = 16.sp),
     labelLarge = base.labelLarge.copy(fontSize = 18.sp, fontWeight = FontWeight.SemiBold),
-    titleLarge = base.titleLarge.copy(fontWeight = FontWeight.Bold),
+)
+
+/** Softer, rounder corners throughout, so cards and sheets read as one family. */
+val RideDeckShapes = Shapes(
+    extraSmall = RoundedCornerShape(8.dp),
+    small = RoundedCornerShape(12.dp),
+    medium = RoundedCornerShape(18.dp),
+    large = RoundedCornerShape(24.dp),
+    extraLarge = RoundedCornerShape(32.dp),
 )
 
 /** Tabular figures so digits do not shift width as the speed changes. */
@@ -98,7 +118,7 @@ fun RideDeckTheme(themeMode: ThemeMode, content: @Composable () -> Unit) {
         ThemeMode.DARK -> DarkColors
         ThemeMode.SYSTEM -> if (isSystemInDarkTheme()) DarkColors else LightColors
     }
-    MaterialTheme(colorScheme = colors, typography = RideDeckTypography, content = content)
+    MaterialTheme(colorScheme = colors, typography = RideDeckTypography, shapes = RideDeckShapes, content = content)
 }
 
 @Composable

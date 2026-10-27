@@ -46,7 +46,7 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class MapUiState(
-    val unit: SpeedUnit = SpeedUnit.KMH,
+    val unit: SpeedUnit = SpeedUnit.MPH,
     val hasLocationPermission: Boolean = false,
     val myLocation: GeoPoint? = null,
     val followUser: Boolean = true,
@@ -60,7 +60,7 @@ data class MapUiState(
     val rerouteReason: RerouteReason? = null,
     val arrived: Boolean = false,
     val message: String? = null,
-    val mapStyle: MapStyle = MapStyle.AUTO,
+    val mapStyle: MapStyle = MapStyle.COLOR,
     val googleMapsHandOff: Boolean = false,
 )
 

@@ -15,7 +15,7 @@ enum class SpeedUnit {
     MPH;
 
     companion object {
-        fun fromName(name: String?): SpeedUnit = entries.firstOrNull { it.name == name } ?: KMH
+        fun fromName(name: String?): SpeedUnit = entries.firstOrNull { it.name == name } ?: MPH
     }
 }
 

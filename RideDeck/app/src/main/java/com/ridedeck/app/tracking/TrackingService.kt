@@ -31,7 +31,7 @@ class TrackingService : LifecycleService() {
     @Inject lateinit var preferences: UserPreferencesRepository
 
     private var observing = false
-    private var unit = SpeedUnit.KMH
+    private var unit = SpeedUnit.MPH
 
     override fun onCreate() {
         super.onCreate()

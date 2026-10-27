@@ -124,7 +124,7 @@ fun PermissionsScreen(
             icon = Icons.Default.LocationOn,
             title = "Precise location (required)",
             rationale = "Drives the speedometer, measures your distance and shows you on the map. " +
-                "Precise location is needed because approximate location is only accurate to a few kilometres.",
+                "Precise location is needed because approximate location is only accurate to a few miles.",
             granted = locationGranted,
             permanentlyDenied = permanentlyDenied(Manifest.permission.ACCESS_FINE_LOCATION, locationGranted),
             onRequest = {

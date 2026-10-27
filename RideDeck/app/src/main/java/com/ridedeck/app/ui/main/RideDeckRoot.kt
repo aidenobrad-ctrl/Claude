@@ -38,6 +38,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -168,15 +170,24 @@ private fun RideDeckContent(state: MainUiState, viewModel: MainViewModel) {
             contentWindowInsets = WindowInsets.systemBars.union(WindowInsets.displayCutout),
             bottomBar = {
                 if (showChrome && !useRail) {
-                    NavigationBar {
-                        navItems.forEach { e ->
-                            NavigationBarItem(
-                                selected = e.selected,
-                                onClick = { navController.navigateTopLevel(e.item.route) },
-                                enabled = !e.locked,
-                                icon = { NavIcon(e) },
-                                label = { Text(stringResource(e.item.label), maxLines = 1) },
-                            )
+                    Column {
+                        // A hairline instead of a tinted bar keeps the bottom edge true black on OLED.
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                        NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
+                            navItems.forEach { e ->
+                                NavigationBarItem(
+                                    selected = e.selected,
+                                    onClick = { navController.navigateTopLevel(e.item.route) },
+                                    enabled = !e.locked,
+                                    icon = { NavIcon(e) },
+                                    label = { Text(stringResource(e.item.label), maxLines = 1) },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        selectedTextColor = MaterialTheme.colorScheme.primary,
+                                        indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                                    ),
+                                )
+                            }
                         }
                     }
                 }

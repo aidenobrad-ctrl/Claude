@@ -31,15 +31,15 @@ enum class RideView { MAP, SPEEDOMETER, MUSIC }
 /** Trip figures that can be hidden from the speedometer. */
 enum class RideStat { DISTANCE, TIME, AVERAGE, MAX, ODOMETER }
 
-/** How the map looks. AUTO follows the app theme (colourful by day, dark at night). */
-enum class MapStyle { AUTO, COLOURFUL, CLEAN, DARK }
+/** How the map looks. AUTO follows the app theme (color in a light theme, dark otherwise). */
+enum class MapStyle { AUTO, COLOR, CLEAN, DARK }
 
 data class OverlayPosition(val x: Float, val y: Float)
 
 data class UserPreferences(
     /** Always BIKE: Walk mode was removed. Kept so the tracking engine and old sessions keep working. */
     val mode: ActivityMode = ActivityMode.BIKE,
-    val speedUnit: SpeedUnit = SpeedUnit.KMH,
+    val speedUnit: SpeedUnit = SpeedUnit.MPH,
     val speedAlertEnabled: Boolean = false,
     val speedAlertLimitMps: Double = DEFAULT_ALERT_LIMIT_MPS,
     val speedAlertSound: Boolean = true,
@@ -58,7 +58,7 @@ data class UserPreferences(
     /** Optional Google Maps integration: hand turn-by-turn directions to the Google Maps app. */
     val googleMapsEnabled: Boolean = false,
     val speedOverlayExpanded: Boolean = true,
-    val mapStyle: MapStyle = MapStyle.AUTO,
+    val mapStyle: MapStyle = MapStyle.COLOR,
     /** Speak upcoming turns while navigating. */
     val voiceDirections: Boolean = true,
     /** Which views the Ride screen shows; any combination, at least one. Music uses [musicPanelVisible]. */
@@ -155,7 +155,8 @@ class UserPreferencesRepository @Inject constructor(
                 musicSource = MusicSource.entries.firstOrNull { it.name == p[Keys.MUSIC_SOURCE] } ?: defaults.musicSource,
                 googleMapsEnabled = p[Keys.GOOGLE_MAPS] ?: defaults.googleMapsEnabled,
                 speedOverlayExpanded = p[Keys.OVERLAY_EXPANDED] ?: defaults.speedOverlayExpanded,
-                mapStyle = MapStyle.entries.firstOrNull { it.name == p[Keys.MAP_STYLE] } ?: defaults.mapStyle,
+                // "COLOURFUL" was the name of COLOR in 1.1 test builds.
+                mapStyle = MapStyle.entries.firstOrNull { it.name == p[Keys.MAP_STYLE]?.replace("COLOURFUL", "COLOR") } ?: defaults.mapStyle,
                 voiceDirections = p[Keys.VOICE_DIRECTIONS] ?: defaults.voiceDirections,
                 showMap = p[Keys.SHOW_MAP] ?: defaults.showMap,
                 showSpeedometer = p[Keys.SHOW_SPEEDOMETER] ?: defaults.showSpeedometer,

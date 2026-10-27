@@ -1,6 +1,13 @@
 package com.ridedeck.app.ui.history
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import com.ridedeck.app.ui.components.ScreenTitle
+import com.ridedeck.app.ui.theme.NumericStyle
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -58,7 +65,14 @@ fun HistoryScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            Text("History", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.semantics { heading() })
+            ScreenTitle(
+                "History",
+                subtitle = when (val n = state.sessions.size) {
+                    0 -> null
+                    1 -> "1 ride"
+                    else -> "$n rides"
+                },
+            )
         }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -78,11 +92,30 @@ fun HistoryScreen(
         }
         if (!state.loading && state.sessions.isEmpty()) {
             item {
-                Text(
-                    "No rides yet. Tap Start on the speedometer to record one.",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Column(
+                    Modifier.fillMaxWidth().padding(vertical = 48.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Box(
+                        Modifier.size(88.dp).background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.DirectionsBike,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(44.dp),
+                        )
+                    }
+                    Text("No rides yet", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(top = 16.dp))
+                    Text(
+                        "Tap Start on the speedometer and your ride shows up here.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(top = 4.dp, start = 24.dp, end = 24.dp),
+                    )
+                }
             }
         }
         items(state.sessions, key = { it.id }) { session ->
@@ -102,26 +135,43 @@ private fun SessionRow(session: SessionEntity, unit: SpeedUnit, onClick: () -> U
         "pace ${Pace.format(Pace.averageSecondsPerUnit(session.distanceM, session.movingTimeMs, unit))} ${Units.paceLabel(unit)}"
     }
     Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(role = Role.Button, onClickLabel = "Open session details", onClick = onClick),
+        onClick = onClick,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+        shape = MaterialTheme.shapes.large,
+        modifier = Modifier.fillMaxWidth(),
     ) {
         Row(Modifier.padding(16.dp).heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                if (bike) Icons.AutoMirrored.Filled.DirectionsBike else Icons.AutoMirrored.Filled.DirectionsWalk,
-                contentDescription = if (bike) "Bike ride" else "Walk",
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(32.dp),
-            )
+            Box(
+                Modifier.size(48.dp).background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    if (bike) Icons.AutoMirrored.Filled.DirectionsBike else Icons.AutoMirrored.Filled.DirectionsWalk,
+                    contentDescription = if (bike) "Bike ride" else "Walk",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(26.dp),
+                )
+            }
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
-                Text(date, style = MaterialTheme.typography.titleMedium)
-                Text(secondary, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(date, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    secondary,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
+            Spacer(Modifier.width(8.dp))
             Column(horizontalAlignment = Alignment.End) {
-                Text(distance, style = MaterialTheme.typography.titleMedium)
-                Text(Formatters.duration(session.movingTimeMs), style = MaterialTheme.typography.bodyMedium)
+                Text(distance, style = NumericStyle.copy(fontSize = MaterialTheme.typography.titleLarge.fontSize), color = MaterialTheme.colorScheme.primary)
+                Text(
+                    Formatters.duration(session.movingTimeMs),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }

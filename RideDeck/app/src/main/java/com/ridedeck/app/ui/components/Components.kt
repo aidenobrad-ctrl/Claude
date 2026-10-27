@@ -40,6 +40,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ridedeck.app.R
@@ -158,7 +159,7 @@ fun AutoSizeText(
     )
 }
 
-/** A plain text link in the accent colour, underlined, with a full-size touch target. */
+/** A plain text link in the accent color, underlined, with a full-size touch target. */
 @Composable
 fun LinkText(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Text(
@@ -170,4 +171,15 @@ fun LinkText(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
             .clickable(role = Role.Button, onClick = onClick)
             .wrapContentHeight(),
     )
+}
+
+/** The large bold title at the top of History, Settings and the other full screens. */
+@Composable
+fun ScreenTitle(text: String, modifier: Modifier = Modifier, subtitle: String? = null) {
+    Column(modifier.padding(start = 4.dp, top = 8.dp, bottom = 4.dp).semantics(mergeDescendants = true) { heading() }) {
+        Text(text, style = MaterialTheme.typography.headlineLarge)
+        if (subtitle != null) {
+            Text(subtitle, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
 }

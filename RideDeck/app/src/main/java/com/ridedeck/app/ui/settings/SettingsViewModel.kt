@@ -97,7 +97,7 @@ class SettingsViewModel @Inject constructor(
     }
 
     /**
-     * Opens Android's battery optimisation list, where RideDeck can be set to "Not optimised".
+     * Opens Android's battery optimization list, where RideDeck can be set to "Not optimized".
      * One UI is aggressive about this and can end a ride recording or music some time after the
      * screen goes off. (The list rather than a direct prompt, which Play only allows for a few
      * kinds of app.)

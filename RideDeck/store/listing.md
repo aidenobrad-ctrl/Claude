@@ -16,7 +16,7 @@ SPEEDOMETER AND RIDE TRACKING
 • Keeps recording with the screen off; every ride saved to History with a map of your route
 
 MAPS AND DIRECTIONS
-• Beautiful, smooth vector maps that rotate and tilt, with colour, clean and dark looks
+• Beautiful, smooth vector maps that rotate and tilt, with color, clean and dark looks
 • Search any destination and get cycling directions with turn-by-turn steps, ETA and spoken turns
 • Automatic re-routing when you go off route
 

@@ -166,7 +166,7 @@ fun PermissionsScreen(
         TextButton(
             onClick = onOpenPrivacy,
             modifier = Modifier.heightIn(min = GloveTouchTarget),
-        ) { Text("Read the privacy policy: we can't see your data and never sell it") }
+        ) { Text("Privacy policy") }
         Spacer(Modifier.size(8.dp))
         Button(
             onClick = {

@@ -1,76 +1,99 @@
-# RideDeck privacy policy
+RideDeck Privacy Policy
 
-_Last updated: 27 October 2026. The same policy is in the app under Settings → Privacy policy._
+Effective date: 27 October 2026
 
-## Your data is yours. We don't have access to it, and we will never sell it.
+This Privacy Policy describes how the RideDeck mobile application for Android (the "App") handles information. The App is published by the independent developer of RideDeck ("we", "us" or "our"). By installing or using the App you acknowledge that you have read this Privacy Policy. If you do not agree with it, please do not use the App.
 
-- **We can't see your data.** There is no RideDeck server and no account. Nothing you record or play is ever sent to us.
-- **We will never sell it.** That goes for advertisers, data brokers and everyone else. There is nothing to sell, because we never have it.
-- **No ads, no tracking.** RideDeck has no advertising, no analytics, no crash reporting services and no third-party tracking code.
-- **It stays on your phone.** Your rides, routes, favourites and settings live only on your device, and you can delete them at any time.
-- **No account needed.** You never sign up, log in, or give us your name, email or phone number.
+1. Summary
 
-## Who we are
+We do not have access to your personal information and we do not sell it. The App has no user accounts, no developer-operated servers, no advertising, no analytics and no crash-reporting services. Information the App uses is processed on your device and remains under your control. The only information that leaves your device is what is needed to fetch maps, search results, directions and lyrics from the third-party services described in section 6, and only while you use those features.
 
-RideDeck is an independent cycling app with a speedometer and ride recorder, a cycling map with directions, and a music player. This policy explains exactly what happens to your information when you use it. In short, it stays with you.
+2. Definitions
 
-## What we collect
+"Personal information" or "personal data" means any information relating to an identified or identifiable natural person, as defined by applicable data protection law, including the EU General Data Protection Regulation (GDPR), the UK GDPR and the California Consumer Privacy Act as amended by the California Privacy Rights Act (CCPA). "Device" means the phone or tablet on which the App is installed. "Third-Party Service" means a service operated by someone other than us that the App connects to in order to provide a feature.
 
-Nothing. The people who make RideDeck do not collect, receive or store your information, and have no way to look at it. RideDeck has no user accounts, no backend server, no analytics and no advertising.
+3. Scope
 
-## What stays on your phone
+This Privacy Policy applies only to the App. It does not apply to Third-Party Services, to the Google Play Store, to the Android operating system, or to other apps (including Spotify and Google Maps) that you may choose to use together with the App. Those are governed by their own terms and privacy policies.
 
-- **Location.** RideDeck uses your precise location to show your speed, put you on the map, give directions and record rides. Recorded rides, including their GPS tracks, are saved only in RideDeck's private storage on your phone.
-- **Music.** The built-in player reads the music files already on your phone so it can play them. Your favourites are saved on your phone. Your music is never uploaded anywhere.
-- **Settings**, such as your units, theme and preferred views, are saved on your phone.
-- If you use Android's own backup, Android may include RideDeck's rides and settings in your personal backup to your Google account, or copy them when you move to a new phone. You and Google control that backup, not us.
+4. Information we collect
 
-## We will never sell or share your data
+We do not collect, receive, store, access or process any personal information about you on systems that we operate or control. We operate no such systems for the App. We cannot see your location, your rides, your music, your settings or how you use the App, and we have no means of identifying you.
 
-We do not sell, rent, trade or give your information to anyone. That includes advertisers, data brokers, insurers and employers. We never have your information in the first place, so there is nothing we could sell or hand over.
+5. Information processed on your device
 
-## Services RideDeck talks to
+To provide its features, the App processes the following information locally on your Device. This information is stored in the App's private storage, which other apps cannot read under the Android security model, and it is not transmitted to us.
 
-To draw maps and find routes, RideDeck has to request data from a few open services. These requests go straight from your phone to the service. They never include your name, an account or your recorded rides, and they only happen while you use the matching feature.
+5.1 Location information. With your permission, the App uses your Device's precise location to display your speed, show your position on the map, provide directions and, when you start a ride, record a track of your route together with distance, time and speed statistics. Location is only used while the App is on screen or while a ride you have started is being recorded, which is always indicated by an ongoing notification.
 
-| Service | What is sent | When |
-| --- | --- | --- |
-| Map tiles (OpenStreetMap, CyclOSM) | The area of the map you're looking at | While the OpenStreetMap map is on screen |
-| Search (Photon by komoot) | What you type, and your rough position so nearby places come first | When you search for a destination |
-| Directions (OSRM, routing.openstreetmap.de) | Your starting point and destination | When you ask for directions |
-| Lyrics (LRCLIB) | Title, artist, album and length of the song playing | When lyrics are shown |
-| Google Maps SDK (optional) | Handled by Google under its own privacy policy | Only if you choose the Google map |
+5.2 Ride history. Rides you record, including their GPS tracks and statistics, are stored on your Device until you delete them.
 
-Like any website you visit, these services can see your phone's IP address when it connects to them. Each one handles requests under its own privacy policy.
+5.3 Media library. With your permission, the App reads audio files stored on your Device in order to play them, together with their title, artist, album, duration and embedded artwork. Songs you mark as favourites are recorded on your Device. Your audio files are never uploaded.
 
-## Optional extras
+5.4 Preferences. Your settings, such as units, theme, map choice and screen layout, are stored on your Device.
 
-- **Spotify control.** If you turn this on and allow notification access, RideDeck can see what Spotify is playing on your phone and send play, pause, skip and seek commands to it. It does not read your other notifications, and nothing about your listening leaves the phone.
-- **Google Maps navigation.** Tapping "Start in Google Maps" hands your destination to the Google Maps app, which then works under Google's policy.
+5.5 Media session information. If you enable the optional Spotify control and grant notification access, the App reads the media session published by the Spotify app on your Device (the current track and playback state) and sends playback commands to it. The App does not read, store or transmit the content of any other notification.
 
-## Permissions and why we ask
+6. Information shared with Third-Party Services
 
-- **Precise location** is used for your speed, the map and ride recording. When a ride records with the screen off, it runs as a visible foreground service, so you always see a notification while it's on.
-- **Notifications** are used for the ride notification with its pause and stop buttons.
-- **Music and audio access** lets the app play the songs stored on your phone.
-- **Notification access** is used only for the optional Spotify control.
+When you use certain features, your Device connects directly to the Third-Party Services listed below. These requests do not include your name, any account identifier or your recorded ride history. As with any internet connection, the recipient can see your Device's IP address and basic technical information such as the App's user agent.
 
-You can turn any of these off at any time in Android settings. RideDeck keeps working without the ones you don't need.
+6.1 Map tiles. While the OpenStreetMap map is displayed, the App requests map images for the area being viewed from tile servers operated by the OpenStreetMap Foundation and the CyclOSM project.
 
-## Your control
+6.2 Search. When you search for a destination, the text you enter and your approximate position, which is used to rank nearby results, are sent to the Photon geocoding service operated by komoot.
 
-You can delete any ride from History. To remove everything, clear RideDeck's storage in Android settings, or simply uninstall the app, which deletes all of its data. Because we hold no data about you, there is nothing for us to export, correct or delete on our side. That is the point.
+6.3 Directions. When you request directions, the coordinates of your starting point and destination are sent to the OSRM routing service operated by FOSSGIS e.V. at routing.openstreetmap.de.
 
-## Security
+6.4 Lyrics. When lyrics are displayed, the title, artist, album and duration of the song being played are sent to the LRCLIB service.
 
-Everything RideDeck sends over the internet uses encrypted HTTPS connections. Data on your phone is protected by Android's app sandbox and your screen lock.
+6.5 Google Maps. If you choose the Google map in the App's settings and the App was built with a Google Maps key, the map is provided by the Google Maps SDK for Android, which is operated by Google LLC and subject to Google's Privacy Policy. If you tap "Start in Google Maps", your destination is passed to the Google Maps app on your Device.
 
-## Children
+We do not control Third-Party Services and are not responsible for their privacy practices. We encourage you to read their privacy policies.
 
-RideDeck is not aimed at children under 13, and it doesn't knowingly handle any information about them.
+7. No sale or sharing of personal information
 
-## Changes and contact
+We do not sell, rent, trade, license or otherwise disclose personal information to anyone for money or any other consideration. We do not "sell" or "share" personal information as those terms are defined in the CCPA, and we do not use personal information for targeted or cross-context behavioural advertising. Because we do not hold any personal information, we have none to sell, share or disclose, including in the event of a merger, acquisition or sale of the App.
 
-If this policy ever changes, the new version will appear in the app and on the RideDeck Play Store page before it takes effect. We will never change it to allow selling your data.
+8. Advertising, analytics and tracking
 
-If you have questions, write to the contact email on RideDeck's Play Store page.
+The App contains no advertising, no advertising identifiers, no analytics or crash-reporting software development kits, and no third-party tracking technologies. The App does not track you across other apps or websites.
+
+9. Legal bases for processing
+
+To the extent that the GDPR or UK GDPR applies to processing carried out by the App on your Device, that processing is carried out at your request in order to provide the features you choose to use (Article 6(1)(b)), and, for requests to Third-Party Services, on the basis of the legitimate interest in providing a functioning map, search, directions and lyrics service (Article 6(1)(f)). Location and media access are only used after you grant the corresponding Android permission, which you can withdraw at any time.
+
+10. Data retention
+
+Information stored on your Device is kept until you delete it. You can delete individual rides in the App's History screen, delete all App data by clearing the App's storage in Android settings, or remove all App data by uninstalling the App. We retain no copies.
+
+11. Device backups
+
+If you have enabled Android's backup or device-transfer features, Android may include the App's ride history and preferences in a backup to your Google account or copy them to a new Device. Such backups are provided by Google under its own terms and are controlled by you, not by us. Cached map images are excluded from backups.
+
+12. International transfers
+
+Third-Party Services described in section 6 may process requests on servers located in the European Union, the United Kingdom, the United States or other countries. Those transfers are made directly by your Device to the relevant service when you use the feature concerned.
+
+13. Your rights
+
+Depending on where you live, you may have rights to access, correct, delete, restrict or object to the processing of your personal information, to data portability, and to withdraw consent. Because we do not collect or hold any personal information about you, we are not able to identify you or retrieve any information about you, and requests made to us will not return any data. You can exercise full control over the information processed by the App directly on your Device as described in sections 5 and 10. To exercise rights in relation to a Third-Party Service, please contact that service. You also have the right to lodge a complaint with your local data protection authority. We will not discriminate against you for exercising any privacy right.
+
+14. Permissions
+
+The App may request the following Android permissions: precise and approximate location (speed, map and ride recording); notifications (the ride notification); access to music and audio files (the music player); vibration (speed alerts); internet and network state (maps, search, directions and lyrics); foreground service (recording a ride and playing music with the screen off); and, only if you enable Spotify control, notification access. Each permission is optional. You can deny or revoke any of them in Android settings, and the features that do not depend on it will continue to work.
+
+15. Security
+
+Network requests made by the App use encrypted HTTPS connections, and the App does not permit unencrypted network traffic. Information on your Device is protected by the Android application sandbox and by your Device's screen lock and encryption. No method of storage or transmission is completely secure, and you are responsible for keeping your Device secure.
+
+16. Children
+
+The App is not directed to children under the age of 13, or under the minimum age required by the law of your country, and we do not knowingly collect personal information from children. Because the App does not collect personal information, no personal information of children is collected by us.
+
+17. Changes to this Privacy Policy
+
+We may update this Privacy Policy from time to time, for example to reflect new features or changes in law. The updated version will be included in the App and published on the App's store listing, with a new effective date, before it takes effect. We will not change this Privacy Policy to permit the sale of personal information.
+
+18. Contact
+
+If you have any questions about this Privacy Policy or the App's privacy practices, please contact us using the developer contact email address shown on the App's Google Play Store listing.

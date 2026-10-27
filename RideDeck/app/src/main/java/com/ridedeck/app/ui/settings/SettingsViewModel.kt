@@ -2,11 +2,9 @@ package com.ridedeck.app.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.os.PowerManager
 import android.provider.Settings
 import com.ridedeck.app.data.location.LocationRepository
@@ -101,17 +99,16 @@ class SettingsViewModel @Inject constructor(
     }
 
     /**
-     * Asks Android to stop battery optimisation from pausing RideDeck. One UI is aggressive about
-     * this and can end a ride recording or music some time after the screen goes off.
+     * Opens Android's battery optimisation list, where RideDeck can be set to "Not optimised".
+     * One UI is aggressive about this and can end a ride recording or music some time after the
+     * screen goes off. (The list rather than a direct prompt, which Play only allows for a few
+     * kinds of app.)
      */
-    @SuppressLint("BatteryLife")
-    fun requestBatteryUnrestricted() {
-        val direct = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${appContext.packageName}"))
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    fun openBatterySettings() {
         try {
-            appContext.startActivity(direct)
-        } catch (e: ActivityNotFoundException) {
             appContext.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (e: ActivityNotFoundException) {
+            appContext.openAppSettings()
         }
     }
 

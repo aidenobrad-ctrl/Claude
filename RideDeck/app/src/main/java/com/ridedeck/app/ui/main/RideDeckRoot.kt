@@ -1,6 +1,17 @@
 package com.ridedeck.app.ui.main
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import com.ridedeck.app.ui.startup.StartupScreen
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -81,11 +92,26 @@ private val topLevels = listOf(
 @Composable
 fun RideDeckRoot(viewModel: MainViewModel = hiltViewModel()) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    // The startup screen plays once per launch (not again on rotation) and stays up until the
+    // settings have loaded, then fades into the app.
+    var startupDone by rememberSaveable { mutableStateOf(false) }
     RideDeckTheme(themeMode = state.preferences.themeMode) {
-        if (!state.loaded) {
-            Box(Modifier.fillMaxSize())
-            return@RideDeckTheme
+        Box(Modifier.fillMaxSize()) {
+            if (state.loaded) RideDeckContent(state, viewModel)
+            AnimatedVisibility(
+                visible = !(startupDone && state.loaded),
+                enter = EnterTransition.None,
+                exit = fadeOut(tween(durationMillis = 350)),
+            ) {
+                StartupScreen(onFinished = { startupDone = true })
+            }
         }
+    }
+}
+
+@Composable
+private fun RideDeckContent(state: MainUiState, viewModel: MainViewModel) {
+    run {
         KeepScreenOn(state.keepScreenOn)
 
         val navController = rememberNavController()
@@ -171,7 +197,15 @@ fun RideDeckRoot(viewModel: MainViewModel = hiltViewModel()) {
                 }
                 Column(Modifier.weight(1f).fillMaxHeight()) {
                     if (state.rideLocked) RideModeBanner()
-                    NavHost(navController = navController, startDestination = Routes.RIDE, modifier = Modifier.weight(1f)) {
+                    NavHost(
+                        navController = navController,
+                        startDestination = Routes.RIDE,
+                        modifier = Modifier.weight(1f),
+                        enterTransition = { fadeIn(tween(220)) + scaleIn(tween(220), initialScale = 0.98f) },
+                        exitTransition = { fadeOut(tween(160)) },
+                        popEnterTransition = { fadeIn(tween(220)) },
+                        popExitTransition = { fadeOut(tween(160)) + scaleOut(tween(160), targetScale = 0.98f) },
+                    ) {
                         composable(Routes.PERMISSIONS) {
                             Readable { PermissionsScreen(onDone = { navController.popBackStack() }) }
                         }

@@ -42,7 +42,9 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ridedeck.app.BuildConfig
 import com.ridedeck.app.data.prefs.MapProvider
+import com.ridedeck.app.ui.startup.RideDeckLogo
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.size
@@ -141,9 +143,10 @@ fun SettingsScreen(
                 buildList {
                     add(
                         SetupStep(
-                            "Let RideDeck run without battery limits, so a ride keeps recording and music keeps playing with the screen off.",
+                            "Let RideDeck run without battery limits, so a ride keeps recording and music keeps playing with " +
+                                "the screen off. In the list, switch to All apps, pick RideDeck and choose Don't optimise.",
                             done = state.batteryUnrestricted,
-                            action = if (state.batteryUnrestricted) null else "Allow" to viewModel::requestBatteryUnrestricted,
+                            action = if (state.batteryUnrestricted) null else "Open battery settings" to viewModel::openBatterySettings,
                         ),
                     )
                     if (state.isSamsung) {
@@ -305,6 +308,22 @@ fun SettingsScreen(
         }
 
         item { Header("About") }
+        item {
+            Row(
+                Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                RideDeckLogo(gauge = 1f, modifier = Modifier.size(56.dp))
+                Column(Modifier.padding(start = 12.dp)) {
+                    Text("RideDeck", style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        "Version ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
         item {
             Text(
                 "RideDeck is built on open-source software and open data; Spotify and Google Maps are optional add-ons. " +

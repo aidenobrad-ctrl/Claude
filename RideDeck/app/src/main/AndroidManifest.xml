@@ -9,8 +9,6 @@
     <!-- Location for the speedometer, trip recording and navigation -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <!-- Optional: lets a tracking session that the system restarted resume while the app is in the background -->
-    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
 
     <!-- Foreground services: session recording with the screen off, and music playback -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -18,8 +16,6 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <!-- Lets Settings ask to exempt RideDeck from battery optimisation (Samsung One UI kills long rides otherwise) -->
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <!-- Built-in music player reads the music stored on the phone -->
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
@@ -54,7 +50,7 @@
         android:usesCleartextTraffic="false"
         android:enableOnBackInvokedCallback="true"
         android:theme="@style/Theme.RideDeck"
-        tools:targetApi="35">
+        tools:targetApi="36">
 
         <!-- Optional built-in Google map. Empty unless the APK was built with MAPS_API_KEY. -->
         <meta-data
@@ -66,11 +62,15 @@
             android:exported="true"
             android:launchMode="singleTop"
             android:windowSoftInputMode="adjustResize"
-            android:theme="@style/Theme.RideDeck">
+            android:theme="@style/Theme.RideDeck.Starting">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Long-press the app icon: Start ride -->
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
 
         <service

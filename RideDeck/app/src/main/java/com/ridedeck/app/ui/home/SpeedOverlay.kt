@@ -53,6 +53,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
@@ -89,6 +91,7 @@ fun SpeedOverlay(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var confirmStop by rememberSaveable { mutableStateOf(false) }
+    val haptics = LocalHapticFeedback.current
 
     LifecycleResumeEffect(Unit) {
         viewModel.refreshPermissions()
@@ -215,9 +218,18 @@ fun SpeedOverlay(
                     }
                     Controls(
                         status = snap.status,
-                        onStart = { if (!viewModel.start()) onOpenPermissions() },
-                        onPause = viewModel::pause,
-                        onResume = viewModel::resume,
+                        onStart = {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            if (!viewModel.start()) onOpenPermissions()
+                        },
+                        onPause = {
+                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            viewModel.pause()
+                        },
+                        onResume = {
+                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            viewModel.resume()
+                        },
                         onStop = { confirmStop = true },
                     )
                     val showOdometer = RideStat.ODOMETER in stats
@@ -251,6 +263,7 @@ fun SpeedOverlay(
                 Button(
                     onClick = {
                         confirmStop = false
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                         viewModel.stop()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = AlertRed),
@@ -269,6 +282,7 @@ fun SpeedOverlay(
 /** The one button shown on the collapsed pill: start, pause or resume. */
 @Composable
 private fun PrimaryControl(status: TripStatus, state: HomeUiState, viewModel: HomeViewModel, onOpenPermissions: () -> Unit) {
+    val haptics = LocalHapticFeedback.current
     val (icon, label, color) = when (status) {
         TripStatus.IDLE -> Triple(Icons.Default.PlayArrow, "Start ride", GoGreen)
         TripStatus.PAUSED -> Triple(Icons.Default.PlayArrow, "Resume", GoGreen)
@@ -276,6 +290,7 @@ private fun PrimaryControl(status: TripStatus, state: HomeUiState, viewModel: Ho
     }
     FilledIconButton(
         onClick = {
+            haptics.performHapticFeedback(if (status == TripStatus.IDLE) HapticFeedbackType.LongPress else HapticFeedbackType.TextHandleMove)
             when (status) {
                 TripStatus.IDLE -> if (!viewModel.start()) onOpenPermissions()
                 TripStatus.PAUSED -> viewModel.resume()

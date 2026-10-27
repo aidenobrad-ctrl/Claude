@@ -95,7 +95,6 @@ fun PermissionsScreen(
     val locationGranted = granted.location
     val notificationsGranted = granted.notifications
     val musicGranted = granted.music
-    val backgroundGranted = granted.background
 
     fun permanentlyDenied(permission: String, granted: Boolean) =
         !granted && permission in asked && activity != null &&
@@ -162,25 +161,6 @@ fun PermissionsScreen(
             onOpenSettings = { context.openAppSettings() },
         )
 
-        if (Build.VERSION.SDK_INT >= 29) {
-            PermissionCard(
-                icon = Icons.Default.MyLocation,
-                title = "Location all the time",
-                rationale = "Optional. Recording normally runs as a visible foreground service and does not need this. " +
-                    "It only lets RideDeck resume a recording if Android restarts the app in the background " +
-                    "(for example after freeing memory). On the next screen choose \"Allow all the time\".",
-                granted = backgroundGranted,
-                enabled = locationGranted,
-                disabledHint = "Grant precise location first.",
-                permanentlyDenied = permanentlyDenied(Manifest.permission.ACCESS_BACKGROUND_LOCATION, backgroundGranted),
-                onRequest = {
-                    asked = asked + Manifest.permission.ACCESS_BACKGROUND_LOCATION
-                    single.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
-                },
-                onOpenSettings = { context.openAppSettings() },
-            )
-        }
-
         Spacer(Modifier.size(8.dp))
         Button(
             onClick = {
@@ -237,14 +217,12 @@ private data class PermissionStatus(
     val location: Boolean,
     val notifications: Boolean,
     val music: Boolean,
-    val background: Boolean,
 ) {
     companion object {
         fun read(context: Context) = PermissionStatus(
             location = context.isGranted(Manifest.permission.ACCESS_FINE_LOCATION),
             notifications = Build.VERSION.SDK_INT < 33 || context.isGranted(Manifest.permission.POST_NOTIFICATIONS),
             music = context.isGranted(audioPermission()),
-            background = Build.VERSION.SDK_INT < 29 || context.isGranted(Manifest.permission.ACCESS_BACKGROUND_LOCATION),
         )
     }
 }

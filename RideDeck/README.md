@@ -14,6 +14,10 @@ RideDeck is built on open-source libraries and open data. It needs **no API keys
 
 Every push that changes RideDeck builds a new signed APK, and each one installs as an update over the previous one.
 
+## Publishing on Google Play
+
+The app targets Android 16 (API 36) and CI builds a Play-ready app bundle once your upload key is added as secrets. Follow [docs/PLAY_STORE.md](docs/PLAY_STORE.md); listing text and graphics are in [store/](store/), the privacy policy is [PRIVACY.md](PRIVACY.md).
+
 ## Features
 
 - **Pick your views**: the first section of Settings switches Map, Speed and Music on or off in any combination. Portrait and landscape each remember their own combination, and Settings → Speedometer stats hides any of distance, time, average, max and odometer. With the map and speedometer together, the speedometer floats over the map: drag it anywhere and it stays there, double-tap its handle to dock it again, or tap to shrink it to a speed pill; music takes a resizable panel below, or the whole screen on its own.

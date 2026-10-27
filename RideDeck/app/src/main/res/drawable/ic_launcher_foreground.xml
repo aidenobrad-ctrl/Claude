@@ -1,22 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Speedometer arc with a needle, in the RideDeck accent colour. -->
+<!-- RideDeck logo: a speedometer gauge over a sound wave. Generated with store/logo.py; edit there. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path
-        android:pathData="M30,66 A24,24 0 1,1 78,66"
-        android:strokeColor="#03B7FF"
-        android:strokeWidth="6"
-        android:strokeLineCap="round"
-        android:fillColor="#00000000" />
-    <path
-        android:pathData="M54,62 L68,44"
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="5"
-        android:strokeLineCap="round" />
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M54,62m-5,0a5,5 0 1,0 10,0a5,5 0 1,0 -10,0" />
+    <path android:pathData="M37.03,66.97 A24,24 0 1,1 70.97,66.97" android:strokeColor="#FFFFFF" android:strokeAlpha="0.13" android:strokeWidth="8" android:strokeLineCap="round" android:fillColor="#00000000" />
+    <path android:pathData="M37.03,66.97 A24,24 0 1,1 71.84,33.94" android:strokeWidth="8" android:strokeLineCap="round" android:fillColor="#00000000">
+        <aapt:attr name="android:strokeColor"><gradient android:type="linear" android:startX="30" android:startY="80" android:endX="78" android:endY="28" android:startColor="#03B7FF" android:endColor="#8CF7FF"/></aapt:attr>
+    </path>
+    <path android:pathData="M43.04,60.96 L45.16,58.84" android:strokeColor="#FFFFFF" android:strokeAlpha="0.55" android:strokeWidth="1.8" android:strokeLineCap="round" />
+    <path android:pathData="M38.50,50.00 L41.50,50.00" android:strokeColor="#FFFFFF" android:strokeAlpha="0.55" android:strokeWidth="1.8" android:strokeLineCap="round" />
+    <path android:pathData="M43.04,39.04 L45.16,41.16" android:strokeColor="#FFFFFF" android:strokeAlpha="0.55" android:strokeWidth="1.8" android:strokeLineCap="round" />
+    <path android:pathData="M54.00,34.50 L54.00,37.50" android:strokeColor="#FFFFFF" android:strokeAlpha="0.55" android:strokeWidth="1.8" android:strokeLineCap="round" />
+    <path android:pathData="M64.96,39.04 L62.84,41.16" android:strokeColor="#FFFFFF" android:strokeAlpha="0.55" android:strokeWidth="1.8" android:strokeLineCap="round" />
+    <path android:pathData="M69.50,50.00 L66.50,50.00" android:strokeColor="#FFFFFF" android:strokeAlpha="0.55" android:strokeWidth="1.8" android:strokeLineCap="round" />
+    <path android:pathData="M64.96,60.96 L62.84,58.84" android:strokeColor="#FFFFFF" android:strokeAlpha="0.55" android:strokeWidth="1.8" android:strokeLineCap="round" />
+    <path android:pathData="M56.41,52.68 L68.86,36.62 L51.59,47.32 L50.28,53.35 Z" android:fillColor="#FFFFFF" />
+    <path android:pathData="M49.4,50 a4.6,4.6 0 1,0 9.2,0 a4.6,4.6 0 1,0 -9.2,0" android:fillColor="#FFFFFF" />
+    <path android:pathData="M52.1,50 a1.9,1.9 0 1,0 3.8,0 a1.9,1.9 0 1,0 -3.8,0" android:fillColor="#03B7FF" />
+    <path android:pathData="M43.00,74.25 L43.00,74.25 A1.8,1.8 0 0,1 44.80,76.05 L44.80,76.95 A1.8,1.8 0 0,1 43.00,78.75 L43.00,78.75 A1.8,1.8 0 0,1 41.20,76.95 L41.20,76.05 A1.8,1.8 0 0,1 43.00,74.25 Z M48.50,71.50 L48.50,71.50 A1.8,1.8 0 0,1 50.30,73.30 L50.30,79.70 A1.8,1.8 0 0,1 48.50,81.50 L48.50,81.50 A1.8,1.8 0 0,1 46.70,79.70 L46.70,73.30 A1.8,1.8 0 0,1 48.50,71.50 Z M54.00,70.00 L54.00,70.00 A1.8,1.8 0 0,1 55.80,71.80 L55.80,81.20 A1.8,1.8 0 0,1 54.00,83.00 L54.00,83.00 A1.8,1.8 0 0,1 52.20,81.20 L52.20,71.80 A1.8,1.8 0 0,1 54.00,70.00 Z M59.50,72.50 L59.50,72.50 A1.8,1.8 0 0,1 61.30,74.30 L61.30,78.70 A1.8,1.8 0 0,1 59.50,80.50 L59.50,80.50 A1.8,1.8 0 0,1 57.70,78.70 L57.70,74.30 A1.8,1.8 0 0,1 59.50,72.50 Z M65.00,74.50 L65.00,74.50 A1.8,1.8 0 0,1 66.80,76.30 L66.80,76.70 A1.8,1.8 0 0,1 65.00,78.50 L65.00,78.50 A1.8,1.8 0 0,1 63.20,76.70 L63.20,76.30 A1.8,1.8 0 0,1 65.00,74.50 Z">
+        <aapt:attr name="android:fillColor"><gradient android:type="linear" android:startX="30" android:startY="80" android:endX="78" android:endY="28" android:startColor="#03B7FF" android:endColor="#8CF7FF"/></aapt:attr>
+    </path>
 </vector>

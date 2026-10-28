@@ -136,6 +136,9 @@ fun SpeedOverlay(
             // split-screen window, instead of a fixed size that clips at large font settings.
             val density = LocalDensity.current
             val wide = fullScreen && maxWidth > maxHeight && maxWidth >= 560.dp
+            // Captured here: nested layout scopes below can't see BoxWithConstraints' receiver.
+            val areaWidth = maxWidth
+            val areaHeight = maxHeight
             val heroSize = with(density) {
                 when {
                     !fullScreen -> minOf(maxWidth * 0.2f, 76.dp).toSp()
@@ -186,7 +189,7 @@ fun SpeedOverlay(
                     if (fullScreen) {
                         val metric = unit == com.ridedeck.core.model.SpeedUnit.KMH
                         val scale = gaugeFullScale(Units.speed(speedMps, unit), Units.speed(snap.maxSpeedMps, unit), metric)
-                        val dial = minOf(maxWidth * 0.86f, maxHeight * if (wide) 0.62f else 0.46f, 420.dp)
+                        val dial = minOf(areaWidth * 0.86f, areaHeight * if (wide) 0.62f else 0.46f, 420.dp)
                         val dialHero = with(density) { (dial * 0.3f).toSp() }
                         Box(Modifier.fillMaxWidth()) {
                             SpeedGauge(

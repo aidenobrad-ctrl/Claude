@@ -77,6 +77,8 @@ class SettingsViewModel @Inject constructor(
 
     fun setUnit(unit: SpeedUnit) = launch { prefs.setSpeedUnit(unit) }
     fun setTheme(theme: ThemeMode) = launch { prefs.setTheme(theme) }
+    fun movePanel(view: RideView, by: Int) = launch { prefs.movePanel(view, by) }
+    fun setFloatingSpeedometer(floating: Boolean) = launch { prefs.setFloatingSpeedometer(floating) }
     fun setAutoPause(v: Boolean) = launch { prefs.setAutoPause(v) }
     fun setKeepScreenOn(v: Boolean) = launch { prefs.setKeepScreenOn(v) }
     fun setRideModeLock(v: Boolean) = launch { prefs.setRideModeLock(v) }

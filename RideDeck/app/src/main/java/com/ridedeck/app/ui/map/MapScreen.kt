@@ -1,5 +1,15 @@
 package com.ridedeck.app.ui.map
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -128,7 +138,11 @@ fun MapScreen(
                     }
                 }
             }
-            if (state.destination != null) {
+            AnimatedVisibility(
+                visible = state.destination != null,
+                enter = slideInVertically(spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow)) { it } + fadeIn(),
+                exit = slideOutVertically(tween(200)) { it } + fadeOut(tween(200)),
+            ) {
                 NavigationCard(
                     state = state,
                     onGoogleMaps = { state.destination?.let { GoogleMapsLauncher.navigate(context, it.location) } },
@@ -358,45 +372,53 @@ private fun NavigationCard(
                     }
                 }
             }
-            if (compact) return@Column
-            if (state.googleMapsHandOff && !state.arrived) {
-                Button(
-                    onClick = onGoogleMaps,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = GloveTouchTarget),
-                ) { Text("Start in Google Maps") }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (route != null && !state.arrived) {
-                    OutlinedButton(onClick = onToggleSteps, modifier = Modifier.weight(1f).heightIn(min = GloveTouchTarget)) {
-                        Text(if (showSteps) "Hide steps" else "Steps")
+            // Collapsing tucks the buttons and steps away; expanding slides them back out.
+            AnimatedVisibility(
+                visible = !compact,
+                enter = expandVertically(spring(stiffness = Spring.StiffnessMediumLow)) + fadeIn(),
+                exit = shrinkVertically(spring(stiffness = Spring.StiffnessMediumLow)) + fadeOut(),
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (state.googleMapsHandOff && !state.arrived) {
+                        Button(
+                            onClick = onGoogleMaps,
+                            modifier = Modifier.fillMaxWidth().heightIn(min = GloveTouchTarget),
+                        ) { Text("Start in Google Maps") }
                     }
-                }
-                Button(onClick = onEnd, modifier = Modifier.weight(1f).heightIn(min = GloveTouchTarget)) {
-                    Text("End")
-                }
-            }
-            if (showSteps && route != null) {
-                LazyColumn(Modifier.heightIn(max = 220.dp)) {
-                    itemsIndexed(route.steps) { index, step ->
-                        val current = index == (progress?.currentStepIndex ?: 0) + 1
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                maneuverIcon(step.maneuver),
-                                contentDescription = null,
-                                tint = if (current) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Spacer(Modifier.width(12.dp))
-                            Text(
-                                step.instruction,
-                                modifier = Modifier.weight(1f),
-                                style = if (current) MaterialTheme.typography.titleSmall else MaterialTheme.typography.bodyMedium,
-                            )
-                            Text(Formatters.navDistance(step.distanceM.toDouble(), state.unit), style = MaterialTheme.typography.bodyMedium)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (route != null && !state.arrived) {
+                            OutlinedButton(onClick = onToggleSteps, modifier = Modifier.weight(1f).heightIn(min = GloveTouchTarget)) {
+                                Text(if (showSteps) "Hide steps" else "Steps")
+                            }
+                        }
+                        Button(onClick = onEnd, modifier = Modifier.weight(1f).heightIn(min = GloveTouchTarget)) {
+                            Text("End")
+                        }
+                    }
+                    if (showSteps && route != null) {
+                        LazyColumn(Modifier.heightIn(max = 220.dp)) {
+                            itemsIndexed(route.steps) { index, step ->
+                                val current = index == (progress?.currentStepIndex ?: 0) + 1
+                                Row(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(
+                                        maneuverIcon(step.maneuver),
+                                        contentDescription = null,
+                                        tint = if (current) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    Spacer(Modifier.width(12.dp))
+                                    Text(
+                                        step.instruction,
+                                        modifier = Modifier.weight(1f),
+                                        style = if (current) MaterialTheme.typography.titleSmall else MaterialTheme.typography.bodyMedium,
+                                    )
+                                    Text(Formatters.navDistance(step.distanceM.toDouble(), state.unit), style = MaterialTheme.typography.bodyMedium)
+                                }
+                            }
                         }
                     }
                 }

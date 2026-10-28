@@ -21,6 +21,9 @@ import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.Timeline
 import androidx.compose.material3.Surface
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import com.ridedeck.app.ui.components.ScreenTitle
@@ -112,7 +115,7 @@ fun SettingsScreen(
         // What the Ride screen shows. Turning the phone sideways switches to the landscape set,
         // so each orientation remembers its own combination.
         item {
-            Section("Ride screen views", Icons.Outlined.Dashboard) {
+            Section("Ride screen layout", Icons.Outlined.Dashboard) {
                 ViewToggles(
                     label = "Portrait",
                     views = p.views(landscape = false),
@@ -124,6 +127,15 @@ fun SettingsScreen(
                     views = p.views(landscape = true),
                     onToggle = { view, on -> viewModel.setView(view, on, landscape = true) },
                 )
+                SectionDivider()
+                SwitchRow(
+                    "Speedometer floats over the map",
+                    p.floatingSpeedometer,
+                    viewModel::setFloatingSpeedometer,
+                    supporting = "Drag it anywhere on the map. Turn off to give the speedometer its own panel.",
+                )
+                SectionDivider()
+                PanelOrder(p.panelOrder, onMove = viewModel::movePanel)
             }
         }
 
@@ -377,6 +389,51 @@ private fun Section(title: String, icon: ImageVector, content: @Composable Colum
             modifier = Modifier.fillMaxWidth(),
         ) {
             Column(Modifier.padding(vertical = 6.dp).animateContentSize(), content = content)
+        }
+    }
+}
+
+/**
+ * The order of the Ride screen panels, top to bottom (left to right in landscape), with arrows to
+ * move each one. The swap buttons on the Ride screen's dividers change the same order.
+ */
+@Composable
+private fun PanelOrder(order: List<RideView>, onMove: (RideView, Int) -> Unit) {
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Text("Panel order", style = MaterialTheme.typography.bodyLarge)
+        Text(
+            "Top to bottom, or left to right when turned sideways. You can also tap ⇅ between panels on the Ride screen.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 2.dp, bottom = 8.dp),
+        )
+        order.forEachIndexed { index, view ->
+            val name = when (view) {
+                RideView.MAP -> "Map"
+                RideView.SPEEDOMETER -> "Speedometer"
+                RideView.MUSIC -> "Music"
+            }
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                shape = MaterialTheme.shapes.medium,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).animateContentSize(),
+            ) {
+                Row(Modifier.padding(start = 14.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "${index + 1}",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.width(24.dp),
+                    )
+                    Text(name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                    IconButton(onClick = { onMove(view, -1) }, enabled = index > 0, modifier = Modifier.size(48.dp)) {
+                        Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Move $name up")
+                    }
+                    IconButton(onClick = { onMove(view, 1) }, enabled = index < order.lastIndex, modifier = Modifier.size(48.dp)) {
+                        Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Move $name down")
+                    }
+                }
+            }
         }
     }
 }

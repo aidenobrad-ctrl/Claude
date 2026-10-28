@@ -234,6 +234,7 @@ private fun RideDeckContent(state: MainUiState, viewModel: MainViewModel) {
                                 rideLocked = state.rideLocked,
                                 onMusicFraction = viewModel::setMusicPanelFraction,
                                 onMusicSource = viewModel::setMusicSource,
+                                onSwapPanels = viewModel::swapPanels,
                                 onOpenPermissions = { navController.navigate(Routes.PERMISSIONS) },
                             )
                         }

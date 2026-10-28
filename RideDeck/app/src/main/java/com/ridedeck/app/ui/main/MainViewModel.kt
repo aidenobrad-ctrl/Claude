@@ -76,4 +76,8 @@ class MainViewModel @Inject constructor(
     fun setMusicPanelFraction(fraction: Float) = viewModelScope.launch {
         preferencesRepository.setMusicPanelFraction(fraction)
     }
+
+    fun swapPanels(a: RideView, b: RideView) = viewModelScope.launch {
+        preferencesRepository.swapPanels(a, b)
+    }
 }

@@ -1,5 +1,16 @@
 package com.ridedeck.app.ui.home
 
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -101,7 +112,9 @@ fun SpeedOverlay(
     val unit = state.unit
     val snap = state.snapshot
     val speedMps = state.displaySpeedMps
-    val speedText = Formatters.speed(speedMps, unit)
+    // The figure counts smoothly between GPS fixes instead of jumping once a second.
+    val shownSpeedMps by animateFloatAsState(speedMps.toFloat(), tween(durationMillis = 700, easing = LinearOutSlowInEasing), label = "speed")
+    val speedText = Formatters.speed(shownSpeedMps.toDouble(), unit)
     val overLimit = state.speedAlertEnabled && speedMps > state.speedAlertLimitMps
     val speedColor = if (overLimit) AlertRed else MaterialTheme.colorScheme.onSurface
     val spokenSpeed = "Speed $speedText ${Units.speedLabel(unit)}" + if (overLimit) ", over your speed limit" else ""
@@ -111,7 +124,12 @@ fun SpeedOverlay(
         color = if (fullScreen) MaterialTheme.colorScheme.background else MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
         tonalElevation = if (fullScreen) 0.dp else 3.dp,
         shadowElevation = if (fullScreen) 0.dp else 6.dp,
-        modifier = if (fullScreen) modifier.fillMaxSize() else modifier.widthIn(max = 480.dp),
+        modifier = if (fullScreen) {
+            modifier.fillMaxSize()
+        } else {
+            // The card grows out of the pill (and back) instead of snapping between sizes.
+            modifier.widthIn(max = 480.dp).animateContentSize(spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow))
+        },
     ) {
         BoxWithConstraints {
             // Size the speed to the space it has, so it fills a phone held either way, a tablet, or a
@@ -165,7 +183,40 @@ fun SpeedOverlay(
                     verticalArrangement = Arrangement.spacedBy(if (fullScreen) 16.dp else 10.dp),
                 ) {
                     if (onHandleDoubleTap != null) TopHandle(onHandleDoubleTap)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (fullScreen) {
+                        val metric = unit == com.ridedeck.core.model.SpeedUnit.KMH
+                        val scale = gaugeFullScale(Units.speed(speedMps, unit), Units.speed(snap.maxSpeedMps, unit), metric)
+                        val dial = minOf(maxWidth * 0.86f, maxHeight * if (wide) 0.62f else 0.46f, 420.dp)
+                        val dialHero = with(density) { (dial * 0.3f).toSp() }
+                        Box(Modifier.fillMaxWidth()) {
+                            SpeedGauge(
+                                fraction = (Units.speed(shownSpeedMps.toDouble(), unit) / scale).toFloat(),
+                                alert = overLimit,
+                                modifier = Modifier.align(Alignment.Center).size(dial),
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.semantics(mergeDescendants = true) { contentDescription = spokenSpeed },
+                                ) {
+                                    Text(
+                                        speedText,
+                                        style = NumericStyle.copy(fontSize = dialHero, lineHeight = dialHero, letterSpacing = (-2).sp),
+                                        color = speedColor,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                    )
+                                    TextButton(onClick = viewModel::toggleUnit, modifier = Modifier.heightIn(min = 48.dp)) {
+                                        Text(
+                                            Units.speedLabel(unit).uppercase(),
+                                            style = MaterialTheme.typography.titleMedium.copy(letterSpacing = 2.sp),
+                                            color = MaterialTheme.colorScheme.primary,
+                                        )
+                                    }
+                                }
+                            }
+                            Box(Modifier.align(Alignment.TopEnd)) { StatusChip(snap.status, state.isNewRecord) }
+                        }
+                    } else Row(verticalAlignment = Alignment.CenterVertically) {
                         Row(
                             Modifier.weight(1f).semantics(mergeDescendants = true) { contentDescription = spokenSpeed },
                             verticalAlignment = Alignment.Bottom,
@@ -384,6 +435,16 @@ private fun Controls(
     onStop: () -> Unit,
 ) {
     val buttonModifier = Modifier.heightIn(min = GloveTouchTarget)
+    // Start, Pause/Stop and Resume/Stop cross-fade into each other.
+    AnimatedContent(
+        targetState = status,
+        contentKey = { when (it) { TripStatus.IDLE -> 0; TripStatus.PAUSED -> 1; else -> 2 } },
+        transitionSpec = {
+            (fadeIn(tween(220)) + scaleIn(tween(220), initialScale = 0.92f)) togetherWith fadeOut(tween(120))
+        },
+        label = "controls",
+        modifier = Modifier.fillMaxWidth(),
+    ) { status ->
     when (status) {
         TripStatus.IDLE -> Button(
             onClick = onStart,
@@ -421,5 +482,6 @@ private fun Controls(
                 )
             }
         }
+    }
     }
 }

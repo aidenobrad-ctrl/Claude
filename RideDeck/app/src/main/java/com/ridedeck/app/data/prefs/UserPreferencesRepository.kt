@@ -79,6 +79,10 @@ data class UserPreferences(
     val showAverage: Boolean = true,
     val showMax: Boolean = true,
     val showOdometer: Boolean = true,
+    /** Top-to-bottom (or left-to-right) order of the Ride screen panels; always all three views. */
+    val panelOrder: List<RideView> = DEFAULT_PANEL_ORDER,
+    /** With the map on, the speedometer floats over it; off, it gets its own panel. */
+    val floatingSpeedometer: Boolean = true,
 ) {
     /** The Ride screen views for the current orientation: map, speedometer, music. */
     fun views(landscape: Boolean): Triple<Boolean, Boolean, Boolean> =
@@ -90,6 +94,13 @@ data class UserPreferences(
         const val DEFAULT_PANEL_FRACTION = 0.38f
         const val MIN_PANEL_FRACTION = 0.18f
         const val MAX_PANEL_FRACTION = 0.75f
+        val DEFAULT_PANEL_ORDER = listOf(RideView.MAP, RideView.SPEEDOMETER, RideView.MUSIC)
+
+        /** Parses a stored order, keeping any views it is missing at the end so all three are there. */
+        fun parsePanelOrder(stored: String?): List<RideView> {
+            val parsed = stored.orEmpty().split(',').mapNotNull { n -> RideView.entries.firstOrNull { it.name == n } }.distinct()
+            return parsed + DEFAULT_PANEL_ORDER.filter { it !in parsed }
+        }
     }
 }
 
@@ -129,6 +140,8 @@ class UserPreferencesRepository @Inject constructor(
         val STAT_ODOMETER = booleanPreferencesKey("stat_odometer")
         val OVERLAY_X = floatPreferencesKey("speed_overlay_x")
         val OVERLAY_Y = floatPreferencesKey("speed_overlay_y")
+        val PANEL_ORDER = stringPreferencesKey("panel_order")
+        val FLOATING_SPEEDOMETER = booleanPreferencesKey("floating_speedometer")
     }
 
     val preferences: Flow<UserPreferences> = dataStore.data
@@ -168,6 +181,8 @@ class UserPreferencesRepository @Inject constructor(
                 showAverage = p[Keys.STAT_AVERAGE] ?: defaults.showAverage,
                 showMax = p[Keys.STAT_MAX] ?: defaults.showMax,
                 showOdometer = p[Keys.STAT_ODOMETER] ?: defaults.showOdometer,
+                panelOrder = UserPreferences.parsePanelOrder(p[Keys.PANEL_ORDER]),
+                floatingSpeedometer = p[Keys.FLOATING_SPEEDOMETER] ?: defaults.floatingSpeedometer,
                 speedOverlayPosition = p[Keys.OVERLAY_X]?.let { x ->
                     p[Keys.OVERLAY_Y]?.let { y -> OverlayPosition(x.coerceIn(0f, 1f), y.coerceIn(0f, 1f)) }
                 },
@@ -187,6 +202,31 @@ class UserPreferencesRepository @Inject constructor(
     suspend fun setGoogleMapsEnabled(enabled: Boolean) = dataStore.edit { it[Keys.GOOGLE_MAPS] = enabled }
     suspend fun setMapStyle(style: MapStyle) = dataStore.edit { it[Keys.MAP_STYLE] = style.name }
     suspend fun setVoiceDirections(enabled: Boolean) = dataStore.edit { it[Keys.VOICE_DIRECTIONS] = enabled }
+    suspend fun setFloatingSpeedometer(floating: Boolean) = dataStore.edit { it[Keys.FLOATING_SPEEDOMETER] = floating }
+
+    /** Swaps two views in the Ride screen panel order. */
+    suspend fun swapPanels(a: RideView, b: RideView) = dataStore.edit {
+        val order = UserPreferences.parsePanelOrder(it[Keys.PANEL_ORDER]).toMutableList()
+        val i = order.indexOf(a)
+        val j = order.indexOf(b)
+        if (i >= 0 && j >= 0 && i != j) {
+            order[i] = b
+            order[j] = a
+            it[Keys.PANEL_ORDER] = order.joinToString(",") { v -> v.name }
+        }
+    }
+
+    /** Moves one view a step earlier ([by] = -1, up or left) or later (+1) in the panel order. */
+    suspend fun movePanel(view: RideView, by: Int) = dataStore.edit {
+        val order = UserPreferences.parsePanelOrder(it[Keys.PANEL_ORDER]).toMutableList()
+        val i = order.indexOf(view)
+        val j = (i + by).coerceIn(0, order.lastIndex)
+        if (i >= 0 && i != j) {
+            order.removeAt(i)
+            order.add(j, view)
+            it[Keys.PANEL_ORDER] = order.joinToString(",") { v -> v.name }
+        }
+    }
 
     /**
      * Shows or hides one view of the Ride screen, for portrait or for [landscape]; refuses to hide

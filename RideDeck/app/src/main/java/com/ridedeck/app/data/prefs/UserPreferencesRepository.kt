@@ -22,9 +22,24 @@ import javax.inject.Singleton
 
 enum class ThemeMode { SYSTEM, DARK, OLED }
 
+/** Where the music panel gets its music from. */
+enum class MusicSource { PHONE, SPOTIFY }
+
+/** The three views of the Ride screen. */
+enum class RideView { MAP, SPEEDOMETER, MUSIC }
+
+/** Trip figures that can be hidden from the speedometer. */
+enum class RideStat { DISTANCE, TIME, AVERAGE, MAX, ODOMETER }
+
+/** How the map looks. AUTO follows the app theme (color in a light theme, dark otherwise). */
+enum class MapStyle { AUTO, COLOR, CLEAN, DARK }
+
+data class OverlayPosition(val x: Float, val y: Float)
+
 data class UserPreferences(
+    /** Always BIKE: Walk mode was removed. Kept so the tracking engine and old sessions keep working. */
     val mode: ActivityMode = ActivityMode.BIKE,
-    val speedUnit: SpeedUnit = SpeedUnit.KMH,
+    val speedUnit: SpeedUnit = SpeedUnit.MPH,
     val speedAlertEnabled: Boolean = false,
     val speedAlertLimitMps: Double = DEFAULT_ALERT_LIMIT_MPS,
     val speedAlertSound: Boolean = true,
@@ -33,23 +48,59 @@ data class UserPreferences(
     val keepScreenOn: Boolean = true,
     val rideModeLockEnabled: Boolean = true,
     val themeMode: ThemeMode = ThemeMode.OLED,
-    val showBikeShops: Boolean = true,
-    val showBikeShare: Boolean = true,
-    val showBikeShareInWalkMode: Boolean = false,
-    val onlyStationsWithBikes: Boolean = false,
-    val showCycleLanes: Boolean = true,
-    val gbfsDiscoveryUrl: String? = null,
-    val gbfsSystemName: String? = null,
-    val musicPanelVisible: Boolean = false,
+    val musicPanelVisible: Boolean = true,
     val musicPanelFraction: Float = DEFAULT_PANEL_FRACTION,
     val lyricsEnabled: Boolean = true,
     val onboardingDone: Boolean = false,
+    /** Optional Spotify integration: control the Spotify app from the music panel. */
+    val spotifyEnabled: Boolean = false,
+    val musicSource: MusicSource = MusicSource.PHONE,
+    /** Optional Google Maps integration: hand turn-by-turn directions to the Google Maps app. */
+    val googleMapsEnabled: Boolean = false,
+    val speedOverlayExpanded: Boolean = true,
+    val mapStyle: MapStyle = MapStyle.COLOR,
+    /** Speak upcoming turns while navigating. */
+    val voiceDirections: Boolean = true,
+    /** Which views the Ride screen shows; any combination, at least one. Music uses [musicPanelVisible]. */
+    val showMap: Boolean = true,
+    val showSpeedometer: Boolean = true,
+    /**
+     * Where the speedometer floats over the map, as fractions (0..1) of the free space across and
+     * down. Null means docked: centred just above the bottom controls.
+     */
+    val speedOverlayPosition: OverlayPosition? = null,
+    /** Views remembered separately for when the phone is turned sideways. */
+    val showMapLandscape: Boolean = true,
+    val showSpeedometerLandscape: Boolean = true,
+    val showMusicLandscape: Boolean = true,
+    /** Which trip figures the speedometer shows. */
+    val showDistance: Boolean = true,
+    val showTime: Boolean = true,
+    val showAverage: Boolean = true,
+    val showMax: Boolean = true,
+    val showOdometer: Boolean = true,
+    /** Top-to-bottom (or left-to-right) order of the Ride screen panels; always all three views. */
+    val panelOrder: List<RideView> = DEFAULT_PANEL_ORDER,
+    /** With the map on, the speedometer floats over it; off, it gets its own panel. */
+    val floatingSpeedometer: Boolean = true,
 ) {
+    /** The Ride screen views for the current orientation: map, speedometer, music. */
+    fun views(landscape: Boolean): Triple<Boolean, Boolean, Boolean> =
+        if (landscape) Triple(showMapLandscape, showSpeedometerLandscape, showMusicLandscape)
+        else Triple(showMap, showSpeedometer, musicPanelVisible)
+
     companion object {
         const val DEFAULT_ALERT_LIMIT_MPS = 30.0 / 3.6
         const val DEFAULT_PANEL_FRACTION = 0.38f
         const val MIN_PANEL_FRACTION = 0.18f
         const val MAX_PANEL_FRACTION = 0.75f
+        val DEFAULT_PANEL_ORDER = listOf(RideView.MAP, RideView.SPEEDOMETER, RideView.MUSIC)
+
+        /** Parses a stored order, keeping any views it is missing at the end so all three are there. */
+        fun parsePanelOrder(stored: String?): List<RideView> {
+            val parsed = stored.orEmpty().split(',').mapNotNull { n -> RideView.entries.firstOrNull { it.name == n } }.distinct()
+            return parsed + DEFAULT_PANEL_ORDER.filter { it !in parsed }
+        }
     }
 }
 
@@ -58,7 +109,6 @@ class UserPreferencesRepository @Inject constructor(
     @SettingsStore private val dataStore: DataStore<Preferences>,
 ) {
     private object Keys {
-        val MODE = stringPreferencesKey("mode")
         val SPEED_UNIT = stringPreferencesKey("speed_unit")
         val ALERT_ENABLED = booleanPreferencesKey("speed_alert_enabled")
         val ALERT_LIMIT = doublePreferencesKey("speed_alert_limit_mps")
@@ -68,17 +118,30 @@ class UserPreferencesRepository @Inject constructor(
         val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
         val RIDE_MODE_LOCK = booleanPreferencesKey("ride_mode_lock")
         val THEME = stringPreferencesKey("theme")
-        val SHOW_SHOPS = booleanPreferencesKey("show_bike_shops")
-        val SHOW_SHARE = booleanPreferencesKey("show_bike_share")
-        val SHARE_IN_WALK = booleanPreferencesKey("show_bike_share_walk")
-        val ONLY_WITH_BIKES = booleanPreferencesKey("only_stations_with_bikes")
-        val CYCLE_LANES = booleanPreferencesKey("show_cycle_lanes")
-        val GBFS_URL = stringPreferencesKey("gbfs_url")
-        val GBFS_NAME = stringPreferencesKey("gbfs_name")
         val PANEL_VISIBLE = booleanPreferencesKey("music_panel_visible")
         val PANEL_FRACTION = floatPreferencesKey("music_panel_fraction")
         val LYRICS = booleanPreferencesKey("lyrics_enabled")
         val ONBOARDING_DONE = booleanPreferencesKey("onboarding_done")
+        val SPOTIFY = booleanPreferencesKey("spotify_enabled")
+        val MUSIC_SOURCE = stringPreferencesKey("music_source")
+        val GOOGLE_MAPS = booleanPreferencesKey("google_maps_enabled")
+        val OVERLAY_EXPANDED = booleanPreferencesKey("speed_overlay_expanded")
+        val MAP_STYLE = stringPreferencesKey("map_style")
+        val VOICE_DIRECTIONS = booleanPreferencesKey("voice_directions")
+        val SHOW_MAP = booleanPreferencesKey("show_map")
+        val SHOW_SPEEDOMETER = booleanPreferencesKey("show_speedometer")
+        val SHOW_MAP_LAND = booleanPreferencesKey("show_map_landscape")
+        val SHOW_SPEEDOMETER_LAND = booleanPreferencesKey("show_speedometer_landscape")
+        val SHOW_MUSIC_LAND = booleanPreferencesKey("show_music_landscape")
+        val STAT_DISTANCE = booleanPreferencesKey("stat_distance")
+        val STAT_TIME = booleanPreferencesKey("stat_time")
+        val STAT_AVERAGE = booleanPreferencesKey("stat_average")
+        val STAT_MAX = booleanPreferencesKey("stat_max")
+        val STAT_ODOMETER = booleanPreferencesKey("stat_odometer")
+        val OVERLAY_X = floatPreferencesKey("speed_overlay_x")
+        val OVERLAY_Y = floatPreferencesKey("speed_overlay_y")
+        val PANEL_ORDER = stringPreferencesKey("panel_order")
+        val FLOATING_SPEEDOMETER = booleanPreferencesKey("floating_speedometer")
     }
 
     val preferences: Flow<UserPreferences> = dataStore.data
@@ -86,7 +149,7 @@ class UserPreferencesRepository @Inject constructor(
         .map { p ->
             val defaults = UserPreferences()
             UserPreferences(
-                mode = ActivityMode.fromName(p[Keys.MODE]),
+                mode = ActivityMode.BIKE,
                 speedUnit = SpeedUnit.fromName(p[Keys.SPEED_UNIT]),
                 speedAlertEnabled = p[Keys.ALERT_ENABLED] ?: defaults.speedAlertEnabled,
                 speedAlertLimitMps = p[Keys.ALERT_LIMIT] ?: defaults.speedAlertLimitMps,
@@ -96,18 +159,33 @@ class UserPreferencesRepository @Inject constructor(
                 keepScreenOn = p[Keys.KEEP_SCREEN_ON] ?: defaults.keepScreenOn,
                 rideModeLockEnabled = p[Keys.RIDE_MODE_LOCK] ?: defaults.rideModeLockEnabled,
                 themeMode = ThemeMode.entries.firstOrNull { it.name == p[Keys.THEME] } ?: defaults.themeMode,
-                showBikeShops = p[Keys.SHOW_SHOPS] ?: defaults.showBikeShops,
-                showBikeShare = p[Keys.SHOW_SHARE] ?: defaults.showBikeShare,
-                showBikeShareInWalkMode = p[Keys.SHARE_IN_WALK] ?: defaults.showBikeShareInWalkMode,
-                onlyStationsWithBikes = p[Keys.ONLY_WITH_BIKES] ?: defaults.onlyStationsWithBikes,
-                showCycleLanes = p[Keys.CYCLE_LANES] ?: defaults.showCycleLanes,
-                gbfsDiscoveryUrl = p[Keys.GBFS_URL]?.takeIf { it.isNotBlank() },
-                gbfsSystemName = p[Keys.GBFS_NAME]?.takeIf { it.isNotBlank() },
                 musicPanelVisible = p[Keys.PANEL_VISIBLE] ?: defaults.musicPanelVisible,
                 musicPanelFraction = (p[Keys.PANEL_FRACTION] ?: defaults.musicPanelFraction)
                     .coerceIn(UserPreferences.MIN_PANEL_FRACTION, UserPreferences.MAX_PANEL_FRACTION),
                 lyricsEnabled = p[Keys.LYRICS] ?: defaults.lyricsEnabled,
                 onboardingDone = p[Keys.ONBOARDING_DONE] ?: defaults.onboardingDone,
+                spotifyEnabled = p[Keys.SPOTIFY] ?: defaults.spotifyEnabled,
+                musicSource = MusicSource.entries.firstOrNull { it.name == p[Keys.MUSIC_SOURCE] } ?: defaults.musicSource,
+                googleMapsEnabled = p[Keys.GOOGLE_MAPS] ?: defaults.googleMapsEnabled,
+                speedOverlayExpanded = p[Keys.OVERLAY_EXPANDED] ?: defaults.speedOverlayExpanded,
+                // "COLOURFUL" was the name of COLOR in 1.1 test builds.
+                mapStyle = MapStyle.entries.firstOrNull { it.name == p[Keys.MAP_STYLE]?.replace("COLOURFUL", "COLOR") } ?: defaults.mapStyle,
+                voiceDirections = p[Keys.VOICE_DIRECTIONS] ?: defaults.voiceDirections,
+                showMap = p[Keys.SHOW_MAP] ?: defaults.showMap,
+                showSpeedometer = p[Keys.SHOW_SPEEDOMETER] ?: defaults.showSpeedometer,
+                showMapLandscape = p[Keys.SHOW_MAP_LAND] ?: defaults.showMapLandscape,
+                showSpeedometerLandscape = p[Keys.SHOW_SPEEDOMETER_LAND] ?: defaults.showSpeedometerLandscape,
+                showMusicLandscape = p[Keys.SHOW_MUSIC_LAND] ?: defaults.showMusicLandscape,
+                showDistance = p[Keys.STAT_DISTANCE] ?: defaults.showDistance,
+                showTime = p[Keys.STAT_TIME] ?: defaults.showTime,
+                showAverage = p[Keys.STAT_AVERAGE] ?: defaults.showAverage,
+                showMax = p[Keys.STAT_MAX] ?: defaults.showMax,
+                showOdometer = p[Keys.STAT_ODOMETER] ?: defaults.showOdometer,
+                panelOrder = UserPreferences.parsePanelOrder(p[Keys.PANEL_ORDER]),
+                floatingSpeedometer = p[Keys.FLOATING_SPEEDOMETER] ?: defaults.floatingSpeedometer,
+                speedOverlayPosition = p[Keys.OVERLAY_X]?.let { x ->
+                    p[Keys.OVERLAY_Y]?.let { y -> OverlayPosition(x.coerceIn(0f, 1f), y.coerceIn(0f, 1f)) }
+                },
             )
         }
         .distinctUntilChanged()
@@ -116,7 +194,90 @@ class UserPreferencesRepository @Inject constructor(
 
     suspend fun current(): UserPreferences = preferences.first()
 
-    suspend fun setMode(mode: ActivityMode) = dataStore.edit { it[Keys.MODE] = mode.name }
+    suspend fun setSpotifyEnabled(enabled: Boolean) = dataStore.edit {
+        it[Keys.SPOTIFY] = enabled
+        if (!enabled) it[Keys.MUSIC_SOURCE] = MusicSource.PHONE.name
+    }
+    suspend fun setMusicSource(source: MusicSource) = dataStore.edit { it[Keys.MUSIC_SOURCE] = source.name }
+    suspend fun setGoogleMapsEnabled(enabled: Boolean) = dataStore.edit { it[Keys.GOOGLE_MAPS] = enabled }
+    suspend fun setMapStyle(style: MapStyle) = dataStore.edit { it[Keys.MAP_STYLE] = style.name }
+    suspend fun setVoiceDirections(enabled: Boolean) = dataStore.edit { it[Keys.VOICE_DIRECTIONS] = enabled }
+    suspend fun setFloatingSpeedometer(floating: Boolean) = dataStore.edit { it[Keys.FLOATING_SPEEDOMETER] = floating }
+
+    /** Swaps two views in the Ride screen panel order. */
+    suspend fun swapPanels(a: RideView, b: RideView) = dataStore.edit {
+        val order = UserPreferences.parsePanelOrder(it[Keys.PANEL_ORDER]).toMutableList()
+        val i = order.indexOf(a)
+        val j = order.indexOf(b)
+        if (i >= 0 && j >= 0 && i != j) {
+            order[i] = b
+            order[j] = a
+            it[Keys.PANEL_ORDER] = order.joinToString(",") { v -> v.name }
+        }
+    }
+
+    /** Moves one view a step earlier ([by] = -1, up or left) or later (+1) in the panel order. */
+    suspend fun movePanel(view: RideView, by: Int) = dataStore.edit {
+        val order = UserPreferences.parsePanelOrder(it[Keys.PANEL_ORDER]).toMutableList()
+        val i = order.indexOf(view)
+        val j = (i + by).coerceIn(0, order.lastIndex)
+        if (i >= 0 && i != j) {
+            order.removeAt(i)
+            order.add(j, view)
+            it[Keys.PANEL_ORDER] = order.joinToString(",") { v -> v.name }
+        }
+    }
+
+    /**
+     * Shows or hides one view of the Ride screen, for portrait or for [landscape]; refuses to hide
+     * the last visible one.
+     */
+    suspend fun setView(view: RideView, visible: Boolean, landscape: Boolean = false) = dataStore.edit {
+        val defaults = UserPreferences()
+        val keys = if (landscape) {
+            Triple(Keys.SHOW_MAP_LAND, Keys.SHOW_SPEEDOMETER_LAND, Keys.SHOW_MUSIC_LAND)
+        } else {
+            Triple(Keys.SHOW_MAP, Keys.SHOW_SPEEDOMETER, Keys.PANEL_VISIBLE)
+        }
+        val (defMap, defSpeed, defMusic) = defaults.views(landscape)
+        val map = it[keys.first] ?: defMap
+        val speed = it[keys.second] ?: defSpeed
+        val music = it[keys.third] ?: defMusic
+        val next = when (view) {
+            RideView.MAP -> Triple(visible, speed, music)
+            RideView.SPEEDOMETER -> Triple(map, visible, music)
+            RideView.MUSIC -> Triple(map, speed, visible)
+        }
+        if (next.first || next.second || next.third) {
+            it[keys.first] = next.first
+            it[keys.second] = next.second
+            it[keys.third] = next.third
+        }
+    }
+
+    suspend fun setStatVisible(stat: RideStat, visible: Boolean) = dataStore.edit {
+        val key = when (stat) {
+            RideStat.DISTANCE -> Keys.STAT_DISTANCE
+            RideStat.TIME -> Keys.STAT_TIME
+            RideStat.AVERAGE -> Keys.STAT_AVERAGE
+            RideStat.MAX -> Keys.STAT_MAX
+            RideStat.ODOMETER -> Keys.STAT_ODOMETER
+        }
+        it[key] = visible
+    }
+
+    /** Null docks the speedometer back above the bottom controls. */
+    suspend fun setSpeedOverlayPosition(position: OverlayPosition?) = dataStore.edit {
+        if (position == null) {
+            it.remove(Keys.OVERLAY_X)
+            it.remove(Keys.OVERLAY_Y)
+        } else {
+            it[Keys.OVERLAY_X] = position.x.coerceIn(0f, 1f)
+            it[Keys.OVERLAY_Y] = position.y.coerceIn(0f, 1f)
+        }
+    }
+
+    suspend fun setSpeedOverlayExpanded(expanded: Boolean) = dataStore.edit { it[Keys.OVERLAY_EXPANDED] = expanded }
     suspend fun setSpeedUnit(unit: SpeedUnit) = dataStore.edit { it[Keys.SPEED_UNIT] = unit.name }
     suspend fun setSpeedAlertEnabled(enabled: Boolean) = dataStore.edit { it[Keys.ALERT_ENABLED] = enabled }
     suspend fun setSpeedAlertLimitMps(limit: Double) = dataStore.edit { it[Keys.ALERT_LIMIT] = limit }
@@ -126,26 +287,11 @@ class UserPreferencesRepository @Inject constructor(
     suspend fun setKeepScreenOn(enabled: Boolean) = dataStore.edit { it[Keys.KEEP_SCREEN_ON] = enabled }
     suspend fun setRideModeLock(enabled: Boolean) = dataStore.edit { it[Keys.RIDE_MODE_LOCK] = enabled }
     suspend fun setTheme(theme: ThemeMode) = dataStore.edit { it[Keys.THEME] = theme.name }
-    suspend fun setShowBikeShops(enabled: Boolean) = dataStore.edit { it[Keys.SHOW_SHOPS] = enabled }
-    suspend fun setShowBikeShare(enabled: Boolean) = dataStore.edit { it[Keys.SHOW_SHARE] = enabled }
-    suspend fun setShowBikeShareInWalkMode(enabled: Boolean) = dataStore.edit { it[Keys.SHARE_IN_WALK] = enabled }
-    suspend fun setOnlyStationsWithBikes(enabled: Boolean) = dataStore.edit { it[Keys.ONLY_WITH_BIKES] = enabled }
-    suspend fun setShowCycleLanes(enabled: Boolean) = dataStore.edit { it[Keys.CYCLE_LANES] = enabled }
     suspend fun setLyricsEnabled(enabled: Boolean) = dataStore.edit { it[Keys.LYRICS] = enabled }
     suspend fun setOnboardingDone() = dataStore.edit { it[Keys.ONBOARDING_DONE] = true }
     suspend fun setMusicPanelVisible(visible: Boolean) = dataStore.edit { it[Keys.PANEL_VISIBLE] = visible }
 
     suspend fun setMusicPanelFraction(fraction: Float) = dataStore.edit {
         it[Keys.PANEL_FRACTION] = fraction.coerceIn(UserPreferences.MIN_PANEL_FRACTION, UserPreferences.MAX_PANEL_FRACTION)
-    }
-
-    suspend fun setGbfsSystem(name: String?, discoveryUrl: String?) = dataStore.edit {
-        if (discoveryUrl.isNullOrBlank()) {
-            it.remove(Keys.GBFS_URL)
-            it.remove(Keys.GBFS_NAME)
-        } else {
-            it[Keys.GBFS_URL] = discoveryUrl.trim()
-            it[Keys.GBFS_NAME] = name?.trim().orEmpty()
-        }
     }
 }

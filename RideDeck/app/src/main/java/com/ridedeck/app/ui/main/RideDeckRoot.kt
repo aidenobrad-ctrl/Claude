@@ -1,6 +1,31 @@
 package com.ridedeck.app.ui.main
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import com.ridedeck.app.ui.privacy.PrivacyPolicyScreen
+import com.ridedeck.app.ui.startup.StartupScreen
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -8,14 +33,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Map
-import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.MusicOff
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -45,9 +69,6 @@ import com.ridedeck.app.tracking.TrackingEvent
 import com.ridedeck.app.ui.components.RideModeBanner
 import com.ridedeck.app.ui.history.HistoryScreen
 import com.ridedeck.app.ui.history.SessionDetailScreen
-import com.ridedeck.app.ui.home.HomeScreen
-import com.ridedeck.app.ui.map.MapScreen
-import com.ridedeck.app.ui.music.MusicPanel
 import com.ridedeck.app.ui.permissions.PermissionsScreen
 import com.ridedeck.app.ui.settings.SettingsScreen
 import com.ridedeck.app.ui.theme.RideDeckTheme
@@ -55,10 +76,10 @@ import com.ridedeck.app.ui.theme.RideDeckTheme
 object Routes {
     const val PERMISSIONS = "permissions"
     const val RIDE = "ride"
-    const val MAP = "map"
     const val HISTORY = "history"
     const val SESSION = "history/{sessionId}"
     const val SETTINGS = "settings"
+    const val PRIVACY = "privacy"
 
     fun session(id: Long) = "history/$id"
 }
@@ -66,8 +87,8 @@ object Routes {
 private data class TopLevel(val route: String, val label: Int, val icon: ImageVector, val lockable: Boolean)
 
 private val topLevels = listOf(
-    TopLevel(Routes.RIDE, R.string.nav_ride, Icons.Default.Speed, lockable = false),
-    TopLevel(Routes.MAP, R.string.nav_map, Icons.Default.Map, lockable = false),
+    // Map, speedometer overlay and music panel all live on the Ride screen.
+    TopLevel(Routes.RIDE, R.string.nav_ride, Icons.Default.Map, lockable = false),
     TopLevel(Routes.HISTORY, R.string.nav_history, Icons.Default.History, lockable = true),
     TopLevel(Routes.SETTINGS, R.string.nav_settings, Icons.Default.Settings, lockable = true),
 )
@@ -75,11 +96,26 @@ private val topLevels = listOf(
 @Composable
 fun RideDeckRoot(viewModel: MainViewModel = hiltViewModel()) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    // The startup screen plays once per launch (not again on rotation) and stays up until the
+    // settings have loaded, then fades into the app.
+    var startupDone by rememberSaveable { mutableStateOf(false) }
     RideDeckTheme(themeMode = state.preferences.themeMode) {
-        if (!state.loaded) {
-            Box(Modifier.fillMaxSize())
-            return@RideDeckTheme
+        Box(Modifier.fillMaxSize()) {
+            if (state.loaded) RideDeckContent(state, viewModel)
+            AnimatedVisibility(
+                visible = !(startupDone && state.loaded),
+                enter = EnterTransition.None,
+                exit = fadeOut(tween(durationMillis = 350)),
+            ) {
+                StartupScreen(onFinished = { startupDone = true })
+            }
         }
+    }
+}
+
+@Composable
+private fun RideDeckContent(state: MainUiState, viewModel: MainViewModel) {
+    run {
         KeepScreenOn(state.keepScreenOn)
 
         val navController = rememberNavController()
@@ -113,70 +149,134 @@ fun RideDeckRoot(viewModel: MainViewModel = hiltViewModel()) {
         }
 
         val showChrome = currentRoute != Routes.PERMISSIONS
+        // Landscape or any wide window: a side rail instead of a bottom bar, which keeps the
+        // map and speedometer as tall as possible.
+        val config = LocalConfiguration.current
+        val useRail = config.screenWidthDp > config.screenHeightDp && config.screenWidthDp >= 600
+
+        val navItems = topLevels.map { item ->
+            NavEntry(
+                item = item,
+                locked = item.lockable && state.rideLocked,
+                selected = currentRoute == item.route ||
+                    (item.route == Routes.HISTORY && currentRoute == Routes.SESSION) ||
+                    (item.route == Routes.SETTINGS && currentRoute == Routes.PRIVACY),
+            )
+        }
+
         Scaffold(
             snackbarHost = { SnackbarHost(snackbarHostState) },
+            // System bars plus the camera cutout, which sits at the side in landscape.
+            contentWindowInsets = WindowInsets.systemBars.union(WindowInsets.displayCutout),
             bottomBar = {
-                if (showChrome) {
-                    NavigationBar {
-                        topLevels.forEach { item ->
-                            val locked = item.lockable && state.rideLocked
-                            NavigationBarItem(
-                                selected = currentRoute == item.route ||
-                                    (item.route == Routes.HISTORY && currentRoute == Routes.SESSION),
-                                onClick = { navController.navigateTopLevel(item.route) },
-                                enabled = !locked,
-                                icon = { Icon(if (locked) Icons.Default.Lock else item.icon, contentDescription = null) },
-                                label = { Text(stringResource(item.label)) },
-                            )
+                if (showChrome && !useRail) {
+                    Column {
+                        // A hairline instead of a tinted bar keeps the bottom edge true black on OLED.
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                        NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
+                            navItems.forEach { e ->
+                                NavigationBarItem(
+                                    selected = e.selected,
+                                    onClick = { navController.navigateTopLevel(e.item.route) },
+                                    enabled = !e.locked,
+                                    icon = { NavIcon(e) },
+                                    label = { Text(stringResource(e.item.label), maxLines = 1) },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        selectedTextColor = MaterialTheme.colorScheme.primary,
+                                        indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                                    ),
+                                )
+                            }
                         }
-                        val panelOn = state.preferences.musicPanelVisible
-                        NavigationBarItem(
-                            selected = panelOn,
-                            onClick = { viewModel.setMusicPanelVisible(!panelOn) },
-                            icon = { Icon(if (panelOn) Icons.Default.MusicNote else Icons.Default.MusicOff, contentDescription = null) },
-                            label = { Text("Music") },
-                        )
                     }
                 }
             },
         ) { padding ->
-            Column(Modifier.padding(padding).fillMaxSize()) {
-                if (state.rideLocked) RideModeBanner()
-                SplitPanelLayout(
-                    showPanel = showChrome && state.preferences.musicPanelVisible,
-                    fraction = state.preferences.musicPanelFraction,
-                    onFractionCommitted = viewModel::setMusicPanelFraction,
-                    onHidePanel = { viewModel.setMusicPanelVisible(false) },
-                    top = {
-                        NavHost(navController = navController, startDestination = Routes.RIDE) {
-                            composable(Routes.PERMISSIONS) {
-                                PermissionsScreen(onDone = { navController.popBackStack() })
-                            }
-                            composable(Routes.RIDE) {
-                                HomeScreen(
-                                    rideLocked = state.rideLocked,
-                                    onOpenPermissions = { navController.navigate(Routes.PERMISSIONS) },
+            Row(Modifier.padding(padding).fillMaxSize()) {
+                if (showChrome && useRail) {
+                    NavigationRail(windowInsets = WindowInsets(0)) {
+                        Spacer(Modifier.weight(1f))
+                        navItems.forEach { e ->
+                            NavigationRailItem(
+                                selected = e.selected,
+                                onClick = { navController.navigateTopLevel(e.item.route) },
+                                enabled = !e.locked,
+                                icon = { NavIcon(e) },
+                                label = { Text(stringResource(e.item.label), maxLines = 1) },
+                            )
+                        }
+                        Spacer(Modifier.weight(1f))
+                    }
+                }
+                Column(Modifier.weight(1f).fillMaxHeight()) {
+                    if (state.rideLocked) RideModeBanner()
+                    NavHost(
+                        navController = navController,
+                        startDestination = Routes.RIDE,
+                        modifier = Modifier.weight(1f),
+                        enterTransition = { fadeIn(tween(220)) + scaleIn(tween(220), initialScale = 0.98f) },
+                        exitTransition = { fadeOut(tween(160)) },
+                        popEnterTransition = { fadeIn(tween(220)) },
+                        popExitTransition = { fadeOut(tween(160)) + scaleOut(tween(160), targetScale = 0.98f) },
+                    ) {
+                        composable(Routes.PERMISSIONS) {
+                            Readable {
+                                PermissionsScreen(
+                                    onDone = { navController.popBackStack() },
+                                    onOpenPrivacy = { navController.navigate(Routes.PRIVACY) },
                                 )
                             }
-                            composable(Routes.MAP) { MapScreen(rideLocked = state.rideLocked) }
-                            composable(Routes.HISTORY) {
-                                HistoryScreen(onOpenSession = { navController.navigate(Routes.session(it)) })
-                            }
-                            composable(
-                                Routes.SESSION,
-                                arguments = listOf(navArgument("sessionId") { type = NavType.LongType }),
-                            ) {
-                                SessionDetailScreen(onBack = { navController.popBackStack() })
-                            }
-                            composable(Routes.SETTINGS) {
-                                SettingsScreen(onOpenPermissions = { navController.navigate(Routes.PERMISSIONS) })
+                        }
+                        composable(Routes.RIDE) {
+                            RideScreen(
+                                prefs = state.preferences,
+                                rideLocked = state.rideLocked,
+                                onMusicFraction = viewModel::setMusicPanelFraction,
+                                onMusicSource = viewModel::setMusicSource,
+                                onSwapPanels = viewModel::swapPanels,
+                                onOpenPermissions = { navController.navigate(Routes.PERMISSIONS) },
+                            )
+                        }
+                        composable(Routes.HISTORY) {
+                            Readable { HistoryScreen(onOpenSession = { navController.navigate(Routes.session(it)) }) }
+                        }
+                        composable(
+                            Routes.SESSION,
+                            arguments = listOf(navArgument("sessionId") { type = NavType.LongType }),
+                        ) {
+                            Readable { SessionDetailScreen(onBack = { navController.popBackStack() }) }
+                        }
+                        composable(Routes.SETTINGS) {
+                            Readable {
+                                SettingsScreen(
+                                    onOpenPermissions = { navController.navigate(Routes.PERMISSIONS) },
+                                    onOpenPrivacy = { navController.navigate(Routes.PRIVACY) },
+                                )
                             }
                         }
-                    },
-                    panel = { MusicPanel(lyricsEnabled = state.preferences.lyricsEnabled) },
-                )
+                        composable(Routes.PRIVACY) {
+                            Readable { PrivacyPolicyScreen(onBack = { navController.popBackStack() }) }
+                        }
+                    }
+                }
             }
         }
+    }
+}
+
+private data class NavEntry(val item: TopLevel, val locked: Boolean, val selected: Boolean)
+
+@Composable
+private fun NavIcon(e: NavEntry) {
+    Icon(if (e.locked) Icons.Default.Lock else e.item.icon, contentDescription = null)
+}
+
+/** Lists and forms stay a comfortable reading width when the window is wide (landscape, DeX, tablets). */
+@Composable
+private fun Readable(content: @Composable () -> Unit) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        Box(Modifier.widthIn(max = 720.dp).fillMaxSize()) { content() }
     }
 }
 

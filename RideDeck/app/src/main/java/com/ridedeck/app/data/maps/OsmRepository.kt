@@ -5,15 +5,12 @@ import com.ridedeck.app.data.net.await
 import com.ridedeck.app.data.net.suspendRunCatching
 import com.ridedeck.core.model.ActivityMode
 import com.ridedeck.core.model.GeoPoint
-import com.ridedeck.core.osm.BikeShop
-import com.ridedeck.core.osm.OverpassApi
 import com.ridedeck.core.osm.PhotonApi
 import com.ridedeck.core.osm.PlaceSuggestion
 import com.ridedeck.core.routing.OsrmApi
 import com.ridedeck.core.routing.Route
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.FormBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.IOException
@@ -28,7 +25,6 @@ class NoRouteException(message: String?) : IOException(message ?: "No route foun
  * OpenStreetMap data. None of them needs an API key:
  * - Photon (komoot) for search-as-you-type
  * - OSRM on routing.openstreetmap.de (FOSSGIS) for bike and foot routing
- * - Overpass API for bike shops
  * These are community-run servers with fair-use policies, so calls are debounced and rate limited.
  */
 @Singleton
@@ -55,15 +51,6 @@ class OsmRepository @Inject constructor(
                 OsrmApi.parseResponse(text, mode)?.takeIf { it.polyline.isNotEmpty() }
                     ?: throw NoRouteException(OsrmApi.parseError(text))
             }
-        }
-    }
-
-    suspend fun bikeShops(center: GeoPoint, radiusM: Int = 3_000): List<BikeShop> = withContext(Dispatchers.IO) {
-        val body = FormBody.Builder().add("data", OverpassApi.bikeShopQuery(center, radiusM)).build()
-        val request = Request.Builder().url(OverpassApi.ENDPOINT).post(body).build()
-        http.newCall(request).await().use { response ->
-            if (!response.isSuccessful) throw HttpException(response.code, "Bike shop search failed (${response.code})")
-            OverpassApi.parseBikeShops(response.body?.string().orEmpty())
         }
     }
 }

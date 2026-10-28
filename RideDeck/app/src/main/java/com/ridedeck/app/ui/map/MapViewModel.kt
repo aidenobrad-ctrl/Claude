@@ -5,19 +5,18 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ridedeck.app.data.location.LocationAccuracy
 import com.ridedeck.app.data.location.LocationRepository
-import com.ridedeck.app.data.maps.GbfsRepository
 import com.ridedeck.app.data.maps.NoRouteException
 import com.ridedeck.app.data.maps.OsmRepository
+import com.ridedeck.app.data.prefs.MapStyle
+import com.ridedeck.app.navigation.TurnAnnouncer
+import com.ridedeck.app.navigation.VoiceGuide
+import com.ridedeck.core.format.Formatters
 import com.ridedeck.app.data.prefs.UserPreferences
 import com.ridedeck.app.data.prefs.UserPreferencesRepository
-import com.ridedeck.core.gbfs.BikeShareStation
-import com.ridedeck.core.mode.MapLayerPolicy
 import com.ridedeck.core.mode.ModeProfile
-import com.ridedeck.core.model.ActivityMode
 import com.ridedeck.core.model.GeoPoint
 import com.ridedeck.core.model.LocationFix
 import com.ridedeck.core.model.SpeedUnit
-import com.ridedeck.core.osm.BikeShop
 import com.ridedeck.core.osm.PlaceSuggestion
 import com.ridedeck.core.routing.OffRouteDetector
 import com.ridedeck.core.routing.Route
@@ -37,9 +36,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
@@ -49,8 +46,7 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class MapUiState(
-    val mode: ActivityMode = ActivityMode.BIKE,
-    val unit: SpeedUnit = SpeedUnit.KMH,
+    val unit: SpeedUnit = SpeedUnit.MPH,
     val hasLocationPermission: Boolean = false,
     val myLocation: GeoPoint? = null,
     val followUser: Boolean = true,
@@ -64,17 +60,8 @@ data class MapUiState(
     val rerouteReason: RerouteReason? = null,
     val arrived: Boolean = false,
     val message: String? = null,
-    val bikeShops: List<BikeShop> = emptyList(),
-    val loadingShops: Boolean = false,
-    val stations: List<BikeShareStation> = emptyList(),
-    val showShops: Boolean = true,
-    val showStations: Boolean = false,
-    val showCycleLanes: Boolean = false,
-    val cycleLanesEnabled: Boolean = true,
-    val bikeShareLayerEnabled: Boolean = true,
-    val bikeShareInWalk: Boolean = false,
-    val onlyStationsWithBikes: Boolean = false,
-    val bikeShareConfigured: Boolean = false,
+    val mapStyle: MapStyle = MapStyle.COLOR,
+    val googleMapsHandOff: Boolean = false,
 )
 
 private data class NavState(
@@ -88,8 +75,6 @@ private data class NavState(
     val rerouteReason: RerouteReason? = null,
     val arrived: Boolean = false,
     val message: String? = null,
-    val bikeShops: List<BikeShop> = emptyList(),
-    val loadingShops: Boolean = false,
     val followUser: Boolean = true,
 )
 
@@ -98,9 +83,11 @@ private data class NavState(
 class MapViewModel @Inject constructor(
     private val locationRepository: LocationRepository,
     private val osmRepository: OsmRepository,
-    private val gbfsRepository: GbfsRepository,
     private val preferencesRepository: UserPreferencesRepository,
+    private val voiceGuide: VoiceGuide,
 ) : ViewModel() {
+
+    private val announcer = TurnAnnouncer { text -> if (prefs.voiceDirections) voiceGuide.speak(text) }
 
     private val nav = MutableStateFlow(NavState())
     private val permissionTick = MutableStateFlow(0)
@@ -108,14 +95,17 @@ class MapViewModel @Inject constructor(
     private var lastFix: LocationFix? = null
     private var searchJob: Job? = null
     private var routeJob: Job? = null
-    private var shopsLoadedOnce = false
-    private var lastShopSearchMs = 0L
     private val offRouteDetector = OffRouteDetector()
     private val reroutePolicy = ReroutePolicy()
 
+    // The rider's own cruising speed, so the ETA fits how fast they actually ride rather than
+    // the routing server's average cyclist.
+    private var riderSpeedMps = 0.0
+    private var riderSpeedSamples = 0
+
     /**
      * Location only flows while the map is on screen. High accuracy at 1 Hz while navigating,
-     * balanced power every 3 s otherwise (the blue dot comes from the map's own location overlay).
+     * balanced power every 3 s otherwise.
      */
     private val location: Flow<LocationFix?> = combine(
         nav.map { it.destination != null }.distinctUntilChanged(),
@@ -133,39 +123,14 @@ class MapViewModel @Inject constructor(
         }
         .onEach { fix -> if (fix != null) onLocation(fix) }
 
-    /** Bike-share stations refresh every two minutes while visible (GBFS TTL is respected too). */
-    private val stations: Flow<List<BikeShareStation>> = preferencesRepository.preferences
-        .map { p ->
-            val url = p.gbfsDiscoveryUrl
-            if (url != null && MapLayerPolicy.showBikeShare(p.mode, p.showBikeShare, p.showBikeShareInWalkMode)) url else null
-        }
-        .distinctUntilChanged()
-        .flatMapLatest { url ->
-            if (url == null) {
-                flowOf(emptyList())
-            } else {
-                flow {
-                    while (true) {
-                        emit(gbfsRepository.stations(url))
-                        delay(STATION_REFRESH_MS)
-                    }
-                }.catch {
-                    nav.update { s -> s.copy(message = "Couldn't load bike-share stations") }
-                    emit(emptyList())
-                }
-            }
-        }
-
     val uiState: StateFlow<MapUiState> = combine(
         nav,
         preferencesRepository.preferences,
         location,
-        stations,
         permissionTick,
-    ) { n, p, fix, stationList, _ ->
+    ) { n, p, fix, _ ->
         prefs = p
         MapUiState(
-            mode = p.mode,
             unit = p.speedUnit,
             hasLocationPermission = locationRepository.hasLocationPermission(),
             myLocation = fix?.point ?: lastFix?.point,
@@ -180,39 +145,20 @@ class MapViewModel @Inject constructor(
             rerouteReason = n.rerouteReason,
             arrived = n.arrived,
             message = n.message,
-            bikeShops = n.bikeShops,
-            loadingShops = n.loadingShops,
-            stations = if (p.onlyStationsWithBikes) stationList.filter { (it.bikesAvailable ?: 0) > 0 } else stationList,
-            showShops = MapLayerPolicy.showBikeShops(p.showBikeShops),
-            showStations = MapLayerPolicy.showBikeShare(p.mode, p.showBikeShare, p.showBikeShareInWalkMode),
-            showCycleLanes = p.showCycleLanes && MapLayerPolicy.showBicyclingLayer(p.mode),
-            cycleLanesEnabled = p.showCycleLanes,
-            bikeShareLayerEnabled = p.showBikeShare,
-            bikeShareInWalk = p.showBikeShareInWalkMode,
-            onlyStationsWithBikes = p.onlyStationsWithBikes,
-            bikeShareConfigured = p.gbfsDiscoveryUrl != null,
+            mapStyle = p.mapStyle,
+            googleMapsHandOff = p.googleMapsEnabled,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), MapUiState())
-
-    init {
-        // Re-route as soon as the activity mode changes while a destination is set.
-        viewModelScope.launch {
-            preferencesRepository.mode.drop(1).collect { mode ->
-                val reason = reroutePolicy.evaluate(mode, offRoute = false, nowMs = SystemClock.elapsedRealtime())
-                if (reason != null && nav.value.destination != null) computeRoute(reason)
-            }
-        }
-    }
 
     fun refreshPermissions() {
         permissionTick.value++
     }
 
-    fun setMode(mode: ActivityMode) = viewModelScope.launch { preferencesRepository.setMode(mode) }
-
     fun setFollowUser(follow: Boolean) = nav.update { it.copy(followUser = follow) }
 
     fun dismissMessage() = nav.update { it.copy(message = null) }
+
+    fun setMapStyle(style: MapStyle) = viewModelScope.launch { preferencesRepository.setMapStyle(style) }
 
     fun onQueryChange(query: String) {
         nav.update { it.copy(query = query) }
@@ -243,8 +189,12 @@ class MapViewModel @Inject constructor(
         computeRoute(reason = null)
     }
 
+    fun retryRoute() = computeRoute(reason = null)
+
     fun clearRoute() {
         routeJob?.cancel()
+        announcer.reset()
+        voiceGuide.shutdown()
         reroutePolicy.clear()
         offRouteDetector.reset()
         nav.update {
@@ -252,17 +202,13 @@ class MapViewModel @Inject constructor(
         }
     }
 
-    fun searchShopsHere(center: GeoPoint) = loadShops(center, force = true)
-
     private fun onLocation(fix: LocationFix) {
         lastFix = fix
-        if (!shopsLoadedOnce && prefs.showBikeShops) {
-            shopsLoadedOnce = true
-            loadShops(fix.point, force = false)
-        }
+        trackRiderSpeed(fix)
         val n = nav.value
         val route = n.route ?: return
-        val progress = RouteProgressCalculator.progress(route, fix.point) ?: return
+        val progress = RouteProgressCalculator.progress(route, fix.point)?.let(::withRiderEta) ?: return
+        announce(route, progress)
         if (progress.arrived) {
             nav.update { it.copy(progress = progress, arrived = true) }
             return
@@ -275,6 +221,18 @@ class MapViewModel @Inject constructor(
         nav.update { it.copy(progress = progress) }
         val reason = reroutePolicy.evaluate(prefs.mode, offRoute, SystemClock.elapsedRealtime())
         if (reason != null && !n.routing) computeRoute(reason)
+    }
+
+    private fun trackRiderSpeed(fix: LocationFix) {
+        // Only moving samples count, so stops at lights don't drag the ETA out.
+        val speed = fix.speedMps?.toDouble()?.takeIf { it in RIDING_SPEED_MPS } ?: return
+        riderSpeedMps = if (riderSpeedSamples == 0) speed else riderSpeedMps + (speed - riderSpeedMps) * 0.05
+        riderSpeedSamples++
+    }
+
+    private fun withRiderEta(progress: RouteProgress): RouteProgress {
+        if (riderSpeedSamples < MIN_RIDER_SAMPLES || progress.arrived) return progress
+        return progress.copy(remainingDurationSec = (progress.remainingDistanceM / riderSpeedMps).toLong())
     }
 
     private fun computeRoute(reason: RerouteReason?) {
@@ -292,6 +250,18 @@ class MapViewModel @Inject constructor(
                 .onSuccess { route ->
                     reroutePolicy.onRouteComputed(mode, SystemClock.elapsedRealtime())
                     offRouteDetector.reset()
+                    val unit = prefs.speedUnit
+                    val durationSec = if (riderSpeedSamples >= MIN_RIDER_SAMPLES) {
+                        (route.distanceM / riderSpeedMps).toLong()
+                    } else {
+                        route.durationSec
+                    }
+                    announcer.onNewRoute(
+                        firstInstruction = route.steps.firstOrNull()?.instruction,
+                        summary = "${TurnAnnouncer.spoken(Formatters.navDistance(route.distanceM.toDouble(), unit))}, " +
+                            "about ${Formatters.spokenDuration(durationSec)}.",
+                        rerouted = reason != null,
+                    )
                     nav.update {
                         it.copy(
                             route = route,
@@ -305,7 +275,7 @@ class MapViewModel @Inject constructor(
                     // Still mark the attempt so off-route retries respect the cooldown.
                     reroutePolicy.onRouteComputed(mode, SystemClock.elapsedRealtime())
                     val text = when (e) {
-                        is NoRouteException -> "No ${if (mode == ActivityMode.BIKE) "cycling" else "walking"} route found"
+                        is NoRouteException -> "No cycling route found"
                         else -> "Directions failed: ${e.message ?: "check your connection"}"
                     }
                     nav.update { it.copy(routing = false, rerouteReason = null, message = text) }
@@ -313,44 +283,30 @@ class MapViewModel @Inject constructor(
         }
     }
 
-    private fun loadShops(center: GeoPoint, force: Boolean) {
-        val now = SystemClock.elapsedRealtime()
-        // Overpass is a shared community server; never query it more than twice a minute.
-        if (!force && now - lastShopSearchMs < SHOP_SEARCH_MIN_INTERVAL_MS) return
-        if (force && now - lastShopSearchMs < SHOP_SEARCH_MIN_INTERVAL_MS / 6) return
-        lastShopSearchMs = now
-        viewModelScope.launch {
-            nav.update { it.copy(loadingShops = true) }
-            try {
-                val shops = osmRepository.bikeShops(center)
-                nav.update { it.copy(bikeShops = shops, loadingShops = false) }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                nav.update { it.copy(loadingShops = false, message = "Couldn't load bike shops") }
-            }
-        }
+    /** Speaks the turn at the end of the current step (OSRM puts each instruction at its step's start). */
+    private fun announce(route: Route, progress: RouteProgress) {
+        val upcoming = route.steps.getOrNull(progress.currentStepIndex + 1)?.instruction
+        announcer.onProgress(
+            stepIndex = progress.currentStepIndex,
+            upcoming = upcoming,
+            distanceM = progress.distanceToManeuverM,
+            spokenDistance = TurnAnnouncer.spoken(Formatters.navDistance(progress.distanceToManeuverM, prefs.speedUnit)),
+            arrived = progress.arrived,
+        )
     }
 
-    fun setShowShops(show: Boolean) = viewModelScope.launch { preferencesRepository.setShowBikeShops(show) }
-
-    fun setShowStations(show: Boolean) = viewModelScope.launch {
-        if (prefs.mode == ActivityMode.WALK) {
-            // In Walk mode the chip is the explicit opt-in; it also turns the layer on.
-            preferencesRepository.setShowBikeShareInWalkMode(show)
-            if (show) preferencesRepository.setShowBikeShare(true)
-        } else {
-            preferencesRepository.setShowBikeShare(show)
-        }
+    override fun onCleared() {
+        voiceGuide.shutdown()
+        super.onCleared()
     }
 
-    fun setShowCycleLanes(show: Boolean) = viewModelScope.launch { preferencesRepository.setShowCycleLanes(show) }
+    companion object {
+        private const val SEARCH_DEBOUNCE_MS = 300L
 
-    fun setOnlyWithBikes(only: Boolean) = viewModelScope.launch { preferencesRepository.setOnlyStationsWithBikes(only) }
+        /** About 5 to 65 km/h: slower is walking the bike or stopped, faster is a GPS glitch. */
+        private val RIDING_SPEED_MPS = 1.5..18.0
 
-    private companion object {
-        const val SEARCH_DEBOUNCE_MS = 300L
-        const val STATION_REFRESH_MS = 120_000L
-        const val SHOP_SEARCH_MIN_INTERVAL_MS = 30_000L
+        /** About half a minute of riding at one fix a second before the ETA uses the rider's speed. */
+        private const val MIN_RIDER_SAMPLES = 30
     }
 }

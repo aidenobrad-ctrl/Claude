@@ -1,9 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">RideDeck</string>
+    <string name="app_tagline">Ride. Track. Listen.</string>
+    <string name="shortcut_start_ride">Start ride</string>
+    <string name="shortcut_start_ride_long">Start recording a ride</string>
 
     <string name="notif_channel_tracking">Ride tracking</string>
-    <string name="notif_channel_tracking_desc">Shows your live ride or walk while it is being recorded.</string>
+    <string name="notif_channel_tracking_desc">Shows your live ride while it is being recorded.</string>
     <string name="notif_title_bike">Ride in progress</string>
     <string name="notif_title_walk">Walk in progress</string>
     <string name="notif_title_paused">Session paused</string>

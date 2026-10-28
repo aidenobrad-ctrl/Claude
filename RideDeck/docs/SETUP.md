@@ -1,6 +1,6 @@
 # RideDeck setup guide
 
-RideDeck needs no API keys or accounts. Everything it talks to is free and open: OpenStreetMap tiles, OSRM routing, Photon search, the Overpass API, public GBFS feeds and LRCLIB.
+RideDeck needs no API keys or accounts. Everything it talks to is free and open: OpenFreeMap vector map tiles (OpenStreetMap data), OSRM routing, Photon search and LRCLIB.
 
 ## Getting the APK without building
 
@@ -31,9 +31,8 @@ You need Android Studio (or the Android SDK command-line tools) with JDK 17+.
 
 On first launch RideDeck explains and requests permissions. Only precise location is required.
 
-- **Ride tab**: pick Bike or Walk, tap Start. Recording continues with the screen off; use the notification to pause or stop.
-- **Map tab**: search a destination for cycling or walking directions; toggle bike shops, bike-share and the cycling map style.
-- **Settings → Bike-share system → Choose** to pick your city's GBFS feed.
+- **Ride tab**: tap Start to record. Recording continues with the screen off; use the notification to pause or stop.
+- **Ride screen**: choose what's on screen (map, speedometer, music) at the top of Settings. Search a destination on the map for cycling directions.
 - **Music** (bottom bar) opens the player. Copy music files into the phone's Music folder; they appear in the library. Tap a song to play, the heart to add it to favourites, and use the Lyrics tab for synced lyrics. Drag the panel's handle to resize it.
 
 ## Troubleshooting
@@ -45,4 +44,3 @@ On first launch RideDeck explains and requests permissions. Only precise locatio
 | "No cycling route found" | OSRM could not connect the points by bike (for example across water). Try Walk mode or a nearby destination. |
 | Music panel says "No music found" | The files must be in shared storage (for example `Music/`) and at least 30 seconds long. Tap "Scan again". |
 | Music stops when the screen locks | Some phones kill background apps aggressively; set RideDeck's battery usage to "Unrestricted". |
-| No bike-share stations | Choose a system in Settings. In Walk mode, turn on "Bike share (walk)". |

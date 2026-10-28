@@ -9,17 +9,22 @@ plugins {
 
 android {
     namespace = "com.ridedeck.app"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.ridedeck.app"
         minSdk = 26
-        targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        targetSdk = 36
+        // Play needs a higher versionCode for every upload; CI passes one from the run number.
+        versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 2
+        versionName = "1.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
         vectorDrawables { useSupportLibrary = true }
+        // MapLibre's renderer is native code; phones and the emulator (x86_64) only. The Play
+        // Store bundle splits this per device anyway.
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
     }
 
     signingConfigs {
@@ -85,6 +90,7 @@ dependencies {
     implementation(project(":core"))
 
     implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.core.splashscreen)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
@@ -114,8 +120,8 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.okhttp)
 
-    // Open-source map (OpenStreetMap) and music playback.
-    implementation(libs.osmdroid)
+    // Open-source vector map (MapLibre, with OpenFreeMap's OpenStreetMap tiles) and music playback.
+    implementation(libs.maplibre)
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.session)
 

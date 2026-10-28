@@ -109,6 +109,10 @@ class MusicController @Inject constructor(
         controller?.seekToPrevious()
     }
 
+    fun seekTo(positionMs: Long) {
+        controller?.seekTo(positionMs.coerceAtLeast(0))
+    }
+
     fun toggleShuffle() {
         controller?.let { it.shuffleModeEnabled = !it.shuffleModeEnabled }
     }

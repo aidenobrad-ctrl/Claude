@@ -2,13 +2,23 @@ package com.ridedeck.app.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
+import android.os.PowerManager
+import android.provider.Settings
 import com.ridedeck.app.data.location.LocationRepository
-import com.ridedeck.app.data.maps.GbfsRepository
+import com.ridedeck.app.integrations.GoogleMapsLauncher
+import com.ridedeck.app.integrations.SpotifyControl
+import com.ridedeck.app.ui.permissions.openAppSettings
+import dagger.hilt.android.qualifiers.ApplicationContext
+import com.ridedeck.app.data.prefs.MapStyle
+import com.ridedeck.app.data.prefs.RideStat
+import com.ridedeck.app.data.prefs.RideView
 import com.ridedeck.app.data.prefs.ThemeMode
 import com.ridedeck.app.data.prefs.UserPreferences
 import com.ridedeck.app.data.prefs.UserPreferencesRepository
 import com.ridedeck.core.format.Units
-import com.ridedeck.core.gbfs.GbfsSystem
 import com.ridedeck.core.model.SpeedUnit
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
@@ -21,49 +31,96 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-data class BikeShareSearch(
-    val loading: Boolean = false,
-    val systems: List<GbfsSystem> = emptyList(),
-    val error: String? = null,
-)
-
 data class SettingsUiState(
     val prefs: UserPreferences = UserPreferences(),
-    val bikeShare: BikeShareSearch = BikeShareSearch(),
     val message: String? = null,
+    val spotifyInstalled: Boolean = false,
+    val spotifyAccess: Boolean = false,
+    val googleMapsInstalled: Boolean = false,
+    val batteryUnrestricted: Boolean = true,
+    val isSamsung: Boolean = android.os.Build.MANUFACTURER.equals("samsung", ignoreCase = true),
+)
+
+private data class IntegrationStatus(
+    val spotifyInstalled: Boolean = false,
+    val spotifyAccess: Boolean = false,
+    val googleMapsInstalled: Boolean = false,
+    val batteryUnrestricted: Boolean = true,
 )
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val prefs: UserPreferencesRepository,
-    private val gbfsRepository: GbfsRepository,
     private val locationRepository: LocationRepository,
+    private val spotify: SpotifyControl,
+    @ApplicationContext private val appContext: Context,
 ) : ViewModel() {
 
-    private val bikeShare = MutableStateFlow(BikeShareSearch())
+    private val integrations = MutableStateFlow(IntegrationStatus())
+
     private val message = MutableStateFlow<String?>(null)
 
     val uiState: StateFlow<SettingsUiState> = combine(
         prefs.preferences,
-        bikeShare,
         message,
-    ) { p, share, msg ->
-        SettingsUiState(prefs = p, bikeShare = share, message = msg)
+        integrations,
+    ) { p, msg, i ->
+        SettingsUiState(
+            prefs = p,
+            message = msg,
+            spotifyInstalled = i.spotifyInstalled,
+            spotifyAccess = i.spotifyAccess,
+            googleMapsInstalled = i.googleMapsInstalled,
+            batteryUnrestricted = i.batteryUnrestricted,
+        )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 
     fun setUnit(unit: SpeedUnit) = launch { prefs.setSpeedUnit(unit) }
     fun setTheme(theme: ThemeMode) = launch { prefs.setTheme(theme) }
+    fun movePanel(view: RideView, by: Int) = launch { prefs.movePanel(view, by) }
+    fun setFloatingSpeedometer(floating: Boolean) = launch { prefs.setFloatingSpeedometer(floating) }
     fun setAutoPause(v: Boolean) = launch { prefs.setAutoPause(v) }
     fun setKeepScreenOn(v: Boolean) = launch { prefs.setKeepScreenOn(v) }
     fun setRideModeLock(v: Boolean) = launch { prefs.setRideModeLock(v) }
     fun setSpeedAlertEnabled(v: Boolean) = launch { prefs.setSpeedAlertEnabled(v) }
     fun setSpeedAlertSound(v: Boolean) = launch { prefs.setSpeedAlertSound(v) }
     fun setSpeedAlertVibrate(v: Boolean) = launch { prefs.setSpeedAlertVibrate(v) }
-    fun setShowBikeShops(v: Boolean) = launch { prefs.setShowBikeShops(v) }
-    fun setShowBikeShare(v: Boolean) = launch { prefs.setShowBikeShare(v) }
-    fun setShowBikeShareInWalk(v: Boolean) = launch { prefs.setShowBikeShareInWalkMode(v) }
-    fun setOnlyWithBikes(v: Boolean) = launch { prefs.setOnlyStationsWithBikes(v) }
-    fun setShowCycleLanes(v: Boolean) = launch { prefs.setShowCycleLanes(v) }
+    fun setSpotifyEnabled(v: Boolean) = launch { prefs.setSpotifyEnabled(v) }
+    fun setGoogleMapsEnabled(v: Boolean) = launch { prefs.setGoogleMapsEnabled(v) }
+
+    fun refreshIntegrations() {
+        integrations.value = IntegrationStatus(
+            spotifyInstalled = spotify.isInstalled(),
+            spotifyAccess = spotify.hasAccess(),
+            googleMapsInstalled = GoogleMapsLauncher.isInstalled(appContext),
+            batteryUnrestricted = appContext.getSystemService(PowerManager::class.java)
+                ?.isIgnoringBatteryOptimizations(appContext.packageName) ?: true,
+        )
+    }
+
+    /**
+     * Opens Android's battery optimization list, where RideDeck can be set to "Not optimized".
+     * One UI is aggressive about this and can end a ride recording or music some time after the
+     * screen goes off. (The list rather than a direct prompt, which Play only allows for a few
+     * kinds of app.)
+     */
+    fun openBatterySettings() {
+        try {
+            appContext.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (e: ActivityNotFoundException) {
+            appContext.openAppSettings()
+        }
+    }
+
+    fun openSpotify() = spotify.openSpotify()
+    fun openNotificationAccess() = spotify.openAccessSettings()
+    fun setView(view: RideView, visible: Boolean, landscape: Boolean) = launch { prefs.setView(view, visible, landscape) }
+    fun setStatVisible(stat: RideStat, visible: Boolean) = launch { prefs.setStatVisible(stat, visible) }
+    fun setMapStyle(style: MapStyle) = launch { prefs.setMapStyle(style) }
+    fun setVoiceDirections(v: Boolean) = launch { prefs.setVoiceDirections(v) }
+
+    fun openGoogleMapsStore() = GoogleMapsLauncher.openStore(appContext)
+    fun openAppInfo() = appContext.openAppSettings()
     fun setLyricsEnabled(v: Boolean) = launch { prefs.setLyricsEnabled(v) }
 
     /** [value] is in the user's display unit. */
@@ -71,38 +128,9 @@ class SettingsViewModel @Inject constructor(
         prefs.setSpeedAlertLimitMps(Units.toMps(value.toDouble(), unit))
     }
 
-    fun findBikeShareSystems() {
-        bikeShare.update { it.copy(loading = true, error = null) }
-        viewModelScope.launch {
-            try {
-                val here = locationRepository.lastKnown()?.point
-                val systems = gbfsRepository.systemsNear(here).take(MAX_SYSTEMS)
-                bikeShare.value = BikeShareSearch(systems = systems, error = if (systems.isEmpty()) "No public systems found nearby" else null)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                bikeShare.value = BikeShareSearch(error = "Couldn't load the bike-share catalogue")
-            }
-        }
-    }
-
-    fun chooseBikeShareSystem(name: String?, url: String?) = launch {
-        val clean = url?.trim()
-        if (clean != null && clean.isNotEmpty() && !clean.startsWith("https://") && !clean.startsWith("http://")) {
-            message.value = "Feed URL must start with https://"
-            return@launch
-        }
-        prefs.setGbfsSystem(name, clean)
-        bikeShare.value = BikeShareSearch()
-    }
-
     fun dismissMessage() {
         message.value = null
     }
 
     private fun launch(block: suspend () -> Unit) = viewModelScope.launch { block() }
-
-    private companion object {
-        const val MAX_SYSTEMS = 40
-    }
 }

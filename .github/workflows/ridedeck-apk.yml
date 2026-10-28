@@ -16,6 +16,10 @@ defaults:
   run:
     working-directory: RideDeck
 
+env:
+  # Every build gets a higher versionCode, which Google Play requires for each upload.
+  VERSION_CODE: ${{ github.run_number }}0
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -43,6 +47,7 @@ jobs:
         run: |
           echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
           echo "RIDEDECK_KEYSTORE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+          echo "PLAY_UPLOAD_KEY=1" >> "$GITHUB_ENV"
 
       - name: Build release APK
         env:
@@ -53,6 +58,24 @@ jobs:
 
       - name: Rename APK
         run: cp app/build/outputs/apk/release/app-release.apk RideDeck.apk
+
+      # The Play Store takes an app bundle signed with your own upload key, so this step only runs
+      # once the RIDEDECK_KEYSTORE_* secrets are set (see RideDeck/docs/PLAY_STORE.md).
+      - name: Build Play Store bundle (AAB)
+        if: ${{ env.PLAY_UPLOAD_KEY == '1' }}
+        env:
+          RIDEDECK_KEYSTORE_PASSWORD: ${{ secrets.RIDEDECK_KEYSTORE_PASSWORD }}
+          RIDEDECK_KEY_ALIAS: ${{ secrets.RIDEDECK_KEY_ALIAS }}
+          RIDEDECK_KEY_PASSWORD: ${{ secrets.RIDEDECK_KEY_PASSWORD }}
+        run: |
+          ./gradlew --no-daemon :app:bundleRelease
+          cp app/build/outputs/bundle/release/app-release.aab RideDeck.aab
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ env.PLAY_UPLOAD_KEY == '1' }}
+        with:
+          name: RideDeck-aab
+          path: RideDeck/RideDeck.aab
 
       - uses: actions/upload-artifact@v4
         with:
@@ -74,4 +97,4 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/ridedeck-v')
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" RideDeck.apk --title "RideDeck ${GITHUB_REF_NAME#ridedeck-}" --generate-notes
+        run: gh release create "$GITHUB_REF_NAME" RideDeck.apk $( [ -f RideDeck.aab ] && echo RideDeck.aab ) --title "RideDeck ${GITHUB_REF_NAME#ridedeck-}" --generate-notes

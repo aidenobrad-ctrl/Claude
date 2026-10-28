@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.ridedeck.app.data.local.LifetimeTotals
 import com.ridedeck.app.data.location.LocationAccuracy
 import com.ridedeck.app.data.location.LocationRepository
+import com.ridedeck.app.data.prefs.OverlayPosition
+import com.ridedeck.app.data.prefs.RideStat
 import com.ridedeck.app.data.prefs.UserPreferences
 import com.ridedeck.app.data.prefs.UserPreferencesRepository
 import com.ridedeck.app.data.session.SessionRepository
@@ -36,7 +38,7 @@ import javax.inject.Inject
 
 data class HomeUiState(
     val mode: ActivityMode = ActivityMode.BIKE,
-    val unit: SpeedUnit = SpeedUnit.KMH,
+    val unit: SpeedUnit = SpeedUnit.MPH,
     val snapshot: TripSnapshot = TripSnapshot.idle(ActivityMode.BIKE),
     /** Live speed while no session is recording (only while this screen is visible). */
     val previewSpeedMps: Double = 0.0,
@@ -44,6 +46,9 @@ data class HomeUiState(
     val hasLocationPermission: Boolean = true,
     val speedAlertEnabled: Boolean = false,
     val speedAlertLimitMps: Double = UserPreferences.DEFAULT_ALERT_LIMIT_MPS,
+    val expanded: Boolean = true,
+    val position: OverlayPosition? = null,
+    val visibleStats: Set<RideStat> = RideStat.entries.toSet(),
 ) {
     val sessionActive: Boolean get() = snapshot.isActive
     val profile: ModeProfile get() = ModeProfile.of(mode)
@@ -111,6 +116,15 @@ class HomeViewModel @Inject constructor(
             hasLocationPermission = locationRepository.hasPreciseLocationPermission(),
             speedAlertEnabled = prefs.speedAlertEnabled,
             speedAlertLimitMps = prefs.speedAlertLimitMps,
+            expanded = prefs.speedOverlayExpanded,
+            position = prefs.speedOverlayPosition,
+            visibleStats = buildSet {
+                if (prefs.showDistance) add(RideStat.DISTANCE)
+                if (prefs.showTime) add(RideStat.TIME)
+                if (prefs.showAverage) add(RideStat.AVERAGE)
+                if (prefs.showMax) add(RideStat.MAX)
+                if (prefs.showOdometer) add(RideStat.ODOMETER)
+            },
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
 
@@ -119,7 +133,9 @@ class HomeViewModel @Inject constructor(
         permissionTick.value++
     }
 
-    fun setMode(mode: ActivityMode) = viewModelScope.launch { preferencesRepository.setMode(mode) }
+    fun setExpanded(expanded: Boolean) = viewModelScope.launch { preferencesRepository.setSpeedOverlayExpanded(expanded) }
+
+    fun setPosition(position: OverlayPosition?) = viewModelScope.launch { preferencesRepository.setSpeedOverlayPosition(position) }
 
     fun toggleUnit() = viewModelScope.launch {
         val current = preferencesRepository.current().speedUnit

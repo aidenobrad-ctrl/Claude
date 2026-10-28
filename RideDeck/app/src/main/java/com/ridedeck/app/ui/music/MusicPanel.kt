@@ -56,6 +56,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -70,6 +71,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ridedeck.app.data.prefs.MusicSource
 import com.ridedeck.app.music.PlaybackState
 import com.ridedeck.app.music.Track
 import com.ridedeck.app.ui.permissions.audioPermission
@@ -83,6 +85,39 @@ import kotlinx.coroutines.delay
  */
 @Composable
 fun MusicPanel(
+    lyricsEnabled: Boolean,
+    spotifyEnabled: Boolean,
+    source: MusicSource,
+    onSourceChange: (MusicSource) -> Unit,
+) {
+    Surface(color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxSize()) {
+        Column {
+            if (spotifyEnabled) {
+                Row(
+                    Modifier.padding(start = 12.dp, end = 12.dp, top = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    FilterChip(
+                        selected = source == MusicSource.PHONE,
+                        onClick = { onSourceChange(MusicSource.PHONE) },
+                        label = { Text("On this phone") },
+                    )
+                    FilterChip(
+                        selected = source == MusicSource.SPOTIFY,
+                        onClick = { onSourceChange(MusicSource.SPOTIFY) },
+                        label = { Text("Spotify") },
+                    )
+                }
+            }
+            Box(Modifier.weight(1f)) {
+                if (spotifyEnabled && source == MusicSource.SPOTIFY) SpotifyPanel(lyricsEnabled) else PhoneMusicPanel(lyricsEnabled)
+            }
+        }
+    }
+}
+
+@Composable
+private fun PhoneMusicPanel(
     lyricsEnabled: Boolean,
     viewModel: MusicViewModel = hiltViewModel(),
 ) {
@@ -109,7 +144,7 @@ fun MusicPanel(
         viewModel.refreshLibrary()
     }
 
-    Surface(color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxSize()) {
+    Box(Modifier.fillMaxSize()) {
         when (state.library) {
             LibraryState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
@@ -132,13 +167,21 @@ fun MusicPanel(
 private fun Player(state: MusicUiState, lyricsEnabled: Boolean, viewModel: MusicViewModel) {
     val playback = state.playback
     BoxWithConstraints(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp)) {
-        val compact = maxHeight < 150.dp
-        val roomForList = maxHeight >= 240.dp
+        // Breakpoints grow with the font size setting so large text never gets squeezed.
+        val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+        val compact = maxHeight < 150.dp * fontScale
+        val roomForList = maxHeight >= 240.dp * fontScale
+        // Music on its own on a tall screen gets big album art instead of a thumbnail.
+        val artSize = when {
+            compact -> 56.dp
+            maxHeight >= 520.dp -> minOf(maxWidth * 0.34f, maxHeight * 0.22f, 180.dp)
+            else -> 88.dp
+        }
         // 0 = lyrics, 1 = library. Start on the library until something is playing.
         var tab by rememberSaveable { mutableIntStateOf(if (playback.trackId == null || !lyricsEnabled) 1 else 0) }
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                AlbumArt(state, if (compact) 56.dp else 88.dp)
+                AlbumArt(state, artSize)
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
@@ -166,6 +209,7 @@ private fun Player(state: MusicUiState, lyricsEnabled: Boolean, viewModel: Music
                 }
                 if (compact) Controls(state, viewModel, small = true)
             }
+            if (playback.trackId != null) SeekBar(playback, onSeek = viewModel::seekTo)
             if (!compact) Controls(state, viewModel, small = false)
             if (roomForList) {
                 if (lyricsEnabled) {
@@ -196,7 +240,7 @@ private fun LibraryList(state: MusicUiState, viewModel: MusicViewModel) {
             FilterChip(
                 selected = state.favouritesOnly,
                 onClick = { viewModel.setFavouritesOnly(true) },
-                label = { Text("Favourites") },
+                label = { Text("Favorites") },
             )
             Spacer(Modifier.weight(1f))
             IconButton(onClick = viewModel::shuffleAll, enabled = tracks.isNotEmpty()) {
@@ -205,7 +249,7 @@ private fun LibraryList(state: MusicUiState, viewModel: MusicViewModel) {
         }
         if (tracks.isEmpty()) {
             Text(
-                "No favourites yet. Tap the heart while a song plays.",
+                "No favorites yet. Tap the heart while a song plays.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(8.dp),
             )
@@ -312,7 +356,7 @@ private fun Controls(state: MusicUiState, viewModel: MusicViewModel, small: Bool
             IconButton(onClick = viewModel::toggleFavourite, modifier = Modifier.size(buttonSize)) {
                 Icon(
                     if (state.isFavourite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                    contentDescription = if (state.isFavourite) "Remove from favourites" else "Add to favourites",
+                    contentDescription = if (state.isFavourite) "Remove from favorites" else "Add to favorites",
                     tint = if (state.isFavourite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.size(iconSize),
                 )
@@ -322,7 +366,7 @@ private fun Controls(state: MusicUiState, viewModel: MusicViewModel, small: Bool
 }
 
 @Composable
-private fun LyricsView(lyrics: LyricsState, playback: PlaybackState, modifier: Modifier) {
+internal fun LyricsView(lyrics: LyricsState, playback: PlaybackState, modifier: Modifier) {
     Box(modifier.fillMaxWidth()) {
         when (lyrics) {
             LyricsState.Off -> Text("Play a song to see its lyrics.", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -380,7 +424,7 @@ private fun Source(source: String) {
 }
 
 @Composable
-private fun Prompt(message: String, action: String?, onAction: (() -> Unit)?) {
+internal fun Prompt(message: String, action: String?, onAction: (() -> Unit)?) {
     Column(
         Modifier.fillMaxSize().padding(16.dp),
         verticalArrangement = Arrangement.Center,

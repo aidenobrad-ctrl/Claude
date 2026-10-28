@@ -36,6 +36,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -57,6 +58,7 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.viewModelScope
 import com.ridedeck.app.data.prefs.UserPreferencesRepository
 import com.ridedeck.app.ui.components.GloveTouchTarget
+import com.ridedeck.app.ui.components.LinkText
 import com.ridedeck.app.ui.theme.GoGreen
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.launch
@@ -76,6 +78,7 @@ class PermissionsViewModel @Inject constructor(
 @Composable
 fun PermissionsScreen(
     onDone: () -> Unit,
+    onOpenPrivacy: () -> Unit,
     viewModel: PermissionsViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
@@ -95,7 +98,6 @@ fun PermissionsScreen(
     val locationGranted = granted.location
     val notificationsGranted = granted.notifications
     val musicGranted = granted.music
-    val backgroundGranted = granted.background
 
     fun permanentlyDenied(permission: String, granted: Boolean) =
         !granted && permission in asked && activity != null &&
@@ -122,7 +124,7 @@ fun PermissionsScreen(
             icon = Icons.Default.LocationOn,
             title = "Precise location (required)",
             rationale = "Drives the speedometer, measures your distance and shows you on the map. " +
-                "Precise location is needed because approximate location is only accurate to a few kilometres.",
+                "Precise location is needed because approximate location is only accurate to a few miles.",
             granted = locationGranted,
             permanentlyDenied = permanentlyDenied(Manifest.permission.ACCESS_FINE_LOCATION, locationGranted),
             onRequest = {
@@ -162,25 +164,7 @@ fun PermissionsScreen(
             onOpenSettings = { context.openAppSettings() },
         )
 
-        if (Build.VERSION.SDK_INT >= 29) {
-            PermissionCard(
-                icon = Icons.Default.MyLocation,
-                title = "Location all the time",
-                rationale = "Optional. Recording normally runs as a visible foreground service and does not need this. " +
-                    "It only lets RideDeck resume a recording if Android restarts the app in the background " +
-                    "(for example after freeing memory). On the next screen choose \"Allow all the time\".",
-                granted = backgroundGranted,
-                enabled = locationGranted,
-                disabledHint = "Grant precise location first.",
-                permanentlyDenied = permanentlyDenied(Manifest.permission.ACCESS_BACKGROUND_LOCATION, backgroundGranted),
-                onRequest = {
-                    asked = asked + Manifest.permission.ACCESS_BACKGROUND_LOCATION
-                    single.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
-                },
-                onOpenSettings = { context.openAppSettings() },
-            )
-        }
-
+        LinkText("Privacy policy", onClick = onOpenPrivacy)
         Spacer(Modifier.size(8.dp))
         Button(
             onClick = {
@@ -237,14 +221,12 @@ private data class PermissionStatus(
     val location: Boolean,
     val notifications: Boolean,
     val music: Boolean,
-    val background: Boolean,
 ) {
     companion object {
         fun read(context: Context) = PermissionStatus(
             location = context.isGranted(Manifest.permission.ACCESS_FINE_LOCATION),
             notifications = Build.VERSION.SDK_INT < 33 || context.isGranted(Manifest.permission.POST_NOTIFICATIONS),
             music = context.isGranted(audioPermission()),
-            background = Build.VERSION.SDK_INT < 29 || context.isGranted(Manifest.permission.ACCESS_BACKGROUND_LOCATION),
         )
     }
 }

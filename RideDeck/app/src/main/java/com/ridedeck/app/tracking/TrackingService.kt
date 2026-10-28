@@ -31,7 +31,7 @@ class TrackingService : LifecycleService() {
     @Inject lateinit var preferences: UserPreferencesRepository
 
     private var observing = false
-    private var unit = SpeedUnit.KMH
+    private var unit = SpeedUnit.MPH
 
     override fun onCreate() {
         super.onCreate()
@@ -137,6 +137,10 @@ class TrackingService : LifecycleService() {
         stopSelf()
     }
 
+    /**
+     * The Play Store build does not request background location (recording runs as a visible
+     * foreground service), so a system restart normally just saves what was recorded.
+     */
     private fun hasBackgroundLocation(): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
             ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION) ==

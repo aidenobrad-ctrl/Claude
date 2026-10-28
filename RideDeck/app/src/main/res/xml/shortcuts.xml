@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="start_ride"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_ride"
+        android:shortcutShortLabel="@string/shortcut_start_ride"
+        android:shortcutLongLabel="@string/shortcut_start_ride_long">
+        <intent
+            android:action="com.ridedeck.app.action.START_RIDE"
+            android:targetPackage="com.ridedeck.app"
+            android:targetClass="com.ridedeck.app.MainActivity" />
+    </shortcut>
+</shortcuts>

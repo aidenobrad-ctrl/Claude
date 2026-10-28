@@ -1,6 +1,16 @@
 package com.ridedeck.app.ui.components
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.TextAutoSize
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.isSpecified
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -30,6 +40,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ridedeck.app.R
@@ -38,39 +49,6 @@ import com.ridedeck.core.model.ActivityMode
 
 /** Minimum touch target for controls used with gloves (Material recommends 48 dp; we use 64+). */
 val GloveTouchTarget = 64.dp
-
-@Composable
-fun ModeToggle(
-    mode: ActivityMode,
-    onModeChange: (ActivityMode) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val options = listOf(
-        Triple(ActivityMode.BIKE, stringResource(R.string.mode_bike), Icons.AutoMirrored.Filled.DirectionsBike),
-        Triple(ActivityMode.WALK, stringResource(R.string.mode_walk), Icons.AutoMirrored.Filled.DirectionsWalk),
-    )
-    SingleChoiceSegmentedButtonRow(modifier = modifier.fillMaxWidth()) {
-        options.forEachIndexed { index, (value, label, icon) ->
-            SegmentedButton(
-                selected = mode == value,
-                onClick = { onModeChange(value) },
-                shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
-                modifier = Modifier.heightIn(min = GloveTouchTarget),
-                icon = {
-                    SegmentedButtonDefaults.Icon(active = mode == value) {
-                        Icon(icon, contentDescription = null, modifier = Modifier.size(28.dp))
-                    }
-                },
-                colors = SegmentedButtonDefaults.colors(
-                    activeContainerColor = MaterialTheme.colorScheme.primary,
-                    activeContentColor = MaterialTheme.colorScheme.onPrimary,
-                ),
-            ) {
-                Text(label, style = MaterialTheme.typography.titleMedium)
-            }
-        }
-    }
-}
 
 @Composable
 fun BigActionButton(
@@ -117,11 +95,13 @@ fun StatTile(
                 overflow = TextOverflow.Ellipsis,
             )
             Row(verticalAlignment = Alignment.Bottom) {
-                Text(
+                AutoSizeText(
                     value,
-                    style = NumericStyle.copy(fontSize = MaterialTheme.typography.headlineSmall.fontSize),
-                    color = if (highlight) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
+                    style = NumericStyle.copy(
+                        fontSize = MaterialTheme.typography.headlineSmall.fontSize,
+                        color = if (highlight) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                    ),
+                    modifier = Modifier.weight(1f, fill = false),
                 )
                 if (unit != null) {
                     Spacer(Modifier.width(4.dp))
@@ -153,6 +133,53 @@ fun RideModeBanner(modifier: Modifier = Modifier) {
             Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(8.dp))
             Text("Ride Mode: menus locked while moving", style = MaterialTheme.typography.labelLarge)
+        }
+    }
+}
+
+/**
+ * Single-line text that steps its font size down (to half of [maxSize] at most) until it fits,
+ * so numbers and button labels never clip or wrap with large display or font size settings.
+ */
+@Composable
+fun AutoSizeText(
+    text: String,
+    style: TextStyle,
+    modifier: Modifier = Modifier,
+    maxSize: TextUnit = style.fontSize,
+) {
+    val top = if (maxSize.isSpecified) maxSize else MaterialTheme.typography.bodyLarge.fontSize
+    BasicText(
+        text = text,
+        modifier = modifier,
+        style = style,
+        maxLines = 1,
+        softWrap = false,
+        autoSize = TextAutoSize.StepBased(minFontSize = top * 0.5f, maxFontSize = top, stepSize = 1.sp),
+    )
+}
+
+/** A plain text link in the accent color, underlined, with a full-size touch target. */
+@Composable
+fun LinkText(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Text(
+        text,
+        style = MaterialTheme.typography.bodyLarge.copy(textDecoration = TextDecoration.Underline),
+        color = MaterialTheme.colorScheme.primary,
+        modifier = modifier
+            .heightIn(min = 48.dp)
+            .clickable(role = Role.Button, onClick = onClick)
+            .wrapContentHeight(),
+    )
+}
+
+/** The large bold title at the top of History, Settings and the other full screens. */
+@Composable
+fun ScreenTitle(text: String, modifier: Modifier = Modifier, subtitle: String? = null) {
+    Column(modifier.padding(start = 4.dp, top = 8.dp, bottom = 4.dp).semantics(mergeDescendants = true) { heading() }) {
+        Text(text, style = MaterialTheme.typography.headlineLarge)
+        if (subtitle != null) {
+            Text(subtitle, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

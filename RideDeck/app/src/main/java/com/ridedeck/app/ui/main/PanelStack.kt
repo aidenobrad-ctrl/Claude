@@ -98,7 +98,11 @@ fun PanelStack(
     var armedDivider by remember { mutableIntStateOf(-1) }
 
     BoxWithConstraints(modifier.fillMaxSize()) {
-        val totalPx = with(LocalDensity.current) { (if (vertical) maxHeight else maxWidth).toPx() }.coerceAtLeast(1f)
+        // The space the panels share: the whole stack minus the dividers, so a divider moved by
+        // some distance grows one panel and shrinks the other by exactly that distance.
+        val totalPx = with(LocalDensity.current) {
+            ((if (vertical) maxHeight else maxWidth) - DIVIDER * (count - 1)).toPx()
+        }.coerceAtLeast(1f)
         val swapDistancePx = with(LocalDensity.current) { SWAP_DISTANCE.toPx() }
 
         @Composable
@@ -212,22 +216,13 @@ private fun Divider(
     val accent = MaterialTheme.colorScheme.primary
     val bar = MaterialTheme.colorScheme.surfaceContainer
     val edge = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+    // The gestures sit on a divider that stays put; only the bar drawn inside it moves. If the
+    // moving part took the touches, every move would shift the coordinates under the finger and
+    // the divider would lag behind it.
     Box(
         Modifier
             .zIndex(1f)
             .then(if (vertical) Modifier.fillMaxWidth().height(DIVIDER) else Modifier.fillMaxHeight().width(DIVIDER))
-            .graphicsLayer {
-                // Resizing moves the divider itself as a preview; a held swap only lifts it.
-                if (mode == DividerMode.RESIZE) {
-                    if (vertical) translationY = travel.floatValue else translationX = travel.floatValue
-                }
-            }
-            .background(
-                when (mode) {
-                    DividerMode.IDLE -> if (vertical) Brush.verticalGradient(listOf(edge, bar, bar, edge)) else Brush.horizontalGradient(listOf(edge, bar, bar, edge))
-                    else -> Brush.linearGradient(listOf(accent.copy(alpha = 0.35f), accent.copy(alpha = 0.35f)))
-                },
-            )
             .pointerInput(vertical, swapDistancePx) {
                 awaitEachGesture {
                     val down = awaitFirstDown()
@@ -254,6 +249,7 @@ private fun Divider(
                         val c = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
                         if (!c.pressed) break
                         c.consume()
+                        // One to one with the finger, from where it first touched.
                         val raw = along(c)
                         travel.floatValue = if (decided == DividerMode.RESIZE) raw.coerceIn(range) else raw
                     }
@@ -272,23 +268,40 @@ private fun Divider(
                 contentDescription = "Panel divider. Drag to resize. Press and hold, then drag, to swap the panels."
                 customActions = listOf(CustomAccessibilityAction(swapLabel) { swapped(); true })
             },
-        contentAlignment = Alignment.Center,
     ) {
-        if (mode == DividerMode.SWAP) {
-            Text(
-                if (farEnough) "Let go to swap" else "Drag to swap",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-        } else {
-            Box(
-                Modifier
-                    .size(width = if (vertical) 44.dp else 5.dp, height = if (vertical) 5.dp else 44.dp)
-                    .background(
-                        if (mode == DividerMode.RESIZE) accent else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                        RoundedCornerShape(50),
-                    ),
-            )
+        Box(
+            Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    // While resizing, the bar rides under the finger to show where the edge will be.
+                    if (mode == DividerMode.RESIZE) {
+                        if (vertical) translationY = travel.floatValue else translationX = travel.floatValue
+                    }
+                }
+                .background(
+                    when (mode) {
+                        DividerMode.IDLE -> if (vertical) Brush.verticalGradient(listOf(edge, bar, bar, edge)) else Brush.horizontalGradient(listOf(edge, bar, bar, edge))
+                        else -> Brush.linearGradient(listOf(accent.copy(alpha = 0.35f), accent.copy(alpha = 0.35f)))
+                    },
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (mode == DividerMode.SWAP) {
+                Text(
+                    if (farEnough) "Let go to swap" else "Drag to swap",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            } else {
+                Box(
+                    Modifier
+                        .size(width = if (vertical) 44.dp else 5.dp, height = if (vertical) 5.dp else 44.dp)
+                        .background(
+                            if (mode == DividerMode.RESIZE) accent else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            RoundedCornerShape(50),
+                        ),
+                )
+            }
         }
     }
 }

@@ -139,9 +139,6 @@ fun SpeedOverlay(
             // split-screen window, instead of a fixed size that clips at large font settings.
             val density = LocalDensity.current
             val wide = fullScreen && maxWidth > maxHeight && maxWidth >= 560.dp
-            // Captured here: nested layout scopes below can't see BoxWithConstraints' receiver.
-            val areaWidth = maxWidth
-            val areaHeight = maxHeight
             val heroSize = with(density) {
                 when {
                     !fullScreen -> minOf(maxWidth * 0.2f, 76.dp).toSp()
@@ -190,39 +187,7 @@ fun SpeedOverlay(
                     verticalArrangement = Arrangement.spacedBy(if (fullScreen) 16.dp else 10.dp),
                 ) {
                     if (onHandleDoubleTap != null) TopHandle(onHandleDoubleTap)
-                    if (fullScreen) {
-                        val metric = unit == com.ridedeck.core.model.SpeedUnit.KMH
-                        val scale = gaugeFullScale(Units.speed(speedMps, unit), Units.speed(snap.maxSpeedMps, unit), metric)
-                        val dial = minOf(areaWidth * 0.86f, areaHeight * if (wide) 0.62f else 0.46f, 420.dp)
-                        val dialHero = with(density) { (dial * 0.3f).toSp() }
-                        Box(Modifier.fillMaxWidth()) {
-                            SpeedGauge(
-                                fraction = (Units.speed(speedMps, unit) / scale).toFloat(),
-                                alert = overLimit,
-                                modifier = Modifier.align(Alignment.Center).size(dial),
-                            ) {
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    modifier = Modifier.semantics(mergeDescendants = true) { contentDescription = spokenSpeed },
-                                ) {
-                                    SpeedFigure(
-                                        speedMps,
-                                        unit,
-                                        style = NumericStyle.copy(fontSize = dialHero, lineHeight = dialHero, letterSpacing = (-2).sp),
-                                        color = speedColor,
-                                    )
-                                    TextButton(onClick = viewModel::toggleUnit, modifier = Modifier.heightIn(min = 48.dp)) {
-                                        Text(
-                                            Units.speedLabel(unit).uppercase(),
-                                            style = MaterialTheme.typography.titleMedium.copy(letterSpacing = 2.sp),
-                                            color = MaterialTheme.colorScheme.primary,
-                                        )
-                                    }
-                                }
-                            }
-                            Box(Modifier.align(Alignment.TopEnd)) { StatusChip(snap.status, state.isNewRecord) }
-                        }
-                    } else Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Row(
                             Modifier.weight(1f).semantics(mergeDescendants = true) { contentDescription = spokenSpeed },
                             verticalAlignment = Alignment.Bottom,

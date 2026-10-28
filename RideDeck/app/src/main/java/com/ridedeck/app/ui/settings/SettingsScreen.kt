@@ -395,14 +395,14 @@ private fun Section(title: String, icon: ImageVector, content: @Composable Colum
 
 /**
  * The order of the Ride screen panels, top to bottom (left to right in landscape), with arrows to
- * move each one. The swap buttons on the Ride screen's dividers change the same order.
+ * move each one. Swapping panels from the Ride screen's dividers changes the same order.
  */
 @Composable
 private fun PanelOrder(order: List<RideView>, onMove: (RideView, Int) -> Unit) {
     Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
         Text("Panel order", style = MaterialTheme.typography.bodyLarge)
         Text(
-            "Top to bottom, or left to right when turned sideways. You can also tap ⇅ between panels on the Ride screen.",
+            "Top to bottom, or left to right when turned sideways. On the Ride screen you can also press and hold the divider between two panels, then drag, to swap them.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 2.dp, bottom = 8.dp),

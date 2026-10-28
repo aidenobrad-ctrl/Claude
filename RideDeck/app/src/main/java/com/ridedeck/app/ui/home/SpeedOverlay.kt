@@ -59,6 +59,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
+import com.ridedeck.core.model.SpeedUnit
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -112,9 +117,7 @@ fun SpeedOverlay(
     val unit = state.unit
     val snap = state.snapshot
     val speedMps = state.displaySpeedMps
-    // The figure counts smoothly between GPS fixes instead of jumping once a second.
-    val shownSpeedMps by animateFloatAsState(speedMps.toFloat(), tween(durationMillis = 700, easing = LinearOutSlowInEasing), label = "speed")
-    val speedText = Formatters.speed(shownSpeedMps.toDouble(), unit)
+    val speedText = Formatters.speed(speedMps, unit)
     val overLimit = state.speedAlertEnabled && speedMps > state.speedAlertLimitMps
     val speedColor = if (overLimit) AlertRed else MaterialTheme.colorScheme.onSurface
     val spokenSpeed = "Speed $speedText ${Units.speedLabel(unit)}" + if (overLimit) ", over your speed limit" else ""
@@ -154,8 +157,9 @@ fun SpeedOverlay(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (onHandleDoubleTap != null) SideHandle(onHandleDoubleTap)
-                    Text(
-                        speedText,
+                    SpeedFigure(
+                        speedMps,
+                        unit,
                         style = NumericStyle.copy(fontSize = 40.sp),
                         color = speedColor,
                         modifier = Modifier.semantics { contentDescription = spokenSpeed },
@@ -193,7 +197,7 @@ fun SpeedOverlay(
                         val dialHero = with(density) { (dial * 0.3f).toSp() }
                         Box(Modifier.fillMaxWidth()) {
                             SpeedGauge(
-                                fraction = (Units.speed(shownSpeedMps.toDouble(), unit) / scale).toFloat(),
+                                fraction = (Units.speed(speedMps, unit) / scale).toFloat(),
                                 alert = overLimit,
                                 modifier = Modifier.align(Alignment.Center).size(dial),
                             ) {
@@ -201,12 +205,11 @@ fun SpeedOverlay(
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     modifier = Modifier.semantics(mergeDescendants = true) { contentDescription = spokenSpeed },
                                 ) {
-                                    Text(
-                                        speedText,
+                                    SpeedFigure(
+                                        speedMps,
+                                        unit,
                                         style = NumericStyle.copy(fontSize = dialHero, lineHeight = dialHero, letterSpacing = (-2).sp),
                                         color = speedColor,
-                                        maxLines = 1,
-                                        softWrap = false,
                                     )
                                     TextButton(onClick = viewModel::toggleUnit, modifier = Modifier.heightIn(min = 48.dp)) {
                                         Text(
@@ -224,12 +227,11 @@ fun SpeedOverlay(
                             Modifier.weight(1f).semantics(mergeDescendants = true) { contentDescription = spokenSpeed },
                             verticalAlignment = Alignment.Bottom,
                         ) {
-                            Text(
-                                speedText,
+                            SpeedFigure(
+                                speedMps,
+                                unit,
                                 style = NumericStyle.copy(fontSize = heroSize, lineHeight = heroSize),
                                 color = speedColor,
-                                maxLines = 1,
-                                softWrap = false,
                             )
                             Spacer(Modifier.width(6.dp))
                             TextButton(onClick = viewModel::toggleUnit, modifier = Modifier.heightIn(min = 48.dp)) {
@@ -331,6 +333,18 @@ fun SpeedOverlay(
             },
         )
     }
+}
+
+/**
+ * The speed figure. It counts smoothly between GPS fixes instead of jumping once a second, but
+ * only this text recomposes, and only when the shown whole number changes, so the rest of the
+ * speedometer stays still while it animates.
+ */
+@Composable
+private fun SpeedFigure(speedMps: Double, unit: SpeedUnit, style: TextStyle, color: Color, modifier: Modifier = Modifier) {
+    val animated = animateFloatAsState(speedMps.toFloat(), tween(durationMillis = 700, easing = LinearOutSlowInEasing), label = "speed")
+    val text by remember(unit) { derivedStateOf { Formatters.speed(animated.value.toDouble(), unit) } }
+    Text(text, style = style, color = color, maxLines = 1, softWrap = false, modifier = modifier)
 }
 
 /** The one button shown on the collapsed pill: start, pause or resume. */

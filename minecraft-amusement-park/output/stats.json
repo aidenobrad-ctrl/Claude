@@ -1,0 +1,1024 @@
+{
+  "dimensions": {
+    "x": 640,
+    "y": 112,
+    "z": 720
+  },
+  "ground_layer_y_in_schematic": 4,
+  "blocks_by_section": {},
+  "materials_top": [
+    [
+      "grass_block",
+      279833
+    ],
+    [
+      "water",
+      64242
+    ],
+    [
+      "spruce_planks",
+      53983
+    ],
+    [
+      "gray_concrete",
+      37363
+    ],
+    [
+      "dirt",
+      36198
+    ],
+    [
+      "birch_leaves",
+      32051
+    ],
+    [
+      "spruce_leaves",
+      30742
+    ],
+    [
+      "white_concrete",
+      28187
+    ],
+    [
+      "stone_bricks",
+      24429
+    ],
+    [
+      "oak_leaves",
+      21954
+    ],
+    [
+      "calcite",
+      21854
+    ],
+    [
+      "light_gray_concrete",
+      21522
+    ],
+    [
+      "polished_andesite",
+      21499
+    ],
+    [
+      "smooth_quartz",
+      19673
+    ],
+    [
+      "cherry_leaves",
+      19464
+    ],
+    [
+      "dark_oak_planks",
+      17261
+    ],
+    [
+      "sand",
+      15682
+    ],
+    [
+      "black_concrete",
+      15049
+    ],
+    [
+      "coarse_dirt",
+      12612
+    ],
+    [
+      "smooth_stone",
+      11190
+    ],
+    [
+      "smooth_sandstone",
+      10851
+    ],
+    [
+      "blue_concrete",
+      9803
+    ],
+    [
+      "dark_oak_leaves",
+      9481
+    ],
+    [
+      "orange_terracotta",
+      8229
+    ],
+    [
+      "red_terracotta",
+      7712
+    ],
+    [
+      "bricks",
+      7611
+    ],
+    [
+      "light_blue_concrete",
+      7553
+    ],
+    [
+      "white_terracotta",
+      7535
+    ],
+    [
+      "terracotta",
+      7257
+    ],
+    [
+      "jungle_leaves",
+      6576
+    ],
+    [
+      "spruce_stairs",
+      6254
+    ],
+    [
+      "dark_prismarine_stairs",
+      6110
+    ],
+    [
+      "polished_diorite",
+      5862
+    ],
+    [
+      "gravel",
+      5680
+    ],
+    [
+      "cyan_concrete",
+      5158
+    ],
+    [
+      "cobblestone",
+      4820
+    ],
+    [
+      "glass_pane",
+      4721
+    ],
+    [
+      "mossy_stone_bricks",
+      4456
+    ],
+    [
+      "polished_granite",
+      4443
+    ],
+    [
+      "dark_oak_stairs",
+      4317
+    ]
+  ],
+  "distinct_block_types": 327,
+  "distinct_block_states": 825,
+  "labels": [
+    [
+      320,
+      320,
+      "WONDER SPIRE",
+      "attraction"
+    ],
+    [
+      384,
+      384,
+      "i",
+      "info"
+    ],
+    [
+      256,
+      256,
+      "i",
+      "info"
+    ],
+    [
+      392,
+      250,
+      "Hedge Maze",
+      "small"
+    ],
+    [
+      262,
+      270,
+      "Rose Garden",
+      "small"
+    ],
+    [
+      320,
+      395,
+      "STARLIGHT PLAZA",
+      "land"
+    ],
+    [
+      320,
+      500,
+      "GRAND AVENUE",
+      "land"
+    ],
+    [
+      320,
+      598,
+      "Town Square",
+      "small"
+    ],
+    [
+      248,
+      540,
+      "Avenue Gardens",
+      "small"
+    ],
+    [
+      390,
+      545,
+      "Backstage",
+      "small"
+    ],
+    [
+      320,
+      626,
+      "Grand Gate",
+      "small"
+    ],
+    [
+      320,
+      684,
+      "Security",
+      "small"
+    ],
+    [
+      320,
+      703,
+      "WELCOME SIGN",
+      "attraction"
+    ],
+    [
+      123,
+      681,
+      "West Parking",
+      "small"
+    ],
+    [
+      517,
+      681,
+      "East Parking",
+      "small"
+    ],
+    [
+      320,
+      690,
+      "GRAND ENTRANCE",
+      "land"
+    ],
+    [
+      320,
+      150,
+      "EVERSPIRE CASTLE",
+      "attraction"
+    ],
+    [
+      320,
+      80,
+      "ROYAL CAROUSEL",
+      "attraction"
+    ],
+    [
+      389,
+      48,
+      "HOLLOWMOOR MANOR (haunted house)",
+      "attraction"
+    ],
+    [
+      240,
+      132,
+      "Market Square",
+      "small"
+    ],
+    [
+      290,
+      210,
+      "i",
+      "info"
+    ],
+    [
+      246,
+      196,
+      "Dragon's Rock",
+      "small"
+    ],
+    [
+      320,
+      40,
+      "EVERSPIRE KINGDOM",
+      "land"
+    ],
+    [
+      500,
+      132,
+      "Rocket Plaza",
+      "small"
+    ],
+    [
+      545,
+      78,
+      "COSMIC VOYAGER (indoor)",
+      "attraction"
+    ],
+    [
+      456,
+      62,
+      "GRAVITY SPIRE drop tower",
+      "attraction"
+    ],
+    [
+      584,
+      176,
+      "Orbit Diner",
+      "small"
+    ],
+    [
+      484,
+      186,
+      "i",
+      "info"
+    ],
+    [
+      520,
+      205,
+      "NOVA FRONTIER",
+      "land"
+    ],
+    [
+      505,
+      330,
+      "HYPERION COASTER",
+      "attraction"
+    ],
+    [
+      72,
+      72,
+      "GOLD RUSH GULCH (log flume)",
+      "attraction"
+    ],
+    [
+      178,
+      70,
+      "DUST DEVIL SPEEDWAY (go-karts)",
+      "attraction"
+    ],
+    [
+      104,
+      200,
+      "i",
+      "info"
+    ],
+    [
+      120,
+      165,
+      "DUSTY GULCH",
+      "land"
+    ],
+    [
+      93,
+      318,
+      "THE CRIMSON KRAKEN (galleon)",
+      "attraction"
+    ],
+    [
+      52,
+      372,
+      "SKULL ROCK",
+      "attraction"
+    ],
+    [
+      56,
+      236,
+      "Fort Cutlass",
+      "small"
+    ],
+    [
+      132,
+      404,
+      "Lighthouse",
+      "small"
+    ],
+    [
+      182,
+      312,
+      "i",
+      "info"
+    ],
+    [
+      192,
+      236,
+      "KRAKEN'S REVENGE (swing ship)",
+      "attraction"
+    ],
+    [
+      110,
+      280,
+      "BLACKWATER COVE",
+      "land"
+    ],
+    [
+      60,
+      446,
+      "TEMPLE OF THE JADE IDOL",
+      "attraction"
+    ],
+    [
+      57,
+      571,
+      "WAVE POOL",
+      "attraction"
+    ],
+    [
+      120,
+      511,
+      "LAZY RIVER",
+      "attraction"
+    ],
+    [
+      85,
+      545,
+      "LAGOONA SPLASH WATER PARK",
+      "attraction"
+    ],
+    [
+      110,
+      570,
+      "Slide Tower",
+      "small"
+    ],
+    [
+      184,
+      578,
+      "MOUNT KAHUNA",
+      "attraction"
+    ],
+    [
+      150,
+      452,
+      "i",
+      "info"
+    ],
+    [
+      186,
+      436,
+      "CORAL CAY",
+      "land"
+    ],
+    [
+      482,
+      462,
+      "TOPSY TEACUPS",
+      "attraction"
+    ],
+    [
+      562,
+      456,
+      "BIG TOP CIRCUS",
+      "attraction"
+    ],
+    [
+      565,
+      568,
+      "JOLLY WHEEL (Ferris wheel)",
+      "attraction"
+    ],
+    [
+      471,
+      529,
+      "BUMPER BONANZA",
+      "attraction"
+    ],
+    [
+      452,
+      484,
+      "i",
+      "info"
+    ],
+    [
+      520,
+      540,
+      "JOLLYVILLE CARNIVAL",
+      "land"
+    ]
+  ],
+  "complete": {
+    "origin": [
+      0,
+      2,
+      0
+    ],
+    "size": [
+      640,
+      112,
+      720
+    ],
+    "blocks": 1116357,
+    "volume": 51609600,
+    "regions": [
+      [
+        "Dusty Gulch - Wild West Town",
+        [
+          0,
+          2,
+          0
+        ],
+        [
+          220,
+          112,
+          220
+        ]
+      ],
+      [
+        "Everspire Kingdom - Medieval Fantasy",
+        [
+          220,
+          2,
+          0
+        ],
+        [
+          200,
+          112,
+          220
+        ]
+      ],
+      [
+        "Nova Frontier North - Sci-Fi Zone",
+        [
+          420,
+          2,
+          0
+        ],
+        [
+          220,
+          112,
+          220
+        ]
+      ],
+      [
+        "Blackwater Cove - Pirate Cove",
+        [
+          0,
+          2,
+          220
+        ],
+        [
+          220,
+          112,
+          200
+        ]
+      ],
+      [
+        "Starlight Plaza - Central Hub & Wonder Spire",
+        [
+          220,
+          2,
+          220
+        ],
+        [
+          200,
+          112,
+          200
+        ]
+      ],
+      [
+        "Nova Frontier South - Hyperion Coaster",
+        [
+          420,
+          2,
+          220
+        ],
+        [
+          220,
+          112,
+          200
+        ]
+      ],
+      [
+        "Coral Cay - Tropical Island & Water Park",
+        [
+          0,
+          2,
+          420
+        ],
+        [
+          220,
+          112,
+          200
+        ]
+      ],
+      [
+        "Grand Avenue - Main Street & Backstage",
+        [
+          220,
+          2,
+          420
+        ],
+        [
+          200,
+          112,
+          200
+        ]
+      ],
+      [
+        "Jollyville Carnival - Cartoon Land",
+        [
+          420,
+          2,
+          420
+        ],
+        [
+          220,
+          112,
+          200
+        ]
+      ],
+      [
+        "Grand Entrance - Gates, Tickets & Parking",
+        [
+          0,
+          2,
+          620
+        ],
+        [
+          640,
+          112,
+          100
+        ]
+      ]
+    ],
+    "file_size_bytes": 621343
+  },
+  "sections": [
+    {
+      "origin": [
+        0,
+        2,
+        0
+      ],
+      "size": [
+        220,
+        112,
+        220
+      ],
+      "blocks": 128691,
+      "volume": 5420800,
+      "regions": [
+        [
+          "Dusty Gulch - Wild West Town",
+          [
+            0,
+            2,
+            0
+          ],
+          [
+            220,
+            112,
+            220
+          ]
+        ]
+      ],
+      "offset_in_complete": [
+        0,
+        0,
+        0
+      ],
+      "file": "Wonderhaven_01_Dusty_Gulch_Wild_West.litematic",
+      "title": "Dusty Gulch - Wild West Town",
+      "file_size_bytes": 106013
+    },
+    {
+      "origin": [
+        220,
+        2,
+        0
+      ],
+      "size": [
+        200,
+        112,
+        220
+      ],
+      "blocks": 150857,
+      "volume": 4928000,
+      "regions": [
+        [
+          "Everspire Kingdom - Medieval Fantasy",
+          [
+            220,
+            2,
+            0
+          ],
+          [
+            200,
+            112,
+            220
+          ]
+        ]
+      ],
+      "offset_in_complete": [
+        220,
+        0,
+        0
+      ],
+      "file": "Wonderhaven_02_Everspire_Kingdom_Medieval.litematic",
+      "title": "Everspire Kingdom - Medieval Fantasy",
+      "file_size_bytes": 157160
+    },
+    {
+      "origin": [
+        420,
+        2,
+        0
+      ],
+      "size": [
+        220,
+        112,
+        220
+      ],
+      "blocks": 113154,
+      "volume": 5420800,
+      "regions": [
+        [
+          "Nova Frontier North - Sci-Fi Zone",
+          [
+            420,
+            2,
+            0
+          ],
+          [
+            220,
+            112,
+            220
+          ]
+        ]
+      ],
+      "offset_in_complete": [
+        420,
+        0,
+        0
+      ],
+      "file": "Wonderhaven_03_Nova_Frontier_North_SciFi.litematic",
+      "title": "Nova Frontier North - Sci-Fi Zone",
+      "file_size_bytes": 94797
+    },
+    {
+      "origin": [
+        0,
+        2,
+        220
+      ],
+      "size": [
+        220,
+        112,
+        200
+      ],
+      "blocks": 126730,
+      "volume": 4928000,
+      "regions": [
+        [
+          "Blackwater Cove - Pirate Cove",
+          [
+            0,
+            2,
+            220
+          ],
+          [
+            220,
+            112,
+            200
+          ]
+        ]
+      ],
+      "offset_in_complete": [
+        0,
+        0,
+        220
+      ],
+      "file": "Wonderhaven_04_Blackwater_Cove_Pirates.litematic",
+      "title": "Blackwater Cove - Pirate Cove",
+      "file_size_bytes": 75663
+    },
+    {
+      "origin": [
+        220,
+        2,
+        220
+      ],
+      "size": [
+        200,
+        112,
+        200
+      ],
+      "blocks": 70777,
+      "volume": 4480000,
+      "regions": [
+        [
+          "Starlight Plaza - Central Hub & Wonder Spire",
+          [
+            220,
+            2,
+            220
+          ],
+          [
+            200,
+            112,
+            200
+          ]
+        ]
+      ],
+      "offset_in_complete": [
+        220,
+        0,
+        220
+      ],
+      "file": "Wonderhaven_05_Starlight_Plaza_Central_Hub.litematic",
+      "title": "Starlight Plaza - Central Hub & Wonder Spire",
+      "file_size_bytes": 87068
+    },
+    {
+      "origin": [
+        420,
+        2,
+        220
+      ],
+      "size": [
+        220,
+        112,
+        200
+      ],
+      "blocks": 82451,
+      "volume": 4928000,
+      "regions": [
+        [
+          "Nova Frontier South - Hyperion Coaster",
+          [
+            420,
+            2,
+            220
+          ],
+          [
+            220,
+            112,
+            200
+          ]
+        ]
+      ],
+      "offset_in_complete": [
+        420,
+        0,
+        220
+      ],
+      "file": "Wonderhaven_06_Nova_Frontier_South_Hyperion.litematic",
+      "title": "Nova Frontier South - Hyperion Coaster",
+      "file_size_bytes": 76115
+    },
+    {
+      "origin": [
+        0,
+        2,
+        420
+      ],
+      "size": [
+        220,
+        112,
+        200
+      ],
+      "blocks": 108260,
+      "volume": 4928000,
+      "regions": [
+        [
+          "Coral Cay - Tropical Island & Water Park",
+          [
+            0,
+            2,
+            420
+          ],
+          [
+            220,
+            112,
+            200
+          ]
+        ]
+      ],
+      "offset_in_complete": [
+        0,
+        0,
+        420
+      ],
+      "file": "Wonderhaven_07_Coral_Cay_Tropical_Waterpark.litematic",
+      "title": "Coral Cay - Tropical Island & Water Park",
+      "file_size_bytes": 94087
+    },
+    {
+      "origin": [
+        220,
+        2,
+        420
+      ],
+      "size": [
+        200,
+        112,
+        200
+      ],
+      "blocks": 116081,
+      "volume": 4480000,
+      "regions": [
+        [
+          "Grand Avenue - Main Street & Backstage",
+          [
+            220,
+            2,
+            420
+          ],
+          [
+            200,
+            112,
+            200
+          ]
+        ]
+      ],
+      "offset_in_complete": [
+        220,
+        0,
+        420
+      ],
+      "file": "Wonderhaven_08_Grand_Avenue_Main_Street.litematic",
+      "title": "Grand Avenue - Main Street & Backstage",
+      "file_size_bytes": 118998
+    },
+    {
+      "origin": [
+        420,
+        2,
+        420
+      ],
+      "size": [
+        220,
+        112,
+        200
+      ],
+      "blocks": 88674,
+      "volume": 4928000,
+      "regions": [
+        [
+          "Jollyville Carnival - Cartoon Land",
+          [
+            420,
+            2,
+            420
+          ],
+          [
+            220,
+            112,
+            200
+          ]
+        ]
+      ],
+      "offset_in_complete": [
+        420,
+        0,
+        420
+      ],
+      "file": "Wonderhaven_09_Jollyville_Carnival_Cartoon.litematic",
+      "title": "Jollyville Carnival - Cartoon Land",
+      "file_size_bytes": 91790
+    },
+    {
+      "origin": [
+        0,
+        2,
+        620
+      ],
+      "size": [
+        640,
+        112,
+        100
+      ],
+      "blocks": 130682,
+      "volume": 7168000,
+      "regions": [
+        [
+          "Grand Entrance - Gates, Tickets & Parking",
+          [
+            0,
+            2,
+            620
+          ],
+          [
+            640,
+            112,
+            100
+          ]
+        ]
+      ],
+      "offset_in_complete": [
+        0,
+        0,
+        620
+      ],
+      "file": "Wonderhaven_10_Grand_Entrance_Plaza.litematic",
+      "title": "Grand Entrance - Gates, Tickets & Parking",
+      "file_size_bytes": 47457
+    }
+  ]
+}

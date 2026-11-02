@@ -334,3 +334,41 @@ def bumper_cars(w, x0, z0, wd=30, dp=22, name='BUMPER BONANZA'):
     w.sign(x0 + wd // 2 - 1, G + 6, z0 - 1, ['', name, 'Bumper Cars', ''], wood='cherry', facing='north',
            color='yellow', glow=True)
     w.label(x0 + wd // 2, z0 + dp // 2, name, 'attraction')
+
+
+def rocket_spinner(w, cx, cz, name='ASTRO SPINNER', arms=8, R=9):
+    """Classic rocket spinner: rockets on radial arms around a tall central column, frozen mid-ride."""
+    for (x, z) in disc(cx, cz, R + 3):
+        w.set(x, G, z, 'light_gray_concrete' if (x + z) % 2 else 'white_concrete')
+        w.clear(x, G + 1, z, x, G + 20, z)
+    for (x, z) in circle(cx, cz, R + 3):
+        w.set(x, G + 1, z, 'iron_bars')
+    w.set(cx, G + 1, cz + R + 3, 'air')
+    # central column with rings of light
+    for y in range(G + 1, G + 15):
+        for (x, z) in disc(cx, cz, 1.5):
+            w.set(x, y, z, 'sea_lantern' if (y - G) % 4 == 0 else 'white_concrete')
+    for (x, z) in disc(cx, cz, 3.2):
+        w.set(x, G + 15, z, 'cyan_concrete')
+    for y in range(G + 16, G + 20):
+        w.set(cx, y, cz, 'iron_bars')
+    for (x, y, z) in ellipsoid(cx, G + 21, cz, 2.2, 2.2, 2.2):
+        w.set(x, y, z, 'yellow_stained_glass' if (x + y + z) % 3 else 'gold_block')
+    w.set(cx, G + 21, cz, 'glowstone')
+    cols = ['red', 'blue', 'yellow', 'lime', 'purple', 'orange', 'cyan', 'magenta']
+    for i in range(arms):
+        a = i * math.tau / arms
+        ex, ez = cx + R * math.cos(a), cz + R * math.sin(a)
+        ey = G + 8 + (i % 2) * 2
+        for (x, y, z) in line((cx, G + 13, cz), (ex, ey + 1, ez)):
+            w.set(x, y, z, 'light_gray_concrete')
+        tx, tz = -math.sin(a), math.cos(a)
+        bx, bz = int(round(ex)), int(round(ez))
+        c = cols[i % len(cols)]
+        for t in (-1, 0, 1):
+            w.set(int(round(ex + tx * t)), ey, int(round(ez + tz * t)), f'{c}_concrete')
+        w.set(int(round(ex + tx * 2)), ey, int(round(ez + tz * 2)), 'white_concrete')
+        w.set(int(round(ex - tx * 2)), ey, int(round(ez - tz * 2)), 'shroomlight')
+        w.set(bx, ey + 1, bz, 'quartz_stairs[facing=north,half=bottom]')
+    w.sign(cx, G + 2, cz + R + 4, ['', name, 'Pilot your rocket!', ''], wood='birch', facing='south', color='cyan', glow=True)
+    w.label(cx, cz, name, 'attraction')

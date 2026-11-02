@@ -348,10 +348,10 @@ def tree(w, x, y, z, kind='oak', size=1.0, seed=None):
                 fz = int(round(tz + math.sin(a) * k))
                 fy = ty + 1 - (1 if k > L - 2 else 0) - (1 if k == L else 0)
                 w.set_if_air(fx, fy, fz, lf)
-        # coconuts
+        # coconuts hang on the top trunk block
         for d in rnd.sample(['north', 'east', 'south', 'west'], 2):
             dx, dz = DVEC[d]
-            w.set_if_air(tx + dx, ty - 1, tz + dz, f'cocoa[age=2,facing={OPP[d]}]')
+            w.set(tx + dx, ty, tz + dz, f'cocoa[age=2,facing={OPP[d]}]')
     elif kind == 'acacia':
         h = int(round(5 * s)) + rnd.randint(0, 1)
         d = rnd.choice(['north', 'east', 'south', 'west'])
@@ -523,20 +523,26 @@ def potted(w, x, y, z, seed=0):
     w.set(x, y, z, plants[int(hash2(x, z, seed) * len(plants)) % len(plants)])
 
 
-def string_lights(w, p0, p1, sag=2, light='lantern[hanging=true]', every=3, wire='chain[axis=x]'):
-    """A sagging line of hanging lanterns between two points (p0,p1 = (x,y,z) attach points)."""
+def string_lights(w, p0, p1, sag=2, light='lantern[hanging=true]', every=3, wire=None):
+    """A sagging chain 'wire' between two points with lanterns hanging from it (lanterns hang on vertical chain links)."""
     x0, y0, z0 = p0
     x1, y1, z1 = p1
     n = int(max(abs(x1 - x0), abs(z1 - z0)))
     if n < 2:
         return
+    axis = 'x' if abs(x1 - x0) >= abs(z1 - z0) else 'z'
     for i in range(1, n):
         t = i / n
         x = int(round(x0 + (x1 - x0) * t))
         z = int(round(z0 + (z1 - z0) * t))
         yy = int(round(y0 + (y1 - y0) * t - sag * 4 * t * (1 - t)))
-        if i % every == 0 and w.is_air(x, yy, z):
-            w.set(x, yy, z, light)
+        if not w.is_air(x, yy, z):
+            continue
+        if i % every == 0 and w.is_air(x, yy - 1, z):
+            w.set(x, yy, z, 'chain[axis=y]')
+            w.set(x, yy - 1, z, light)
+        else:
+            w.set(x, yy, z, f'chain[axis={axis}]')
 
 
 def lit_bollard(w, x, y, z, style='classic'):
@@ -547,3 +553,16 @@ def lit_bollard(w, x, y, z, style='classic'):
                     'pirate': 'dark_oak_fence', 'medieval': 'stone_brick_wall', 'hub': 'andesite_wall'}.get(style, 'stone_brick_wall'))
     if w.is_air(x, y + 1, z):
         w.set(x, y + 1, z, 'lantern' if style != 'scifi' else 'end_rod[facing=up]')
+
+
+def hang_lantern(w, x, y, z, light='lantern[hanging=true]', max_up=14):
+    """Hang a lantern at (x,y,z) on a vertical chain that reaches up to the first solid block."""
+    k = 1
+    while k <= max_up and w.is_air(x, y + k, z):
+        k += 1
+    if k > max_up:
+        return False
+    for j in range(1, k):
+        w.set(x, y + j, z, 'chain[axis=y]')
+    w.set(x, y, z, light)
+    return True

@@ -369,8 +369,9 @@ def building(w, x0, z0, width, depth, facing, st, floors=2, fh=5, roof='gable_x'
     b = Builder.for_rect(w, x0, z0, width, depth, facing, y)
     Wd, Dp = width, depth
     top = floors * fh
-    # clear volume
-    b.clear(-porch - 2, 0, -porch - 2, Wd + 1, top + max(Wd, Dp) // 2 + 4 + false_front, Dp + 1)
+    # clear only this building's own footprint (plus its front yard) so neighbours are never damaged
+    b.clear(0, 0, 0, Wd - 1, top + max(Wd, Dp) // 2 + 4 + false_front, Dp - 1)
+    b.clear(0, 0, -porch - 2, Wd - 1, fh, -1)
     b.clear(0, -1, 0, Wd - 1, -1, Dp - 1)
     b.fill(0, -1, 0, Wd - 1, -1, Dp - 1, st['floor'])
     # walls
@@ -442,8 +443,11 @@ def building(w, x0, z0, width, depth, facing, st, floors=2, fh=5, roof='gable_x'
     # exterior lights flanking door
     for sx in ((dx0 - 1, dx0 + 2) if door_double else (dx0 - 1, dx0 + 1)):
         if 0 < sx < Wd - 1 and b.is_air(sx, 2, -1):
-            b.set(sx, 2, -1, st['wall_light'].replace('[hanging=false]', '[hanging=false]'))
-            b.set(sx, 1, -1, 'air')
+            light = st['wall_light']
+            b.set(sx, 2, -1, light)
+            if 'lantern' in light:
+                # small shelf bracket so the lantern is supported
+                b.set(sx, 1, -1, f"{st['door']}_trapdoor[facing=south,half=top,open=false]")
     # awning
     if awning and st.get('awning'):
         cols = st['awning']

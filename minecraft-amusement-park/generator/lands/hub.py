@@ -340,7 +340,7 @@ def quadrants(w, paths):
             w.set(X, G + k, Z, 'birch_fence')
     cone_roof(w, gx + 0.0, gz + 0.0, G + 5, 5.0, 4, 'prismarine_brick_stairs', 'prismarine_bricks',
               finial=['lightning_rod[facing=up]'])
-    w.set(gx, G + 4, gz, 'lantern[hanging=true]')
+    decor.hang_lantern(w, gx, G + 4, gz)
     decor.flower_patch(w, [(x, z) for (x, z) in disc(250, 255, 6) if not paths.mask[z, x]], density=0.8,
                        palette=['rose_bush' if False else 'poppy', 'red_tulip', 'pink_tulip', 'white_tulip'])
     w.label(262, 270, 'Rose Garden', 'small')

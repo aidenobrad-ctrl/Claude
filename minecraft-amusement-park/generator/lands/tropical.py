@@ -267,6 +267,10 @@ def water_park(w, paths):
     render_slide(w, a, 'purple_stained_glass')
     render_slide(w, b, 'orange_stained_glass')
     render_slide(w, c, 'light_blue_concrete', open_top=True)
+    # start gates: fence gates hold the slide water back from the platform (fluids cannot pass them)
+    top = G + 25
+    for (x, z, f) in ((104, 565, 'east'), (95, 567, 'west'), (97, 570, 'south')):
+        w.set(x, top, z, f'jungle_fence_gate[facing={f},open=false,in_wall=false]')
     for t in (a, b, c):
         fr = t.frames()
         p = fr[-1][0]

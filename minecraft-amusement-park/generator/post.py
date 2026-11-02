@@ -214,3 +214,162 @@ def postprocess(world, log=print):
                 changed += 1
     log(f'  post-process updated {changed} block states')
     return changed
+
+
+# ---------------------------------------------------------------------------------------------
+# Support / integrity pass: make sure nothing would pop off when the game updates it
+# ---------------------------------------------------------------------------------------------
+SOIL = {'grass_block', 'dirt', 'coarse_dirt', 'podzol', 'rooted_dirt', 'moss_block', 'mud', 'farmland', 'mycelium'}
+PLANTS = {'dandelion', 'poppy', 'blue_orchid', 'allium', 'azure_bluet', 'red_tulip', 'orange_tulip', 'white_tulip',
+          'pink_tulip', 'oxeye_daisy', 'cornflower', 'lily_of_the_valley', 'fern', 'pink_petals', 'torchflower',
+          'sweet_berry_bush'}
+TALL = {'sunflower', 'lilac', 'rose_bush', 'peony', 'tall_grass', 'large_fern'}
+GRAVITY_FIX = {'sand': 'sandstone', 'red_sand': 'red_sandstone', 'gravel': 'cobblestone'}
+
+
+def fix_support(world, log=print):
+    from .world import DVEC, OPP
+    a = world.a
+    H, D, W = a.shape
+    pal = world.pal
+    info = [(_base(parse_state(s)[0]), parse_state(s)[1]) for s in pal]
+
+    def nm(x, y, z):
+        if 0 <= x < W and 0 <= y < H and 0 <= z < D:
+            i = int(a[y, z, x])
+            if i >= len(info):
+                info.extend((_base(parse_state(s)[0]), parse_state(s)[1]) for s in pal[len(info):])
+            return info[i][0]
+        return 'air'
+
+    def solid(x, y, z):
+        b = nm(x, y, z)
+        return b != 'air' and b != 'water' and b != 'lava'
+
+    targets = []
+    for i, (b, p) in enumerate(info):
+        if (b in PLANTS or b in TALL or b in ('dead_bush', 'cactus', 'sugar_cane', 'lily_pad', 'cocoa', 'vine', 'ladder')
+                or b.endswith('_carpet') or b in ('lantern', 'soul_lantern', 'torch', 'wall_torch', 'cake', 'rail', 'bell')
+                or b.endswith('_door') or b.endswith('_wall_sign') or b.endswith('_wall_banner') or b.endswith('_sign')
+                or b.endswith('_banner') or b.endswith('pressure_plate') or b.endswith('_button') or b == 'candle'
+                or b.endswith('_candle') or b == 'tripwire_hook' or b in GRAVITY_FIX or b.endswith('concrete_powder')):
+            targets.append(i)
+    mask = np.isin(a, np.array(targets, dtype=a.dtype))
+    ys, zs, xs = np.nonzero(mask)
+    removed = fixed = 0
+    stats = {}
+    for y, z, x in zip(ys.tolist(), zs.tolist(), xs.tolist()):
+        i = int(a[y, z, x])
+        b, p = info[i]
+        below = nm(x, y - 1, z)
+        new = None  # None = keep, 'air' = remove, other = replace
+        if b in PLANTS:
+            if below not in SOIL:
+                new = 'air'
+        elif b in TALL:
+            half = p.get('half', 'lower')
+            if half == 'lower':
+                if below not in SOIL or nm(x, y + 1, z) != b:
+                    new = 'air'
+            elif below != b:
+                new = 'air'
+        elif b == 'dead_bush':
+            if below not in SOIL and below not in ('sand', 'red_sand') and 'terracotta' not in below:
+                new = 'air'
+        elif b == 'cactus':
+            if below not in ('sand', 'red_sand', 'cactus') or any(solid(x + dx, y, z + dz) for dx, dz in ((1, 0), (-1, 0), (0, 1), (0, -1))):
+                new = 'air'
+        elif b == 'sugar_cane':
+            ok = below == 'sugar_cane' or (below in SOIL | {'sand', 'red_sand'} and
+                                          any(nm(x + dx, y - 1, z + dz) == 'water' for dx, dz in ((1, 0), (-1, 0), (0, 1), (0, -1))))
+            if not ok:
+                new = 'air'
+        elif b == 'lily_pad':
+            if below != 'water':
+                new = 'air'
+        elif b.endswith('_carpet') or b in ('cake', 'rail', 'candle') or b.endswith('_candle') or \
+                b.endswith('pressure_plate'):
+            if not solid(x, y - 1, z):
+                new = 'air'
+        elif b in ('lantern', 'soul_lantern'):
+            hanging = p.get('hanging', 'false') == 'true'
+            up, dn = solid(x, y + 1, z), solid(x, y - 1, z)
+            if hanging and not up:
+                new = f'{b}[hanging=false]' if dn else 'air'
+            elif not hanging and not dn:
+                new = f'{b}[hanging=true]' if up else 'air'
+        elif b == 'torch':
+            if not solid(x, y - 1, z):
+                new = 'air'
+        elif b.endswith('_wall_sign') and 'hanging' not in b:
+            f = p.get('facing', 'north')
+            dx, dz = DVEC[f]
+            if not solid(x - dx, y, z - dz):
+                # free-standing information sign: convert to a standing sign on a wooden post
+                wood = b[:-len('_wall_sign')]
+                rot = {'south': 0, 'west': 4, 'north': 8, 'east': 12}[f]
+                depth = 0
+                while depth < 7 and not solid(x, y - 1 - depth, z):
+                    depth += 1
+                if depth >= 7:
+                    new = 'air'
+                else:
+                    post = f'{wood}_fence' if wood not in ('crimson', 'warped') else 'oak_fence'
+                    for k in range(depth):
+                        a[y - 1 - k, z, x] = world.id(post)
+                    new = f'{wood}_sign[rotation={rot}]'
+        elif b in ('wall_torch', 'ladder', 'tripwire_hook') or b.endswith('_wall_banner'):
+            f = p.get('facing', 'north')
+            dx, dz = DVEC[f]
+            if not solid(x - dx, y, z - dz):
+                new = 'air'
+        elif b == 'cocoa':
+            f = p.get('facing', 'north')
+            dx, dz = DVEC[f]
+            if nm(x + dx, y, z + dz) not in ('jungle_log', 'jungle_wood', 'stripped_jungle_log'):
+                new = 'air'
+        elif b == 'vine':
+            if not any(p.get(d) == 'true' and solid(x + DVEC[d][0], y, z + DVEC[d][1]) for d in DVEC):
+                new = 'air'
+        elif b.endswith('_sign') and 'wall' not in b and 'hanging' not in b:
+            if not solid(x, y - 1, z):
+                new = 'air'
+        elif b.endswith('_banner') and 'wall' not in b:
+            if not solid(x, y - 1, z):
+                new = 'air'
+        elif b.endswith('_button'):
+            face = p.get('face', 'wall')
+            if face == 'floor' and not solid(x, y - 1, z):
+                new = 'air'
+        elif b == 'bell':
+            if p.get('attachment') == 'floor' and not solid(x, y - 1, z):
+                new = 'air'
+        elif b.endswith('_door'):
+            half = p.get('half', 'lower')
+            if half == 'lower':
+                if not nm(x, y + 1, z).endswith('_door') or not solid(x, y - 1, z):
+                    new = 'air'
+            elif not nm(x, y - 1, z).endswith('_door'):
+                new = 'air'
+        elif b in GRAVITY_FIX or b.endswith('concrete_powder'):
+            if nm(x, y - 1, z) in ('air', 'water') and y > 6:
+                new = GRAVITY_FIX.get(b, b.replace('_powder', ''))
+        if new is not None:
+            if new == 'air':
+                removed += 1
+            else:
+                fixed += 1
+            stats[(b, new.split('[')[0])] = stats.get((b, new.split('[')[0]), 0) + 1
+            a[y, z, x] = world.id(new)
+            if (x, y, z) in world.tiles and 'sign' not in new:
+                del world.tiles[(x, y, z)]
+    # a second sweep removes upper halves orphaned by the first sweep
+    for y, z, x in zip(ys.tolist(), zs.tolist(), xs.tolist()):
+        b = nm(x, y, z)
+        if (b.endswith('_door') or b in TALL) and info[int(a[y, z, x])][1].get('half') == 'upper' and nm(x, y - 1, z) != b:
+            a[y, z, x] = 0
+            removed += 1
+    log(f'  support pass: removed {removed} unsupported blocks, adjusted {fixed}')
+    top = sorted(stats.items(), key=lambda kv: -kv[1])[:12]
+    log('    ' + ', '.join(f'{a_}->{b_}:{n}' for (a_, b_), n in top))
+    return removed, fixed

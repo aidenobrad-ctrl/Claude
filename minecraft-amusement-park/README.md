@@ -24,7 +24,7 @@ for the whole park, plus one file per land if you want to work on a single area.
 | | |
 | --- | --- |
 | **Total size** | **640 × 112 × 720 blocks** (X × Y × Z), which is a 460,800 m² footprint |
-| **Blocks placed** | **1,116,357** non-air blocks, using 327 block types (825 distinct block states) |
+| **Blocks placed** | **1,123,828** non-air blocks, using 335 block types (856 distinct block states) |
 | **Ground level** | The grass/path layer is at **Y = 4 inside the schematic**. Layers 0–3 hold pools, moats and lagoon beds that sit below ground. |
 | **Tallest points** | Gravity Spire drop tower (107 blocks above ground, counting its crown and beacon), Wonder Spire (96), Everspire Castle's main spire (87), Jolly Wheel (68), Hyperion's lift hill (64) |
 | **Minecraft version** | 1.20.1 or newer. The file carries data version 3465, and newer Litematica builds upgrade it automatically. |
@@ -50,7 +50,7 @@ More rides and landmarks: the **Wonder Spire** central landmark (a 96-block towe
 walk-through **Everspire Castle** (moat, drawbridge, 15 towers and a banquet hall), **Kraken's Revenge** swinging pirate ship,
 **The Crimson Kraken** three-masted galleon, **Skull Rock**, **Fort Cutlass**, a lighthouse, **Big Top Circus**,
 **Bumper Bonanza** bumper cars, the **Temple of the Jade Idol**, **Mount Kahuna** volcano, a rocket landmark, the **Orbit Diner**
-flying-saucer restaurant, a hedge maze, a dragon sculpture, midway games and the Main Street trolley.
+flying-saucer restaurant, the **Astro Spinner** rocket ride, a hedge maze, a dragon sculpture, midway games and the Main Street trolley.
 
 ## Themed lands
 
@@ -58,7 +58,7 @@ flying-saucer restaurant, a hedge maze, a dragon sculpture, midway games and the
 | --- | --- | --- | --- |
 | **Everspire Kingdom** (Medieval Fantasy) | Calcite castle with blue cone roofs and gold finials, a moat, half-timbered Tudor village, market square and a well | Castle walk-through, Royal Carousel, Hollowmoor Manor, Dragon's Rock | Dragon's Feast Hall, Sweet Shoppe, Wizard Wands, Royal Tailor, Armory, Bakery, Toy Maker, Enchanted Gifts, Turkey Legs and Royal Tarts stands, restroom, info |
 | **Coral Cay** (Tropical Adventure Island) | Bamboo and thatch huts, stilt huts by a jungle pond, a rope bridge, palms and tiki torches | Lagoona Splash water park, Temple of the Jade Idol, Mount Kahuna volcano | Tiki Tumba Grill, Tiki Treasures, Island Outfitters, Surf Shack, Pineapple Whip, 2 restrooms, info |
-| **Nova Frontier** (Futuristic Sci-Fi) | White and cyan architecture, glass, sea-lantern lighting, glowing kinetic sculptures, Rocket Plaza | Hyperion, Cosmic Voyager, Gravity Spire | Orbit Diner, Galactic Goods, Robo Arcade, Star Traders, Hyperion Outpost, Cosmic Cones, Space Dogs, Starport Snacks, 2 restrooms, info, ride maintenance bay |
+| **Nova Frontier** (Futuristic Sci-Fi) | White and cyan architecture, glass, sea-lantern lighting, glowing kinetic sculptures, Rocket Plaza | Hyperion, Cosmic Voyager, Gravity Spire, Astro Spinner | Orbit Diner, Galactic Goods, Robo Arcade, Star Traders, Hyperion Outpost, Cosmic Cones, Space Dogs, Starport Snacks, 2 restrooms, info, ride maintenance bay |
 | **Dusty Gulch** (Wild West) | False-front saloon street with covered boardwalks, a water tower, a windmill, covered wagons, a corral, hay bales and cacti | Gold Rush Gulch log flume, Dust Devil Speedway | Rusty Spur saloon, Pecos BBQ, General Store, Sheriff, Bank, Hotel, Blacksmith, Barber, Assay Office, Trading Post, Candy Co., Sarsaparilla and Churro carts, restroom, info |
 | **Jollyville Carnival** (Cartoon Carnival) | Candy-colored toon houses, a giant cupcake and ice-cream sculptures, balloon bunches, striped awnings and string lights | Jolly Wheel, Topsy Teacups, Big Top Circus, Bumper Bonanza, 15 midway game booths | Cotton Candy, Corn Dogs, Funnel Cake, Candy Apples, Giggle House, Toy Box, Joke Shop and more, restroom, info |
 | **Blackwater Cove** (Pirate Cove) | Lagoon with beaches, timber harbor town, boardwalk, piers on pilings, barrels and crates | Crimson Kraken galleon, Kraken's Revenge, Skull Rock, Fort Cutlass, lighthouse | Salty Barnacle tavern, Captain's Loot, Map Maker, Rope & Anchor, Davy's Locker, Harbor Master, Grog & Juice, Fish & Chips, restroom, info |
@@ -71,7 +71,7 @@ flying-saucer restaurant, a hedge maze, a dragon sculpture, midway games and the
 - **Main street (Grand Avenue).** 22 Victorian shops and restaurants (Emporium, Confectionery, Cinema, Fire Station No. 1, City Hall and more), with furnished interiors, awnings and window boxes. It also has a trolley line with a trolley car, a Town Square with a flagpole and bandstand, and the Avenue Gardens with a pond and gazebo.
 - **Restaurants and food.** Every land has at least one sit-down restaurant and several food kiosks.
 - **Restrooms and info.** 11 restroom buildings (separate sides, stalls, sinks) and 8 guest-information booths.
-- **Street furniture.** About 680 themed street lamps (each land has its own lamp design), plus benches with armrests, trash cans and planters along every path.
+- **Street furniture.** About 690 themed street lamps (each land has its own lamp design), plus benches with armrests, trash cans and planters along every path.
 - **Staff and maintenance.** A fenced backstage compound has the Cast Member Center offices, the Central Maintenance Shop, Wardrobe & Costuming, a parade float barn, utility carts, a truck and a service road through a service gate. There are also a ride maintenance bay, a go-kart pit garage and a perimeter service road.
 - **Gardens, fountains and ponds.** The central reflecting pool has 16 lit jets. There are tiered fountains, a rose garden pond, a hedge maze, floral beds, a floral star at the gate, and a landscaped berm with trees around the park.
 - **Central landmark.** The Wonder Spire sits at the hub of 8 radial avenues that lead to every land.
@@ -93,7 +93,12 @@ flying-saucer restaurant, a hedge maze, a dragon sculpture, midway games and the
 4. **Load the schematic.** In game, press **M** to open the Litematica menu and choose **Load Schematics**. Select `Wonderhaven_Complete_Park`
    and click **Load Schematic**. A placement is created at your feet.
 5. **Position the placement.** Open **Schematic Placements** and click **Configure** on the Wonderhaven placement.
-   - Set the **origin Y** to *(your ground level − 4)*. This puts the park's grass layer exactly on your ground. For example, in a default superflat world whose grass is at Y = −61, use origin Y = −65.
+   - Set the **origin Y** to *(your ground level − 4)*. This puts the park's grass layer exactly on your ground, and the 4
+     layers below it hold the pool basins, the moat and the lagoon bed, which you dig into the ground. For example, if
+     your grass is at Y = 64, use origin Y = 60.
+   - The default superflat world only has 3 layers above bedrock, which is not deep enough for the pools. Instead, create a
+     superflat world with the preset `minecraft:bedrock,8*minecraft:dirt,minecraft:grass_block;minecraft:plains`. Its
+     grass is at Y = −55, so use origin Y = −59.
    - The origin is the park's **north-west corner**. The entrance faces south (+Z).
 6. **Work one land at a time if you like.** In the placement's **Sub-regions** list you can switch each land on or off,
    which is handy when you only want to render or build one area.
@@ -112,16 +117,16 @@ Y = 4). To line a section up with the full park, place its origin at the full pa
 
 | File | Size (X × Y × Z) | Offset from park origin (X, Y, Z) | Blocks |
 | --- | --- | --- | --- |
-| `Wonderhaven_01_Dusty_Gulch_Wild_West` | 220 × 112 × 220 | 0, 0, 0 | 128,691 |
-| `Wonderhaven_02_Everspire_Kingdom_Medieval` | 200 × 112 × 220 | 220, 0, 0 | 150,857 |
-| `Wonderhaven_03_Nova_Frontier_North_SciFi` | 220 × 112 × 220 | 420, 0, 0 | 113,154 |
-| `Wonderhaven_04_Blackwater_Cove_Pirates` | 220 × 112 × 200 | 0, 0, 220 | 126,730 |
-| `Wonderhaven_05_Starlight_Plaza_Central_Hub` | 200 × 112 × 200 | 220, 0, 220 | 70,777 |
-| `Wonderhaven_06_Nova_Frontier_South_Hyperion` | 220 × 112 × 200 | 420, 0, 220 | 82,451 |
-| `Wonderhaven_07_Coral_Cay_Tropical_Waterpark` | 220 × 112 × 200 | 0, 0, 420 | 108,260 |
-| `Wonderhaven_08_Grand_Avenue_Main_Street` | 200 × 112 × 200 | 220, 0, 420 | 116,081 |
-| `Wonderhaven_09_Jollyville_Carnival_Cartoon` | 220 × 112 × 200 | 420, 0, 420 | 88,674 |
-| `Wonderhaven_10_Grand_Entrance_Plaza` | 640 × 112 × 100 | 0, 0, 620 | 130,682 |
+| `Wonderhaven_01_Dusty_Gulch_Wild_West` | 220 × 112 × 220 | 0, 0, 0 | 130,053 |
+| `Wonderhaven_02_Everspire_Kingdom_Medieval` | 200 × 112 × 220 | 220, 0, 0 | 150,863 |
+| `Wonderhaven_03_Nova_Frontier_North_SciFi` | 220 × 112 × 220 | 420, 0, 0 | 113,169 |
+| `Wonderhaven_04_Blackwater_Cove_Pirates` | 220 × 112 × 200 | 0, 0, 220 | 126,776 |
+| `Wonderhaven_05_Starlight_Plaza_Central_Hub` | 200 × 112 × 200 | 220, 0, 220 | 70,793 |
+| `Wonderhaven_06_Nova_Frontier_South_Hyperion` | 220 × 112 × 200 | 420, 0, 220 | 82,512 |
+| `Wonderhaven_07_Coral_Cay_Tropical_Waterpark` | 220 × 112 × 200 | 0, 0, 420 | 108,300 |
+| `Wonderhaven_08_Grand_Avenue_Main_Street` | 200 × 112 × 200 | 220, 0, 420 | 121,673 |
+| `Wonderhaven_09_Jollyville_Carnival_Cartoon` | 220 × 112 × 200 | 420, 0, 420 | 88,957 |
+| `Wonderhaven_10_Grand_Entrance_Plaza` | 640 × 112 × 100 | 0, 0, 620 | 130,732 |
 
 ## Things to know
 
@@ -136,6 +141,10 @@ Y = 4). To line a section up with the full park, place its origin at the full pa
 - **Leaves** are stored with `persistent=true`, so the hedges, bushes and palm fronds will not decay.
 - **Connections.** Fence, wall, pane and stair connections are pre-computed the way vanilla does it, so Easy Place
   and the verifier agree with the schematic.
+- **Supported blocks.** An integrity pass checks that every attachable block has support: lanterns, signs, ladders,
+  flowers, cacti, cocoa, carpets, doors and so on. Each one gets a support or is removed, so nothing pops off when
+  the game updates it. Coconuts hang on palm trunks, string-light lanterns hang from chain "wires", and stand-alone
+  info signs sit on wooden posts.
 
 ## Regenerating or modifying the park
 

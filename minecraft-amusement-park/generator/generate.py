@@ -9,7 +9,7 @@ import time
 from .const import G, W, H, D, LANDS, LAND_NAMES
 from .world import World
 from .paths import Paths
-from .post import postprocess
+from .post import postprocess, fix_support
 
 
 def build_park(only=None, log=print):
@@ -30,6 +30,7 @@ def build_park(only=None, log=print):
     t = time.time()
     n = paths.furnish()
     log(f'  furnished paths: {n} lamps ({time.time() - t:.1f}s)')
+    fix_support(w, log)
     postprocess(w, log)
     log(f'  total build time {time.time() - t0:.1f}s')
     return w

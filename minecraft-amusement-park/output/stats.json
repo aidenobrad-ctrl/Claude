@@ -9,7 +9,7 @@
   "materials_top": [
     [
       "grass_block",
-      279833
+      279284
     ],
     [
       "water",
@@ -17,7 +17,7 @@
     ],
     [
       "spruce_planks",
-      53983
+      54515
     ],
     [
       "gray_concrete",
@@ -29,19 +29,19 @@
     ],
     [
       "birch_leaves",
-      32051
+      31826
     ],
     [
       "spruce_leaves",
-      30742
+      30674
     ],
     [
       "white_concrete",
-      28187
+      28920
     ],
     [
       "stone_bricks",
-      24429
+      24524
     ],
     [
       "oak_leaves",
@@ -53,7 +53,7 @@
     ],
     [
       "light_gray_concrete",
-      21522
+      21807
     ],
     [
       "polished_andesite",
@@ -61,15 +61,15 @@
     ],
     [
       "smooth_quartz",
-      19673
+      20229
     ],
     [
       "cherry_leaves",
-      19464
+      19463
     ],
     [
       "dark_oak_planks",
-      17261
+      17307
     ],
     [
       "sand",
@@ -89,11 +89,11 @@
     ],
     [
       "smooth_sandstone",
-      10851
+      11133
     ],
     [
       "blue_concrete",
-      9803
+      9806
     ],
     [
       "dark_oak_leaves",
@@ -101,23 +101,23 @@
     ],
     [
       "orange_terracotta",
-      8229
+      8419
     ],
     [
       "red_terracotta",
-      7712
+      8050
     ],
     [
       "bricks",
-      7611
+      7893
+    ],
+    [
+      "white_terracotta",
+      7683
     ],
     [
       "light_blue_concrete",
       7553
-    ],
-    [
-      "white_terracotta",
-      7535
     ],
     [
       "terracotta",
@@ -125,15 +125,15 @@
     ],
     [
       "jungle_leaves",
-      6576
+      6574
     ],
     [
       "spruce_stairs",
-      6254
+      6521
     ],
     [
       "dark_prismarine_stairs",
-      6110
+      6232
     ],
     [
       "polished_diorite",
@@ -145,19 +145,19 @@
     ],
     [
       "cyan_concrete",
-      5158
-    ],
-    [
-      "cobblestone",
-      4820
+      5241
     ],
     [
       "glass_pane",
-      4721
+      5037
+    ],
+    [
+      "cobblestone",
+      4838
     ],
     [
       "mossy_stone_bricks",
-      4456
+      4454
     ],
     [
       "polished_granite",
@@ -165,11 +165,11 @@
     ],
     [
       "dark_oak_stairs",
-      4317
+      4413
     ]
   ],
-  "distinct_block_types": 327,
-  "distinct_block_states": 825,
+  "distinct_block_types": 335,
+  "distinct_block_states": 856,
   "labels": [
     [
       320,
@@ -352,6 +352,12 @@
       "attraction"
     ],
     [
+      583,
+      262,
+      "ASTRO SPINNER",
+      "attraction"
+    ],
+    [
       72,
       72,
       "GOLD RUSH GULCH (log flume)",
@@ -513,7 +519,7 @@
       112,
       720
     ],
-    "blocks": 1116357,
+    "blocks": 1123828,
     "volume": 51609600,
     "regions": [
       [
@@ -647,7 +653,7 @@
         ]
       ]
     ],
-    "file_size_bytes": 621343
+    "file_size_bytes": 627022
   },
   "sections": [
     {
@@ -661,7 +667,7 @@
         112,
         220
       ],
-      "blocks": 128691,
+      "blocks": 130053,
       "volume": 5420800,
       "regions": [
         [
@@ -685,7 +691,7 @@
       ],
       "file": "Wonderhaven_01_Dusty_Gulch_Wild_West.litematic",
       "title": "Dusty Gulch - Wild West Town",
-      "file_size_bytes": 106013
+      "file_size_bytes": 106151
     },
     {
       "origin": [
@@ -698,7 +704,7 @@
         112,
         220
       ],
-      "blocks": 150857,
+      "blocks": 150863,
       "volume": 4928000,
       "regions": [
         [
@@ -722,7 +728,7 @@
       ],
       "file": "Wonderhaven_02_Everspire_Kingdom_Medieval.litematic",
       "title": "Everspire Kingdom - Medieval Fantasy",
-      "file_size_bytes": 157160
+      "file_size_bytes": 157269
     },
     {
       "origin": [
@@ -735,7 +741,7 @@
         112,
         220
       ],
-      "blocks": 113154,
+      "blocks": 113169,
       "volume": 5420800,
       "regions": [
         [
@@ -759,7 +765,7 @@
       ],
       "file": "Wonderhaven_03_Nova_Frontier_North_SciFi.litematic",
       "title": "Nova Frontier North - Sci-Fi Zone",
-      "file_size_bytes": 94797
+      "file_size_bytes": 94884
     },
     {
       "origin": [
@@ -772,7 +778,7 @@
         112,
         200
       ],
-      "blocks": 126730,
+      "blocks": 126776,
       "volume": 4928000,
       "regions": [
         [
@@ -796,7 +802,7 @@
       ],
       "file": "Wonderhaven_04_Blackwater_Cove_Pirates.litematic",
       "title": "Blackwater Cove - Pirate Cove",
-      "file_size_bytes": 75663
+      "file_size_bytes": 75695
     },
     {
       "origin": [
@@ -809,7 +815,7 @@
         112,
         200
       ],
-      "blocks": 70777,
+      "blocks": 70793,
       "volume": 4480000,
       "regions": [
         [
@@ -833,7 +839,7 @@
       ],
       "file": "Wonderhaven_05_Starlight_Plaza_Central_Hub.litematic",
       "title": "Starlight Plaza - Central Hub & Wonder Spire",
-      "file_size_bytes": 87068
+      "file_size_bytes": 87138
     },
     {
       "origin": [
@@ -846,7 +852,7 @@
         112,
         200
       ],
-      "blocks": 82451,
+      "blocks": 82512,
       "volume": 4928000,
       "regions": [
         [
@@ -870,7 +876,7 @@
       ],
       "file": "Wonderhaven_06_Nova_Frontier_South_Hyperion.litematic",
       "title": "Nova Frontier South - Hyperion Coaster",
-      "file_size_bytes": 76115
+      "file_size_bytes": 77269
     },
     {
       "origin": [
@@ -883,7 +889,7 @@
         112,
         200
       ],
-      "blocks": 108260,
+      "blocks": 108300,
       "volume": 4928000,
       "regions": [
         [
@@ -907,7 +913,7 @@
       ],
       "file": "Wonderhaven_07_Coral_Cay_Tropical_Waterpark.litematic",
       "title": "Coral Cay - Tropical Island & Water Park",
-      "file_size_bytes": 94087
+      "file_size_bytes": 94202
     },
     {
       "origin": [
@@ -920,7 +926,7 @@
         112,
         200
       ],
-      "blocks": 116081,
+      "blocks": 121673,
       "volume": 4480000,
       "regions": [
         [
@@ -944,7 +950,7 @@
       ],
       "file": "Wonderhaven_08_Grand_Avenue_Main_Street.litematic",
       "title": "Grand Avenue - Main Street & Backstage",
-      "file_size_bytes": 118998
+      "file_size_bytes": 122626
     },
     {
       "origin": [
@@ -957,7 +963,7 @@
         112,
         200
       ],
-      "blocks": 88674,
+      "blocks": 88957,
       "volume": 4928000,
       "regions": [
         [
@@ -981,7 +987,7 @@
       ],
       "file": "Wonderhaven_09_Jollyville_Carnival_Cartoon.litematic",
       "title": "Jollyville Carnival - Cartoon Land",
-      "file_size_bytes": 91790
+      "file_size_bytes": 92155
     },
     {
       "origin": [
@@ -994,7 +1000,7 @@
         112,
         100
       ],
-      "blocks": 130682,
+      "blocks": 130732,
       "volume": 7168000,
       "regions": [
         [
@@ -1018,7 +1024,7 @@
       ],
       "file": "Wonderhaven_10_Grand_Entrance_Plaza.litematic",
       "title": "Grand Entrance - Gates, Tickets & Parking",
-      "file_size_bytes": 47457
+      "file_size_bytes": 47566
     }
   ]
 }

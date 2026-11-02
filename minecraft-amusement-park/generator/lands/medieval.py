@@ -58,7 +58,7 @@ def round_tower(w, cx, cz, r, y0, h, roof_h=None, wall=WALL, windows=True, crene
         if hollow:
             for (x, z) in disc(cx, cz, r - 1):
                 w.set(x, y, z, 'spruce_planks' if k % floor_every == 0 else 'air')
-            if k % floor_every == 4:
+            if k % floor_every == floor_every - 1:
                 w.set(int(cx), y, int(cz), 'lantern[hanging=true]')
     top = y0 + h
     if crenel:

@@ -68,8 +68,9 @@ def perimeter(w, gate_x0=262, gate_x1=378, service_gate=(396, 412)):
                 w.set(x, G + k, z, 'stone_bricks')
     for x in range(sx0, sx1 + 1):
         w.set(x, G + 1, 636, 'spruce_fence_gate[facing=south,open=false,in_wall=false]' if x % 2 else 'spruce_fence')
-    w.set(sx0 - 1, G + 4, 637, 'lantern')
-    w.set(sx1 + 1, G + 4, 637, 'lantern')
+    for x in (sx0 - 1, sx1 + 1):
+        w.set(x, G + 5, 636, 'chiseled_stone_bricks')
+        w.set(x, G + 6, 636, 'lantern')
     w.sign(sx0 - 1, G + 2, 637, ['SERVICE GATE', 'Authorized', 'Vehicles Only', ''], wood='spruce', facing='south')
 
     # trees on the berm tops

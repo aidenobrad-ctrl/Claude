@@ -209,7 +209,7 @@ def town_square(w, paths):
     w.clear(gx + 5, G + 2, gz, gx + 5, G + 2, gz)
     cone_roof(w, gx + 0.0, gz + 0.0, G + 6, 6.2, 5, 'red_nether_brick_stairs', 'red_nether_bricks',
               finial=['gold_block', 'lightning_rod[facing=up]'])
-    w.set(gx, G + 5, gz, 'lantern[hanging=true]')
+    decor.hang_lantern(w, gx, G + 5, gz)
     for (x, z) in ((gx - 2, gz), (gx + 1, gz - 2), (gx, gz + 2)):
         w.set(x, G + 2, z, 'note_block')
     w.set(gx - 1, G + 2, gz - 1, 'jukebox')

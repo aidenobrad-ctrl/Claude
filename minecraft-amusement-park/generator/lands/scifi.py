@@ -11,6 +11,7 @@ from ..font import giant_text, text_width
 from .. import decor
 from .. import track as T
 from ..buildings import style, building, restroom, info_booth, food_kiosk, cone_roof, flat_roof, box_walls, dome
+from .. import rides
 
 SCI = style(wall='white_concrete', base='white_concrete', pillar='light_gray_concrete', trim='cyan_concrete',
             floor='smooth_quartz', ceiling='smooth_quartz', window='light_blue_stained_glass_pane',
@@ -570,6 +571,8 @@ def nova_north(w, paths):
 
 
 def nova_south_extras(w, paths):
+    rides.rocket_spinner(w, 583, 262)
+    paths.draw([(583, 275), (583, 282), (597, 282)], 5, land='scifi_s')
     building(w, 586, 330, 24, 16, 'west', SCI, floors=2, roof='flat', name='HYPERION OUTPOST', kind='shop',
              awning=False, door_double=True)
     restroom(w, 586, 372, 'west', SCI, roof='flat')

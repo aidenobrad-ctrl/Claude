@@ -328,7 +328,7 @@ def annotate(im, labels, scale=2, title=None, legend=None):
     d.polygon([(cx, cy - 30), (cx - 10, cy + 6), (cx + 10, cy + 6)], fill=(200, 30, 40))
     d.text((cx, cy + 20), 'N', font=small, fill=(40, 30, 90), anchor='mm')
     sx, sy = 30, H0 + 60
-    d.rectangle([sx - 8, sy - 26, sx + 100 * scale + 70, sy + 14], fill=(255, 255, 255))
+    d.rectangle([sx - 8, sy - 14, sx + 100 * scale + 110, sy + 20], fill=(255, 255, 255))
     d.rectangle([sx, sy, sx + 100 * scale, sy + 8], fill=(40, 30, 90))
     d.text((sx + 100 * scale + 8, sy + 4), '100 blocks', font=tiny, fill=(30, 30, 30), anchor='lm')
     return out

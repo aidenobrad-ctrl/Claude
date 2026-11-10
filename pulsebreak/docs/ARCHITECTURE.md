@@ -2,7 +2,7 @@
 
 Pulsebreak (working title) is a fast, competitive multiplayer FPS for PC: tight gunplay and loadouts from modern military shooters, short rounds and snappy movement from arena shooters. This document covers the technology choices, how the repository is laid out, and how the systems connect. The phased plan is in [ROADMAP.md](ROADMAP.md).
 
-Phases 1 and 2 exist as code today: movement, the weapon system, and a firing range to try them in. Sections that describe later phases say so.
+Phases 1 to 3 exist as code today: movement, the weapon system, loadouts saved locally, and a firing range to try them in. Sections that describe later phases say so.
 
 ## Technology choices
 
@@ -11,11 +11,11 @@ Phases 1 and 2 exist as code today: movement, the weapon system, and a firing ra
 | Engine | Unity 6, URP, C# | In use |
 | Input | Unity Input System | In use |
 | UI | UI Toolkit (UXML + USS) | In use |
-| Netcode | Photon Fusion 2 in dedicated-server mode | Recommended, needs your decision before Phase 3 |
-| Backend API | ASP.NET Core | Recommended, starts in Phase 4 |
-| Database | PostgreSQL | Phase 4 |
-| Sessions and queues | Redis | Phase 4 and 5 |
-| Game servers | Headless Unity builds in Linux containers | Phase 3 onward |
+| Netcode | Photon Fusion 2 in dedicated-server mode | Recommended, needs your decision before Phase 4 |
+| Backend API | ASP.NET Core | Recommended, starts in Phase 5 |
+| Database | PostgreSQL | Phase 5 |
+| Sessions and queues | Redis | Phase 5 and 6 |
+| Game servers | Headless Unity builds in Linux containers | Phase 4 onward |
 
 ### Netcode: Photon Fusion 2
 
@@ -37,7 +37,7 @@ Things to weigh before committing:
 - **You still pay for server hosting.** Photon provides relay and matchmaking plumbing, not the machines the matches run on.
 - **Lock-in is limited by design.** All gameplay rules live in plain C# classes that know nothing about the netcode library (see [The simulation core](#the-simulation-core)). Switching library later means rewriting the thin layer that feeds them, not the movement or the guns.
 
-If cost matters more than time, choose Fish-Networking and the roadmap gains a few days in Phase 3 for a hitbox rewind buffer.
+If cost matters more than time, choose Fish-Networking and the roadmap gains a few days in Phase 4 for a hitbox rewind buffer.
 
 ### Backend: ASP.NET Core
 
@@ -58,7 +58,7 @@ pulsebreak/
 │   ├── ARCHITECTURE.md     This file
 │   └── ROADMAP.md          The phased plan
 ├── game/                   The Unity 6 project (client and dedicated server builds)
-└── backend/                ASP.NET Core API (arrives in Phase 4)
+└── backend/                ASP.NET Core API (arrives in Phase 5)
 ```
 
 ### Inside the Unity project
@@ -73,19 +73,22 @@ game/
     │   ├── Movement/         Character motor, its config asset and state
     │   ├── Weapons/          Weapon and attachment assets, stats, simulator, inventory,
     │   │                     projectiles, combat resolution, catalog, validation
+    │   ├── Loadouts/         Stored loadout format, rules, presets, utility items,
+    │   │                     perk sets, the utility belt, catalog, validation
     │   └── Combat/           Health, hitboxes, damage types
     ├── Client/             Everything a player sees, hears or touches.
     │   ├── Controls/         Input System reader
     │   ├── Player/           Local player loop, camera, rig assembly
     │   ├── Weapons/          First-person weapon models, tracers, projectiles, explosions
     │   ├── Audio/            Sound playback and placeholder synthesis
-    │   ├── UI/               HUD, pause menu and armory logic
+    │   ├── Loadouts/         The loadout library and where it is saved
+    │   ├── UI/               HUD, pause menu and loadout screen logic
     │   ├── Settings/         Player settings
     │   ├── Visuals/          Prototype geometry and materials
     │   └── FiringRange/      The range: layout, targets, stats
-    ├── Server/             Authoritative match logic (arrives in Phase 3)
+    ├── Server/             Authoritative match logic (arrives in Phase 4)
     ├── Editor/             Editor tooling (Project Doctor)
-    ├── Content/            Data assets: weapons, attachments, movement configs
+    ├── Content/            Data assets: weapons, attachments, utility, perks, presets, movement
     ├── Resources/          UI layout, styles and base materials loaded by path
     ├── Rendering/          URP pipeline assets
     ├── Scenes/
@@ -97,10 +100,11 @@ Each top-level code folder is its own assembly, and the compiler enforces the di
 ```mermaid
 flowchart LR
     Client[Pulsebreak.Client] --> Shared[Pulsebreak.Shared]
-    Server["Pulsebreak.Server (Phase 3)"] --> Shared
+    Server["Pulsebreak.Server (Phase 4)"] --> Shared
     Editor[Pulsebreak.Editor] --> Client
     Editor --> Shared
     Tests[Pulsebreak.Tests.EditMode] --> Shared
+    Tests --> Client
 ```
 
 `Shared` references nothing of ours. It cannot reach the HUD, the camera or the input devices, which is what keeps it runnable on a headless server. `Client` and `Server` never reference each other.
@@ -124,8 +128,9 @@ flowchart TD
     A[PlayerInputReader<br/>samples mouse look every frame,<br/>latches button taps] --> B{Ticks due?}
     B -- "yes, for each tick" --> C[Build PlayerInputCmd]
     C --> D[PlayerMotor.Simulate<br/>run, sprint, crouch, slide,<br/>jump, mantle, lean]
-    D --> E[WeaponInventory.Simulate<br/>switching, then the weapon in hand:<br/>trigger, fire rate, ammo, reload,<br/>ADS, spread, recoil]
-    E --> F[For each shot: CombatResolver<br/>bullet, melee strike,<br/>or spawn a projectile]
+    D --> U[UtilityBelt.Simulate<br/>charges, throw wind-up,<br/>cooldown, recharge]
+    U --> E[WeaponInventory.Simulate<br/>switching, then the weapon in hand:<br/>trigger, fire rate, ammo, reload,<br/>ADS, spread, recoil]
+    E --> F[For each shot or throw: CombatResolver<br/>bullet, melee strike,<br/>or spawn a projectile]
     F --> P[ProjectileSystem.Step<br/>flight, bounces, fuses, explosions]
     P --> B
     B -- "no" --> G[Present<br/>blend the last two ticks]
@@ -168,6 +173,43 @@ flowchart LR
 
 Adding a weapon or an attachment is therefore an asset and a catalog entry. Code changes only when a weapon needs a behaviour that does not exist yet.
 
+## Loadouts
+
+A loadout is a primary, a secondary, a melee weapon, two utility items and a perk set. It exists in two forms, and one set of rules converts between them.
+
+```mermaid
+flowchart LR
+    File[(loadouts.json<br/>today)] <--> Store[ILoadoutStore]
+    Backend[(Backend<br/>later)] -.-> Store
+    Store <--> Library[LoadoutLibrary<br/>presets, custom loadouts,<br/>which one is equipped]
+    Presets[LoadoutPreset assets] --> Library
+    Library -- LoadoutData --> Rules[LoadoutRules.Resolve]
+    Catalog[LoadoutCatalog] --> Rules
+    Rules -- Loadout --> Player[LocalPlayerController]
+    Panel[LoadoutPanel and quick swap] --> Library
+```
+
+- **`LoadoutData`** is the stored form: a name and nothing but ids. It holds no asset references, so it can be written to a file, sent to a server or kept in a database, and still be read after content has changed. A `LoadoutCollection` wraps a player's loadouts with a format version and the id of the equipped one.
+- **`Loadout`** is the playable form: real `WeaponBuild`s, `UtilityDefinition`s and a `PerkSetDefinition`.
+- **`LoadoutRules`** is the only way from one to the other. `Resolve` never fails: an unknown weapon, a weapon in the wrong slot, an attachment that does not fit, the same utility item twice or a missing perk set is replaced with a default and noted. The same function will run on the server, so a client cannot equip something illegal by editing its save or its requests.
+- **`LoadoutLibrary`** is what the UI talks to: create, rename, replace, delete, equip. It keeps presets read-only, limits custom loadouts to ten, sanitises every edit, and saves after every change.
+- **`ILoadoutStore`** is where saving happens. `LocalFileLoadoutStore` writes JSON to the save folder, swapping the file in whole so a crash cannot leave half of one, and sets an unreadable file aside instead of overwriting it.
+
+### Why this is "local first" and not "local only"
+
+Moving loadouts to the backend means writing one more `ILoadoutStore`. Nothing else changes, because the pieces sync needs are already in the format:
+
+- every loadout has a permanent unique id, so two devices can tell "the same loadout" from "two loadouts with the same name";
+- every loadout carries the time it was last changed, which is what decides the winner when two devices disagree;
+- the collection has a version number, so the layout can change without breaking old saves;
+- the server will run `LoadoutRules` on whatever it receives, so it never has to trust the client.
+
+### Utility items and perk sets
+
+- A **`UtilityDefinition`** is a throwable: how many are carried, the wind-up and cooldown of a throw, and the projectile stats of the thrown object. Those are the same stats weapons use, so a thrown grenade and a launched one go through the same `ProjectileSystem`.
+- **`UtilityBelt`** simulates the two slots per tick, like `WeaponSimulator` does a weapon. While a throw is winding up the weapon in hand cannot fire.
+- A **`PerkSetDefinition`** is a bundle of passive effects: stat modifiers applied to every weapon after its attachments, a movement speed multiplier, and utility bonuses.
+
 ### Where each requirement lives
 
 | Requirement | Class | Notes |
@@ -178,11 +220,15 @@ Adding a weapon or an attachment is therefore an asset and a catalog entry. Code
 | Damage falloff, headshot multipliers | `DamageCalculator`, `Hitbox` | One function used for feedback and authority |
 | Attachments | `AttachmentDefinition`, `WeaponBuild` | Sights, barrels, magazines, grips, stocks, lasers |
 | Weapon switching | `WeaponInventory` | Primary, secondary and melee slots |
+| Premade default loadouts | `LoadoutPreset`, `LoadoutCatalog` | Six ship with the game |
+| Create, edit, rename, save custom loadouts | `LoadoutLibrary`, `LoadoutPanel` | Saved through `ILoadoutStore` |
+| Two utility items, one perk set | `UtilityBelt`, `UtilityDefinition`, `PerkSetDefinition` | |
+| Quick-swap loadouts | `HudController` quick swap | Stands in for between-round selection |
+| Loadouts synced across devices | `ILoadoutStore` | Backend store arrives with accounts |
 | Hit markers, damage numbers, crosshair, optics | `HudController` | Damage numbers toggle in the pause menu |
-| Choosing weapons and attachments | `ArmoryPanel` | In the pause menu for now; becomes the loadout editor |
-| New weapons without code | `WeaponDefinition`, `WeaponCatalog` | `WeaponValidator` checks the data |
+| New content without code | Definition assets and catalogs | `LoadoutValidator` checks all of it |
 
-## How this becomes multiplayer (Phase 3)
+## How this becomes multiplayer (Phase 4)
 
 Nothing in `Shared` changes shape. The pieces move:
 
@@ -191,14 +237,15 @@ Nothing in `Shared` changes shape. The pieces move:
 | `LocalPlayerController` runs the tick loop from `Update` | The netcode library's tick callback runs it, on the server and on the owning client |
 | `PlayerInputReader` hands commands to the local loop | Commands are also sent to the server |
 | `MotorState` and `WeaponState` are kept locally | They are the networked state: the server sends them, the client restores them and replays unconfirmed commands |
-| A loadout is a set of `WeaponBuild` objects | It travels as weapon and attachment ids; both sides look them up in the catalog and resolve the same stats |
+| A loadout reaches the player straight from the library | It travels as `LoadoutData`; the server runs `LoadoutRules.Resolve` on it and both sides end up with the same stats |
+| `UtilityBelt` runs in the player's loop | It is part of the predicted, server-checked player state, like the weapon |
 | `ProjectileSystem` runs in the player's loop | The server runs it; clients draw predicted projectiles and correct them |
 | The client calls `CombatResolver` itself | The client only shows predicted feedback. The server calls it, against lag-compensated hitboxes |
 | Events fire immediately | Events are suppressed while re-simulating, so effects do not play twice |
 
 The basic anti-cheat in the brief falls out of this structure rather than being a separate system. The server runs `WeaponSimulator` itself, so fire rate and ammo cannot be exceeded. It runs `PlayerMotor` itself, so speed cannot be exceeded. It regenerates spread from the same seed and traces the shot itself, so a client cannot claim a hit it did not make.
 
-## Backend and services (Phases 4 onward)
+## Backend and services (Phases 5 onward)
 
 ```mermaid
 flowchart LR
@@ -214,7 +261,7 @@ flowchart LR
 
 - **Accounts.** Sign-up with email, username and password. Passwords are hashed with Argon2id. A verification link or code is emailed, and ranked play is refused until it is used. Login returns a short-lived JWT access token and a rotating refresh token stored in Redis. Password reset is by emailed single-use token.
 - **Abuse protection.** Per-IP and per-account rate limits, lockout with backoff after repeated failed logins, server-side validation of every request body.
-- **Player data.** Profile, level and XP, currency, unlocked weapons and cosmetics, saved loadouts, lifetime stats, match history and ranked rating, all in PostgreSQL and loaded on login so they follow the account across devices.
+- **Player data.** Profile, level and XP, currency, unlocked weapons and cosmetics, saved loadouts, lifetime stats, match history and ranked rating, all in PostgreSQL and loaded on login so they follow the account across devices. Loadouts arrive through a backend `ILoadoutStore`, in the `LoadoutCollection` format they already use on disk.
 - **Matchmaking.** Players or parties join a Redis queue per playlist. A matchmaker groups them by rating and latency, asks the fleet for a server, and hands each client a connection ticket.
 - **Trust boundary.** Clients never report results. The dedicated server reports the match outcome to the API using its own credential, and the API awards XP, updates stats and adjusts ratings.
 - **Social.** Friends, parties and invites, block and report.

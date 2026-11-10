@@ -6,15 +6,16 @@ The game is built in phases. Each one ends with something you can run and judge,
 | --- | --- | --- |
 | 1 | Movement, one weapon, firing range | Built, awaiting your playtest |
 | 2 | Weapon system, 30 weapons, attachments | Built, awaiting your playtest |
-| 3 | Netcode foundation and 1v1 duels | Next, needs the netcode decision |
-| 4 | Accounts and backend | Planned |
-| 5 | Matchmaking and team modes | Planned |
-| 6 | Loadouts and progression | Planned |
-| 7 | Abilities, streaks and utility | Planned |
-| 8 | Maps, objective modes, bots, custom lobbies | Planned |
-| 9 | Ranked and social | Planned |
-| 10 | Customization, store, battle pass | Planned |
-| 11 | Settings, polish, anti-cheat hardening, launch readiness | Planned |
+| 3 | Loadouts, saved locally | Built, awaiting your playtest |
+| 4 | Netcode foundation and 1v1 duels | Needs the netcode decision |
+| 5 | Accounts, backend and synced loadouts | Planned |
+| 6 | Matchmaking and team modes | Planned |
+| 7 | Progression and unlocks | Planned |
+| 8 | Abilities, streaks and more utility | Planned |
+| 9 | Maps, objective modes, bots, custom lobbies | Planned |
+| 10 | Ranked and social | Planned |
+| 11 | Customization, store, battle pass | Planned |
+| 12 | Settings, polish, anti-cheat hardening, launch readiness | Planned |
 
 ## Phase 1: Movement, one weapon, firing range
 
@@ -41,34 +42,51 @@ The game is built in phases. Each one ends with something you can run and judge,
 
 **You can test:** every weapon and attachment on the range, and whether each one feels distinct and fairly tuned.
 
-**Deferred from the brief:** the grapple gun (Phase 7, with other movement and ability items), weapon levels gating attachments (Phase 6; the unlock levels are already in the data), camos and charms (Phase 10).
+**Deferred from the brief:** the grapple gun (Phase 8, with other movement and ability items), weapon levels gating attachments (Phase 7; the unlock levels are already in the data), camos and charms (Phase 11).
 
-## Phase 3: Netcode foundation and 1v1 duels
+## Phase 3: Loadouts, saved locally
+
+**Built.** Offline, single player. You asked for this next, local first.
+
+- A loadout is a primary, a secondary, a melee weapon, two utility items and a perk set.
+- Six default loadouts to pick from instantly.
+- Custom loadouts: create, edit, rename, delete, up to ten, saved to a file as they change and still there next launch.
+- Loadout rules that repair anything illegal or outdated when a loadout is loaded.
+- Utility items that work: four throwables on G and F, with charges, cooldowns, and recharging on the range.
+- Perk sets that work: five, changing weapon handling, movement speed or utility.
+- A loadout screen in the pause menu (it absorbed the armory) and a quick swap list on B.
+
+**You can test:** build a loadout, quit, start again and find it; swap between loadouts in play; throw every utility item; feel each perk set.
+
+**Deliberately left for later:** syncing across devices (Phase 5; the save format is ready for it), unlock levels gating what can be equipped (Phase 7), choosing a loadout between rounds and on respawn (Phase 4, when there are rounds; quick swap stands in for it).
+
+## Phase 4: Netcode foundation and 1v1 duels
 
 The first online build: two players, one dedicated server, one small arena.
 
 - Integrate the netcode library and a headless dedicated server build.
 - Networked motor with client-side prediction and server reconciliation; remote players interpolated.
-- Server-authoritative shooting with lag-compensated hitboxes; projectiles simulated on the server. Server-side enforcement of fire rate, ammo and movement speed.
-- Loadouts sent as weapon and attachment ids and resolved from the catalog on both sides.
+- Server-authoritative shooting with lag-compensated hitboxes; projectiles and utility simulated on the server. Server-side enforcement of fire rate, ammo and movement speed.
+- Loadouts sent as ids and checked by the server with the same rules the client uses.
 - Player health, death and respawn; a third-person placeholder body so players can see each other; kill feed.
-- Duel rules: best of five rounds, spawn points, round and match flow, a minimal scoreboard.
+- Duel rules: best of five rounds, spawn points, round and match flow, loadout choice between rounds, a minimal scoreboard.
 - One duel arena built from prototype geometry.
 
 **You can test:** a full 1v1 match between two clients against a local server, including with simulated latency and packet loss.
 
 **Needs from you:** the netcode choice (Fusion 2 recommended), and a Photon account if you take it.
 
-## Phase 4: Accounts and backend
+## Phase 5: Accounts, backend and synced loadouts
 
 - ASP.NET Core API with PostgreSQL and Redis.
 - Sign-up, email verification, login with access and refresh tokens, password reset.
 - Argon2id password hashing, rate limiting, login lockout, input validation.
 - Profile storage; game client login and registration screens; dedicated servers authenticate to the API.
+- Loadouts stored on the account: a backend loadout store replaces the local file, with the newest change winning when two devices disagree.
 
-**You can test:** create an account, verify it by email, log in from the game, reset the password, and watch brute-force attempts get blocked.
+**You can test:** create an account, verify it by email, log in from the game, reset the password, watch brute-force attempts get blocked, and find your loadouts on a second machine.
 
-## Phase 5: Matchmaking and team modes
+## Phase 6: Matchmaking and team modes
 
 - Redis-backed queues, a matchmaker service, and game server allocation.
 - Casual playlist; parties queue together.
@@ -77,26 +95,25 @@ The first online build: two players, one dedicated server, one small arena.
 
 **You can test:** queue from the main menu and land in a match with other clients; see the result in your history.
 
-## Phase 6: Loadouts and progression
+## Phase 7: Progression and unlocks
 
-- Default loadouts to pick instantly; custom loadouts (primary, secondary, melee, two utility, one perk set) created, renamed and saved to the backend.
-- Quick-swap between rounds and on respawn.
-- Player level and XP, weapon levels that unlock attachments, unlock rules for weapons, post-match XP breakdown.
-- The armory grows into the full loadout editor.
+- Player level and XP; weapon levels.
+- Unlock rules enforced: weapons, attachments, utility items and perk sets become available at the levels already set in their assets.
+- Post-match XP breakdown.
+- The loadout screen shows what is locked and why.
 
-**You can test:** build a loadout on one machine, log in on another, and find it there.
+**You can test:** play matches, level up, and watch new options open up on the loadout screen.
 
-## Phase 7: Abilities, streaks and utility
+## Phase 8: Abilities, streaks and more utility
 
-- Utility items for the two utility slots: grenades and similar throwables.
 - The grapple gun and any other movement tools.
+- More utility items, including non-damaging ones (smoke, flash, scan).
 - Kill streak and ability rewards: area scan, airstrike, personal shield.
-- Perk sets.
 - Killcam.
 
 **You can test:** a match where streaks, utility and movement tools all come into play.
 
-## Phase 8: Maps, objective modes, bots, custom lobbies
+## Phase 9: Maps, objective modes, bots, custom lobbies
 
 - At least five maps, from duel arenas to medium 5v5 layouts, with clear lanes, cover and height.
 - Domination or Hardpoint, Free-for-All, Gun Game, 5v5.
@@ -105,7 +122,7 @@ The first online build: two players, one dedicated server, one small arena.
 
 **You can test:** every mode on every map it supports, alone against bots or in a private lobby with friends.
 
-## Phase 9: Ranked and social
+## Phase 10: Ranked and social
 
 - Skill rating, rank tiers and a ranked playlist, open only to verified accounts.
 - Skill-based matchmaking for ranked, looser for casual.
@@ -114,7 +131,7 @@ The first online build: two players, one dedicated server, one small arena.
 
 **You can test:** play ranked matches and watch rating and tier move; add a friend and invite them.
 
-## Phase 10: Customization, store, battle pass
+## Phase 11: Customization, store, battle pass
 
 - Operators, outfits, helmets, gloves, colours, emotes, victory poses, calling cards, name tags, with a rotating 3D preview.
 - Weapon camos and charms.
@@ -123,7 +140,7 @@ The first online build: two players, one dedicated server, one small arena.
 
 **You can test:** earn and equip cosmetics and see them on your character in a match.
 
-## Phase 11: Settings, polish, anti-cheat hardening, launch readiness
+## Phase 12: Settings, polish, anti-cheat hardening, launch readiness
 
 - Full settings: keybinds, graphics, audio, crosshair editor, colourblind modes.
 - Proper audio and visual effects, real weapon models, performance work.
@@ -134,6 +151,6 @@ The first online build: two players, one dedicated server, one small arena.
 
 ## Decisions waiting on you
 
-1. **Netcode library.** Fusion 2 (recommended) or Fish-Networking. Needed before Phase 3.
-2. **Backend stack.** ASP.NET Core (recommended) or Node.js. Needed before Phase 4.
+1. **Netcode library.** Fusion 2 (recommended) or Fish-Networking. Needed before Phase 4.
+2. **Backend stack.** ASP.NET Core (recommended) or Node.js. Needed before Phase 5.
 3. **The name.** "Pulsebreak" is a working title and I have not checked it against trademarks. It appears in namespaces and asset names, so it is cheapest to change early.

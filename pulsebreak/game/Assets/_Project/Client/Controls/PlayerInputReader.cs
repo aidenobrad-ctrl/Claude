@@ -21,6 +21,7 @@ namespace Pulsebreak.Client.Controls
         readonly InputActionMap _map;
         readonly InputAction _move, _look;
         readonly InputAction _jump, _sprint, _crouch, _fire, _ads, _reload, _leanLeft, _leanRight;
+        readonly InputAction _utility1, _utility2;
         readonly InputAction _scroll;
         readonly InputAction[] _slotKeys;
         InputButtons _latched;
@@ -51,6 +52,8 @@ namespace Pulsebreak.Client.Controls
             _reload = AddButton("Reload", "<Keyboard>/r");
             _leanLeft = AddButton("LeanLeft", "<Keyboard>/q");
             _leanRight = AddButton("LeanRight", "<Keyboard>/e");
+            _utility1 = AddButton("Utility1", "<Keyboard>/g");
+            _utility2 = AddButton("Utility2", "<Keyboard>/f");
 
             _scroll = _map.AddAction("WeaponScroll", InputActionType.Value, "<Mouse>/scroll");
             _slotKeys = new[]
@@ -94,6 +97,8 @@ namespace Pulsebreak.Client.Controls
             Latch(_reload, InputButtons.Reload);
             Latch(_leanLeft, InputButtons.LeanLeft);
             Latch(_leanRight, InputButtons.LeanRight);
+            Latch(_utility1, InputButtons.Utility1);
+            Latch(_utility2, InputButtons.Utility2);
 
             for (int i = 0; i < _slotKeys.Length; i++)
             {
@@ -125,6 +130,8 @@ namespace Pulsebreak.Client.Controls
             if (_reload.IsPressed()) held |= InputButtons.Reload;
             if (_leanLeft.IsPressed()) held |= InputButtons.LeanLeft;
             if (_leanRight.IsPressed()) held |= InputButtons.LeanRight;
+            if (_utility1.IsPressed()) held |= InputButtons.Utility1;
+            if (_utility2.IsPressed()) held |= InputButtons.Utility2;
 
             var cmd = new PlayerInputCmd
             {

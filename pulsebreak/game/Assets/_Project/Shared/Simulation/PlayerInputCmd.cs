@@ -15,6 +15,8 @@ namespace Pulsebreak.Shared.Simulation
         Reload = 1 << 5,
         LeanLeft = 1 << 6,
         LeanRight = 1 << 7,
+        Utility1 = 1 << 8,
+        Utility2 = 1 << 9,
     }
 
     /// <summary>

@@ -128,9 +128,10 @@ namespace Pulsebreak.Shared.Weapons
                 p.Position += direction * hit.distance;
                 p.Travelled += hit.distance;
 
-                if (hit.collider.TryGetComponent(out Hitbox hitbox))
+                // A fused explosive can be set to bounce off targets and wait for its fuse.
+                bool bouncesOffTargets = explosive && fused && !stats.detonateOnTarget;
+                if (!bouncesOffTargets && hit.collider.TryGetComponent(out Hitbox hitbox))
                 {
-                    // Anything explosive detonates on a target, fuse or not.
                     if (explosive)
                     {
                         Detonate(ref p, hit.point + hit.normal * 0.05f, hit.normal, tick);

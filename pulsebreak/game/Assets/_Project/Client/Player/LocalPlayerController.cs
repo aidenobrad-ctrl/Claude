@@ -5,6 +5,7 @@ using Pulsebreak.Client.Controls;
 using Pulsebreak.Client.Settings;
 using Pulsebreak.Client.Weapons;
 using Pulsebreak.Shared.Combat;
+using Pulsebreak.Shared.Loadouts;
 using Pulsebreak.Shared.Movement;
 using Pulsebreak.Shared.Simulation;
 using Pulsebreak.Shared.Weapons;
@@ -14,8 +15,8 @@ namespace Pulsebreak.Client.Player
     /// <summary>
     /// Drives the local player. Each rendered frame it:
     ///   1. samples input,
-    ///   2. runs as many fixed simulation ticks as have come due (movement, then the weapon in
-    ///      hand, then its shots, then projectiles in flight),
+    ///   2. runs as many fixed simulation ticks as have come due (movement, utility, the weapon
+    ///      in hand, its shots, then projectiles in flight),
     ///   3. presents the result, blending between the last two ticks so motion is smooth at any frame rate.
     ///
     /// Offline this object is also the authority: it applies damage itself. Once the game is
@@ -34,11 +35,14 @@ namespace Pulsebreak.Client.Player
         FirstPersonCamera _camera;
         WeaponViewModel _viewModel;
 
-        // The loadout: what is carried in each slot, and the running weapon for it.
+        // The loadout, and the running state of everything in it.
+        Loadout _loadout;
         WeaponBuild[] _builds;
         WeaponSimulator[] _weapons;
         WeaponInventory _inventory;
+        UtilityBelt _belt;
         bool _infiniteReserve;
+        bool _rechargeUtilities;
 
         readonly List<HitReport> _reports = new List<HitReport>(8);
 
@@ -55,6 +59,8 @@ namespace Pulsebreak.Client.Player
         public MotorState MotorState => _currentMotor;
         public WeaponInventory Inventory => _inventory;
         public ProjectileSystem Projectiles => _projectiles;
+        public Loadout Loadout => _loadout;
+        public UtilityBelt Utilities => _belt;
 
         /// <summary>The weapon in hand.</summary>
         public WeaponSimulator ActiveWeapon => _inventory.Active;
@@ -82,14 +88,29 @@ namespace Pulsebreak.Client.Player
             }
         }
 
+        /// <summary>Used utility items come back over time. On in the firing range.</summary>
+        public bool RechargeUtilities
+        {
+            get => _rechargeUtilities;
+            set
+            {
+                _rechargeUtilities = value;
+                if (_belt != null) _belt.Recharges = value;
+            }
+        }
+
         // Presentation events. They keep working when the loadout changes, so listeners
         // subscribe once to the player rather than to individual weapons.
         /// <summary>The trigger produced a shot (once per shot, however many pellets).</summary>
         public event Action<WeaponBuild> WeaponFired;
         /// <summary>The path of one bullet or pellet.</summary>
         public event Action<ShotPresentation> ShotFired;
-        /// <summary>A projectile left the weapon. Arguments are its id and the weapon that fired it.</summary>
-        public event Action<int, WeaponBuild> ProjectileLaunched;
+        /// <summary>A projectile was launched: its id, the stats it flies with, and its body and accent colours.</summary>
+        public event Action<int, WeaponStats, Color, Color> ProjectileLaunched;
+        /// <summary>The wind-up of a utility throw began.</summary>
+        public event Action<UtilityDefinition> UtilityThrowStarted;
+        /// <summary>A utility item left the hand.</summary>
+        public event Action<UtilityDefinition> UtilityThrown;
         /// <summary>A shot (bullet, blast, projectile or swing) damaged at least one target.</summary>
         public event Action ShotLanded;
         public event Action<HitReport> HitConfirmed;
@@ -100,7 +121,7 @@ namespace Pulsebreak.Client.Player
         public event Action ReloadFinished;
         public event Action DryFired;
 
-        public void Initialize(MovementConfig movement, WeaponBuild[] loadout, ProjectileSystem projectiles,
+        public void Initialize(MovementConfig movement, Loadout loadout, ProjectileSystem projectiles,
             FirstPersonCamera playerCamera, WeaponViewModel viewModel, float yaw)
         {
             _camera = playerCamera;
@@ -123,16 +144,17 @@ namespace Pulsebreak.Client.Player
 
         public WeaponBuild GetBuild(int slot) => _builds[slot];
 
-        /// <summary>Replaces everything the player carries. Weapons start with full ammunition.</summary>
-        public void SetLoadout(WeaponBuild[] loadout, int activeSlot)
+        /// <summary>Replaces everything the player carries. Weapons and utility start full.</summary>
+        public void SetLoadout(Loadout loadout, int activeSlot)
         {
-            _builds = loadout;
-            _weapons = new WeaponSimulator[loadout.Length];
-            for (int i = 0; i < loadout.Length; i++)
+            _loadout = loadout;
+            _builds = loadout.Weapons;
+            _weapons = new WeaponSimulator[_builds.Length];
+            for (int i = 0; i < _builds.Length; i++)
             {
-                if (loadout[i] == null) continue;
+                if (_builds[i] == null) continue;
 
-                var weapon = new WeaponSimulator(loadout[i].ResolveStats(), seed: 0x5EED0000u + (uint)i)
+                var weapon = new WeaponSimulator(loadout.ResolveStats(i), seed: 0x5EED0000u + (uint)i)
                 {
                     InfiniteReserve = _infiniteReserve,
                 };
@@ -149,16 +171,17 @@ namespace Pulsebreak.Client.Player
             _inventory.ActiveChanged += _ => OnActiveWeaponChanged();
             _previousRecoil = _currentRecoil = Vector2.zero;
 
+            var charges = new int[loadout.Utilities.Length];
+            for (int i = 0; i < charges.Length; i++) charges[i] = loadout.UtilityCharges(i);
+            _belt = new UtilityBelt(loadout.Utilities, charges)
+            {
+                Recharges = _rechargeUtilities,
+                RechargeMultiplier = loadout.UtilityRechargeMultiplier,
+            };
+            _belt.ThrowStarted += slot => UtilityThrowStarted?.Invoke(_loadout.Utilities[slot]);
+
             LoadoutChanged?.Invoke();
             OnActiveWeaponChanged();
-        }
-
-        /// <summary>Swaps the weapon or attachments in one slot, keeping the others as they are.</summary>
-        public void SetBuild(int slot, WeaponBuild build)
-        {
-            var loadout = (WeaponBuild[])_builds.Clone();
-            loadout[slot] = build;
-            SetLoadout(loadout, _inventory.ActiveIndex);
         }
 
         void OnActiveWeaponChanged()
@@ -223,15 +246,18 @@ namespace Pulsebreak.Client.Player
             WeaponSimulator inHand = _inventory.Active;
             var modifiers = new MoveModifiers
             {
-                SpeedMultiplier = Mathf.Lerp(
+                SpeedMultiplier = _loadout.MoveSpeedMultiplier * Mathf.Lerp(
                     inHand.Stats.hipMoveMultiplier, inHand.Stats.adsMoveMultiplier, inHand.State.AdsAmount),
             };
             _motor.Simulate(cmd, modifiers, dt);
             _currentMotor = _motor.State;
 
+            // A throw winding up keeps the hands off the weapon.
+            _belt.Simulate(cmd, !_currentMotor.Mantling, dt);
+
             var context = new WeaponContext
             {
-                CanUseWeapon = !_currentMotor.Mantling,
+                CanUseWeapon = !_currentMotor.Mantling && !_belt.IsThrowing,
                 Sprinting = _currentMotor.Sprinting,
                 TimeSinceSprint = _currentMotor.TimeSinceSprint,
                 HorizontalSpeed = _currentMotor.HorizontalSpeed,
@@ -244,12 +270,13 @@ namespace Pulsebreak.Client.Player
             // Shots belong to the weapon that was simulated, which is not necessarily the one
             // now in hand if a switch completed this tick.
             WeaponSimulator fired = _inventory.Simulated;
-            bool anythingToHit = fired.Shots.Count > 0 || _projectiles.Live.Count > 0;
+            bool anythingToHit = fired.Shots.Count > 0 || _projectiles.Live.Count > 0 || _belt.ReleasedSlot >= 0;
 
             // Targets move in Update; make sure the physics scene has their latest poses.
             if (anythingToHit) Physics.SyncTransforms();
 
             if (fired.Shots.Count > 0) ResolveShots(cmd, fired, _builds[Array.IndexOf(_weapons, fired)]);
+            if (_belt.ReleasedSlot >= 0) ThrowUtility(cmd, _loadout.Utilities[_belt.ReleasedSlot]);
             _projectiles.Step(_tick, dt);
 
             _tick++;
@@ -291,7 +318,7 @@ namespace Pulsebreak.Client.Player
                     case ShotKind.Projectile:
                     {
                         int id = _projectiles.Spawn(origin, direction, stats, weaponId, shot.DamageScale);
-                        ProjectileLaunched?.Invoke(id, build);
+                        ProjectileLaunched?.Invoke(id, stats, build.Weapon.view.bodyColor, build.Weapon.view.accentColor);
                         break;
                     }
 
@@ -309,6 +336,15 @@ namespace Pulsebreak.Client.Player
 
             // A shotgun blast counts as one shot landing, however many pellets connected.
             if (bulletLanded) ShotLanded?.Invoke();
+        }
+
+        /// <summary>A utility item leaves the hand: thrown where the player is looking, lobbed slightly upward.</summary>
+        void ThrowUtility(in PlayerInputCmd cmd, UtilityDefinition item)
+        {
+            Vector3 direction = AimMath.Direction(cmd.Yaw, cmd.Pitch - item.tossPitch);
+            int id = _projectiles.Spawn(_currentMotor.EyePosition, direction, item.projectile, item.utilityId, 1f);
+            ProjectileLaunched?.Invoke(id, item.projectile, item.color, item.color);
+            UtilityThrown?.Invoke(item);
         }
 
         void OnProjectileEvent(ProjectileEvent projectileEvent)
@@ -356,7 +392,7 @@ namespace Pulsebreak.Client.Player
             {
                 AdsAmount = weapon.AdsAmount,
                 Sprinting = b.Sprinting,
-                Lowered = b.Mantling || weapon.Phase == WeaponPhase.Holstering,
+                Lowered = b.Mantling || _belt.IsThrowing || weapon.Phase == WeaponPhase.Holstering,
                 Reloading = weapon.Phase == WeaponPhase.Reloading,
                 ReloadProgress = weapon.ReloadProgress,
                 Charge = weapon.ChargeAmount,

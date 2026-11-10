@@ -82,6 +82,8 @@ namespace Pulsebreak.Shared.Weapons
         [Range(0f, 1f)] public float explosionEdgeDamage = 0.25f;
         [Tooltip("0 explodes on impact. Above 0 it bounces around and explodes when the fuse runs out.")]
         [Min(0f)] public float fuseTime = 0f;
+        [Tooltip("With a fuse: burst early on hitting a target. Off, it bounces off targets like it does off walls.")]
+        public bool detonateOnTarget = true;
 
         [Header("Melee")]
         [Min(0.1f)] public float meleeRange = 2.2f;

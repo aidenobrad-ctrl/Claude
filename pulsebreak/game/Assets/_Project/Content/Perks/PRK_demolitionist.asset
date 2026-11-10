@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0f5acc5e6c339016e1cf25ea8f1571dc, type: 3}
+  m_Name: PRK_demolitionist
+  m_EditorClassIdentifier: 
+  perkSetId: demolitionist
+  displayName: Demolitionist
+  description: 'Carry one more of each utility item, and get them back sooner.'
+  unlockLevel: 12
+  weaponModifiers: []
+  moveSpeedMultiplier: 1
+  bonusUtilityCharges: 1
+  utilityRechargeMultiplier: 1.5

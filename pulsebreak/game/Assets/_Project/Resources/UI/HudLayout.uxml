@@ -52,7 +52,8 @@
             <ui:Label class="hint" text="hold Space + W at a ledge  mantle" picking-mode="Ignore" />
             <ui:Label class="hint" text="Q / E  lean      RMB  aim      LMB  fire" picking-mode="Ignore" />
             <ui:Label class="hint" text="1 2 3 / wheel  switch weapon      R  reload" picking-mode="Ignore" />
-            <ui:Label class="hint" text="Esc  armory and settings" picking-mode="Ignore" />
+            <ui:Label class="hint" text="G / F  throw utility      B  swap loadout" picking-mode="Ignore" />
+            <ui:Label class="hint" text="Esc  loadouts and settings" picking-mode="Ignore" />
             <ui:Label class="hint" text="F5  reset stats      F1  hide this" picking-mode="Ignore" />
         </ui:VisualElement>
 
@@ -70,7 +71,9 @@
             <ui:Label name="move-speed" class="move-speed" text="0.0 m/s" picking-mode="Ignore" />
         </ui:VisualElement>
 
+        <ui:Label name="loadout-title" class="loadout-title" text="" picking-mode="Ignore" />
         <ui:VisualElement name="slots" class="slots" picking-mode="Ignore" />
+        <ui:VisualElement name="utilities" class="utilities" picking-mode="Ignore" />
 
         <ui:VisualElement name="ammo" class="panel ammo" picking-mode="Ignore">
             <ui:Label name="weapon-name" class="weapon-name" text="" picking-mode="Ignore" />
@@ -81,19 +84,41 @@
             <ui:Label name="weapon-status" class="weapon-status" text="" picking-mode="Ignore" />
         </ui:VisualElement>
 
+        <ui:VisualElement name="quick" class="quick">
+            <ui:VisualElement class="pause-card quick-card">
+                <ui:Label class="pause-title" text="SWAP LOADOUT" />
+                <ui:VisualElement name="quick-list" class="quick-list" />
+                <ui:Label class="loadout-note" text="Press its number or click. B closes." />
+            </ui:VisualElement>
+        </ui:VisualElement>
+
         <ui:VisualElement name="pause" class="pause">
-            <ui:VisualElement name="armory" class="pause-card armory-card">
-                <ui:Label class="pause-title" text="ARMORY" />
-                <ui:VisualElement name="armory-tabs" class="armory-tabs" />
-                <ui:VisualElement class="armory-body">
-                    <ui:ScrollView name="armory-weapons" class="armory-weapons" />
-                    <ui:VisualElement class="armory-detail">
-                        <ui:Label name="armory-name" class="armory-name" />
-                        <ui:Label name="armory-class" class="armory-class" />
-                        <ui:Label name="armory-description" class="armory-description" />
-                        <ui:VisualElement name="armory-attachments" class="armory-attachments" />
-                        <ui:VisualElement name="armory-bars" class="armory-bars" />
-                        <ui:Label name="armory-numbers" class="armory-numbers" />
+            <ui:VisualElement name="loadouts" class="pause-card loadouts-card">
+                <ui:Label class="pause-title" text="LOADOUTS" />
+                <ui:VisualElement class="loadouts-body">
+                    <ui:VisualElement class="loadouts-column">
+                        <ui:ScrollView name="loadout-list" class="loadout-list" />
+                        <ui:VisualElement class="loadout-actions">
+                            <ui:Button name="loadout-new" class="pause-button" text="New" />
+                            <ui:Button name="loadout-delete" class="pause-button" text="Delete" />
+                        </ui:VisualElement>
+                        <ui:Label name="loadout-limit" class="loadout-note" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="loadout-editor">
+                        <ui:TextField name="loadout-name" class="loadout-name" max-length="24" is-delayed="true" />
+                        <ui:Label name="loadout-note" class="loadout-note" />
+                        <ui:VisualElement name="loadout-tabs" class="armory-tabs" />
+                        <ui:VisualElement class="armory-body">
+                            <ui:ScrollView name="loadout-items" class="armory-weapons" />
+                            <ui:VisualElement class="armory-detail">
+                                <ui:Label name="detail-name" class="armory-name" />
+                                <ui:Label name="detail-class" class="armory-class" />
+                                <ui:Label name="detail-description" class="armory-description" />
+                                <ui:VisualElement name="detail-attachments" class="armory-attachments" />
+                                <ui:VisualElement name="detail-bars" class="armory-bars" />
+                                <ui:Label name="detail-numbers" class="armory-numbers" />
+                            </ui:VisualElement>
+                        </ui:VisualElement>
                     </ui:VisualElement>
                 </ui:VisualElement>
             </ui:VisualElement>

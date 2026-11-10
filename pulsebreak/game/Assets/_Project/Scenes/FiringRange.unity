@@ -103,10 +103,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   movement: {fileID: 11400000, guid: 0dce6ff93db380799fa86cba03614ae5, type: 2}
-  catalog: {fileID: 11400000, guid: af85117c177b588d60f928362e48b1c2, type: 2}
-  primaryWeaponId: ar_hadron
-  secondaryWeaponId: pistol_notch
-  meleeWeaponId: melee_field_knife
+  catalog: {fileID: 11400000, guid: ec40c63fe24d9887cbc19c26c71fcc25, type: 2}
   createSunLight: 1
 --- !u!1660057539 &9223372036854775807
 SceneRoots:

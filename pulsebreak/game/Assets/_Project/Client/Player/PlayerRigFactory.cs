@@ -2,6 +2,7 @@ using UnityEngine;
 using Pulsebreak.Client.Audio;
 using Pulsebreak.Client.Weapons;
 using Pulsebreak.Shared.Combat;
+using Pulsebreak.Shared.Loadouts;
 using Pulsebreak.Shared.Movement;
 using Pulsebreak.Shared.Simulation;
 using Pulsebreak.Shared.Weapons;
@@ -27,10 +28,10 @@ namespace Pulsebreak.Client.Player
     /// </summary>
     public static class PlayerRigFactory
     {
-        /// <param name="loadout">What the player carries, one build per weapon slot.</param>
+        /// <param name="loadout">What the player carries: weapons, utility and perk set.</param>
         /// <param name="projectiles">The world's projectile simulation, which this player's weapons fire into.</param>
         public static PlayerRig Create(Vector3 position, float yaw, MovementConfig movement,
-            WeaponBuild[] loadout, ProjectileSystem projectiles)
+            Loadout loadout, ProjectileSystem projectiles)
         {
             var body = new GameObject("Player") { layer = GameLayers.Character };
             body.transform.position = position;
@@ -64,6 +65,7 @@ namespace Pulsebreak.Client.Player
             };
             player.ShotFired += shot => fx.PlayTracer(shot);
             player.ProjectileLaunched += fx.TrackProjectile;
+            player.UtilityThrowStarted += _ => sfx.Play(Sfx.Throw, 0.7f, 0.06f);
             player.HitConfirmed += hit =>
             {
                 if (hit.Killed) sfx.Play(Sfx.Kill, 0.9f);

@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cf495866b88359d8f1b6e8c964588444, type: 3}
+  m_Name: LDT_assault
+  m_EditorClassIdentifier: 
+  presetId: assault
+  displayName: Assault
+  description: 'A rifle for every range, with a sight and a steadier grip.'
+  primary: {fileID: 11400000, guid: 5f92c4e7698deb9fafb0752c8289e0bb, type: 2}
+  primaryAttachments:
+  - {fileID: 11400000, guid: f95313d2c50561b865952851718eecf8, type: 2}
+  - {fileID: 11400000, guid: f0ccfc29c240b707a378dce542d86b1c, type: 2}
+  secondary: {fileID: 11400000, guid: 310667811d5b4c1145a6cf18447f95d7, type: 2}
+  secondaryAttachments: []
+  melee: {fileID: 11400000, guid: e7a331c50b20c566955bf4b462141e37, type: 2}
+  utility1: {fileID: 11400000, guid: 7b11223ef436b8c010a6f236f868451f, type: 2}
+  utility2: {fileID: 11400000, guid: edc0b1651e82dd70e1f880d1c10de4c0, type: 2}
+  perkSet: {fileID: 11400000, guid: b7716b83694479bb1f63f8b9b512b532, type: 2}

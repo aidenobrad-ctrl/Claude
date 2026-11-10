@@ -3,6 +3,7 @@
     "rootNamespace": "Pulsebreak.Tests",
     "references": [
         "Pulsebreak.Shared",
+        "Pulsebreak.Client",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],

@@ -171,35 +171,33 @@ namespace Pulsebreak.Client.Weapons
         }
 
         /// <summary>Starts drawing a projectile the simulation has just launched.</summary>
-        public void TrackProjectile(int id, WeaponBuild build)
+        public void TrackProjectile(int id, WeaponStats stats, Color bodyColor, Color accentColor)
         {
             for (int i = 0; i < ProjectileCount; i++)
             {
                 ref ProjectileVisual visual = ref _projectiles[i];
                 if (visual.Active) continue;
 
-                WeaponStats stats = build.Weapon.stats;
-                WeaponViewProfile view = build.Weapon.view;
                 Vector3 size;
                 Material material;
                 if (stats.explosionRadius > 0f)
                 {
                     // Grenades are round, rockets long.
                     size = stats.fuseTime > 0f ? Vector3.one * 0.13f : new Vector3(0.09f, 0.09f, 0.36f);
-                    material = GreyboxMaterials.Unlit(view.accentColor);
+                    material = GreyboxMaterials.Unlit(accentColor);
                 }
                 else if (stats.projectileGravity > 0f)
                 {
                     // Bolts and blades.
                     size = new Vector3(0.016f, 0.034f, 0.3f);
-                    material = GreyboxMaterials.Flat(view.bodyColor);
+                    material = GreyboxMaterials.Flat(bodyColor);
                 }
                 else
                 {
                     // Energy shots.
                     float width = Mathf.Max(0.05f, stats.projectileRadius * 2f);
                     size = new Vector3(width, width, 0.42f);
-                    material = GreyboxMaterials.Unlit(view.accentColor);
+                    material = GreyboxMaterials.Unlit(accentColor);
                 }
 
                 visual.Id = id;

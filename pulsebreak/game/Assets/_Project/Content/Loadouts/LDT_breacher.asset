@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cf495866b88359d8f1b6e8c964588444, type: 3}
+  m_Name: LDT_breacher
+  m_EditorClassIdentifier: 
+  presetId: breacher
+  displayName: Breacher
+  description: 'First through the door, with a blade for whoever is left.'
+  primary: {fileID: 11400000, guid: 0f3120612cfa400a276a3cdb30f9c011, type: 2}
+  primaryAttachments:
+  - {fileID: 11400000, guid: 3c6aaeff1a758fd310e22cbd54f8ac29, type: 2}
+  - {fileID: 11400000, guid: cac71da591c30ba7b76f5be7c7364e9d, type: 2}
+  secondary: {fileID: 11400000, guid: 7698fb58393cc0fd9be4b7d29ab9f77e, type: 2}
+  secondaryAttachments: []
+  melee: {fileID: 11400000, guid: 0356491e142f2ff5600f5f89998ebf4c, type: 2}
+  utility1: {fileID: 11400000, guid: edc0b1651e82dd70e1f880d1c10de4c0, type: 2}
+  utility2: {fileID: 11400000, guid: ab30681abe28888d4278e4f50181af1f, type: 2}
+  perkSet: {fileID: 11400000, guid: 43fe55dc6d0167817de8c89de7131e07, type: 2}

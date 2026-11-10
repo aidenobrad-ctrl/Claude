@@ -331,12 +331,12 @@
 }
 
 .settings-card {
-    width: 500px;
+    width: 470px;
 }
 
-.armory-card {
-    width: 960px;
-    height: 760px;
+.loadouts-card {
+    width: 1210px;
+    height: 800px;
 }
 
 .pause-title {
@@ -571,4 +571,146 @@
     font-size: 14px;
     color: rgba(240, 244, 250, 0.85);
     white-space: normal;
+}
+
+/* ---------------------------------------------------------------- loadouts */
+
+.loadouts-body {
+    flex-direction: row;
+    flex-grow: 1;
+}
+
+.loadouts-column {
+    width: 230px;
+    margin-right: 22px;
+}
+
+.loadout-list {
+    flex-grow: 1;
+}
+
+.loadout-actions {
+    flex-direction: row;
+    margin-top: 10px;
+}
+
+.loadout-actions .pause-button {
+    min-width: 0;
+    flex-grow: 1;
+    margin: 0 6px 0 0;
+}
+
+.loadout-editor {
+    flex-grow: 1;
+}
+
+.loadout-name {
+    margin: 0 0 4px 0;
+    font-size: 20px;
+}
+
+.loadout-name .unity-text-field__input {
+    padding: 4px 10px;
+    color: rgb(240, 244, 250);
+    background-color: rgb(28, 34, 46);
+    border-color: rgb(56, 66, 84);
+    border-radius: 5px;
+}
+
+.loadout-note {
+    font-size: 12px;
+    color: rgba(240, 244, 250, 0.6);
+    white-space: normal;
+    margin: 4px 0 10px 2px;
+}
+
+/* On the HUD: the loadout in use, above the weapon slots. */
+.loadout-title {
+    position: absolute;
+    right: 28px;
+    bottom: 262px;
+    font-size: 12px;
+    letter-spacing: 3px;
+    color: rgb(38, 216, 255);
+    -unity-font-style: bold;
+}
+
+/* On the HUD: the two utility items, left of the ammo panel. */
+.utilities {
+    position: absolute;
+    right: 250px;
+    bottom: 28px;
+    align-items: flex-end;
+}
+
+.utility {
+    flex-direction: row;
+    align-items: center;
+    margin-top: 4px;
+    padding: 4px 10px;
+    background-color: rgba(10, 14, 20, 0.55);
+    border-radius: 4px;
+}
+
+.utility--empty {
+    opacity: 0.4;
+}
+
+.utility-key {
+    width: 20px;
+    font-size: 13px;
+    color: rgb(38, 216, 255);
+    -unity-font-style: bold;
+}
+
+.utility-name {
+    font-size: 13px;
+    letter-spacing: 1px;
+    margin-right: 10px;
+}
+
+.utility-count {
+    font-size: 16px;
+    -unity-font-style: bold;
+    min-width: 26px;
+    -unity-text-align: middle-right;
+}
+
+/* Quick swap overlay. */
+.quick {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(6, 9, 14, 0.55);
+    display: none;
+}
+
+.quick-card {
+    width: 380px;
+}
+
+.quick-item {
+    height: 36px;
+    margin: 0 0 5px 0;
+    padding-left: 12px;
+    font-size: 16px;
+    -unity-text-align: middle-left;
+    color: rgb(240, 244, 250);
+    background-color: rgb(28, 34, 46);
+    border-width: 0;
+    border-radius: 5px;
+}
+
+.quick-item:hover {
+    background-color: rgb(44, 53, 70);
+}
+
+.quick-item--active {
+    background-color: rgb(38, 216, 255);
+    color: rgb(6, 20, 26);
+    -unity-font-style: bold;
 }

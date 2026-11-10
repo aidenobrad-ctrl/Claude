@@ -21,6 +21,7 @@ namespace Pulsebreak.Client.Audio
         Mantle,
         Explosion,
         Bounce,
+        Throw,
     }
 
     /// <summary>
@@ -63,6 +64,7 @@ namespace Pulsebreak.Client.Audio
             _clips[(int)Sfx.Mantle] = SfxSynth.Whoosh("Mantle", 0.2f, 0.2f);
             _clips[(int)Sfx.Explosion] = SfxSynth.Explosion();
             _clips[(int)Sfx.Bounce] = SfxSynth.Click("Bounce", 1200f, 0.05f, 0.3f);
+            _clips[(int)Sfx.Throw] = SfxSynth.Whoosh("Throw", 0.22f, 0.3f);
         }
 
         /// <param name="pitchVariation">Random pitch change either way, as a fraction. Stops repeats sounding identical.</param>

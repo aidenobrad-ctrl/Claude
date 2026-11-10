@@ -3,9 +3,11 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UIElements;
 using Pulsebreak.Client.FiringRange;
+using Pulsebreak.Client.Loadouts;
 using Pulsebreak.Client.Player;
 using Pulsebreak.Client.Settings;
 using Pulsebreak.Shared.Combat;
+using Pulsebreak.Shared.Loadouts;
 using Pulsebreak.Shared.Movement;
 using Pulsebreak.Shared.Simulation;
 using Pulsebreak.Shared.Weapons;
@@ -16,8 +18,8 @@ namespace Pulsebreak.Client.UI
     /// <summary>
     /// The in-game HUD and pause menu, built with UI Toolkit. The layout lives in
     /// Resources/UI/HudLayout.uxml and the look in HudStyles.uss; this class only moves
-    /// data into it: crosshair spread, optics, ammo, weapon slots, hit markers, damage
-    /// numbers, movement readout, session stats and a few settings.
+    /// data into it: crosshair spread, optics, ammo, weapon slots, utility, hit markers,
+    /// damage numbers, movement readout, session stats, the loadout screen and a few settings.
     /// </summary>
     [RequireComponent(typeof(UIDocument))]
     public sealed class HudController : MonoBehaviour
@@ -45,7 +47,8 @@ namespace Pulsebreak.Client.UI
         LocalPlayerController _player;
         Camera _camera;
         RangeStats _stats;
-        ArmoryPanel _armory;
+        LoadoutLibrary _library;
+        LoadoutPanel _loadoutPanel;
 
         VisualElement _root;
         bool _ready;
@@ -55,11 +58,16 @@ namespace Pulsebreak.Client.UI
         VisualElement _scope, _scopeLens;
         VisualElement _hitMarker;
         VisualElement[] _hitTicks;
-        VisualElement _damageLayer, _hints, _pause, _slots;
+        VisualElement _damageLayer, _hints, _pause, _slots, _utilities, _quick, _quickList;
         VisualElement _reloadBar, _reloadFill, _chargeBar, _chargeFill;
         Label _rangefinder, _ammoMag, _ammoReserve, _weaponStatus, _weaponName, _moveState, _moveSpeed;
         Label _statAccuracy, _statHeadshots, _statShots, _statKills, _statTtk;
+        Label _loadoutTitle;
         Label[] _slotLabels = new Label[0];
+        VisualElement[] _utilityRows = new VisualElement[0];
+        Label[] _utilityCounts = new Label[0];
+        int[] _shownUtilityCharges = new int[0];
+        static readonly string[] UtilityKeys = { "G", "F" };
 
         readonly DamageNumber[] _numbers = new DamageNumber[DamageNumberCount];
         int _nextNumber;
@@ -73,6 +81,10 @@ namespace Pulsebreak.Client.UI
         ReticleStyle _shownReticle = (ReticleStyle)255;
 
         public bool IsPaused { get; private set; }
+
+        /// <summary>The quick loadout picker is open.</summary>
+        public bool IsQuickSwapOpen { get; private set; }
+        bool _resumeInputNextFrame;
 
         public event Action ResetStatsRequested;
 
@@ -156,6 +168,10 @@ namespace Pulsebreak.Client.UI
             _hints = _root.Q<VisualElement>("hints");
             _pause = _root.Q<VisualElement>("pause");
             _slots = _root.Q<VisualElement>("slots");
+            _utilities = _root.Q<VisualElement>("utilities");
+            _quick = _root.Q<VisualElement>("quick");
+            _quickList = _root.Q<VisualElement>("quick-list");
+            _loadoutTitle = _root.Q<Label>("loadout-title");
             _reloadBar = _root.Q<VisualElement>("reload-bar");
             _reloadFill = _root.Q<VisualElement>("reload-fill");
             _chargeBar = _root.Q<VisualElement>("charge-bar");
@@ -239,23 +255,27 @@ namespace Pulsebreak.Client.UI
             _root.Q<Button>("btn-quit").clicked += Quit;
         }
 
-        public void Bind(LocalPlayerController player, Camera playerCamera, RangeStats stats, WeaponCatalog catalog)
+        public void Bind(LocalPlayerController player, Camera playerCamera, RangeStats stats, LoadoutLibrary library)
         {
             _player = player;
             _camera = playerCamera;
             _stats = stats;
+            _library = library;
             _player.HitConfirmed += OnHitConfirmed;
             _player.LoadoutChanged += OnLoadoutChanged;
             _player.ActiveWeaponChanged += OnActiveWeaponChanged;
+            _library.Changed += OnLibraryChanged;
 
             if (!_ready) return;
-            _armory = new ArmoryPanel(_root.Q<VisualElement>("armory"), catalog, player);
+            _loadoutPanel = new LoadoutPanel(_root.Q<VisualElement>("loadouts"), library);
             OnLoadoutChanged();
             OnActiveWeaponChanged(player.ActiveBuild);
+            OnLibraryChanged();
         }
 
         void OnDestroy()
         {
+            if (_library != null) _library.Changed -= OnLibraryChanged;
             if (_player == null) return;
             _player.HitConfirmed -= OnHitConfirmed;
             _player.LoadoutChanged -= OnLoadoutChanged;
@@ -272,8 +292,60 @@ namespace Pulsebreak.Client.UI
             Cursor.visible = paused;
             if (_ready) _pause.style.display = paused ? DisplayStyle.Flex : DisplayStyle.None;
 
-            if (paused && _armory != null) _armory.Refresh();
+            if (paused)
+            {
+                SetQuickSwapOpen(false);
+                if (_loadoutPanel != null) _loadoutPanel.Refresh();
+            }
             if (wasPaused && !paused) GameSettings.Save();
+        }
+
+        /// <summary>
+        /// The quick picker: every loadout on one small list, chosen by number key or click.
+        /// It stands in for choosing a loadout between rounds until there are rounds.
+        /// </summary>
+        public void SetQuickSwapOpen(bool open)
+        {
+            if (!_ready || open == IsQuickSwapOpen || (open && IsPaused)) return;
+            IsQuickSwapOpen = open;
+            _quick.style.display = open ? DisplayStyle.Flex : DisplayStyle.None;
+
+            if (open)
+            {
+                _player.InputEnabled = false;
+                Cursor.lockState = CursorLockMode.None;
+                Cursor.visible = true;
+                RebuildQuickSwapList();
+            }
+            else if (!IsPaused)
+            {
+                Cursor.lockState = CursorLockMode.Locked;
+                Cursor.visible = false;
+                // Wait a frame before handing input back, so the number key that picked a
+                // loadout is not also read as "switch to weapon slot".
+                _resumeInputNextFrame = true;
+            }
+        }
+
+        void RebuildQuickSwapList()
+        {
+            _quickList.Clear();
+            var all = _library.All();
+            for (int i = 0; i < all.Count; i++)
+            {
+                string id = all[i].id;
+                string number = i < 9 ? (i + 1) + "   " : "     ";
+                var button = new Button(() => QuickEquip(id)) { text = number + all[i].name };
+                button.AddToClassList("quick-item");
+                button.EnableInClassList("quick-item--active", id == _library.EquippedId);
+                _quickList.Add(button);
+            }
+        }
+
+        void QuickEquip(string id)
+        {
+            _library.Equip(id);
+            SetQuickSwapOpen(false);
         }
 
         void OnApplicationFocus(bool hasFocus)
@@ -297,6 +369,13 @@ namespace Pulsebreak.Client.UI
 
         // ------------------------------------------------------------------ loadout
 
+        void OnLibraryChanged()
+        {
+            if (!_ready) return;
+            LoadoutData equipped = _library.Equipped;
+            _loadoutTitle.text = equipped != null ? equipped.name.ToUpperInvariant() : string.Empty;
+        }
+
         void OnLoadoutChanged()
         {
             if (!_ready) return;
@@ -313,6 +392,33 @@ namespace Pulsebreak.Client.UI
                 label.AddToClassList("slot");
                 _slots.Add(label);
                 _slotLabels[i] = label;
+            }
+
+            _utilities.Clear();
+            UtilityBelt belt = _player.Utilities;
+            _utilityRows = new VisualElement[belt.SlotCount];
+            _utilityCounts = new Label[belt.SlotCount];
+            _shownUtilityCharges = new int[belt.SlotCount];
+            for (int i = 0; i < belt.SlotCount; i++)
+            {
+                UtilityDefinition item = belt.GetItem(i);
+                var row = new VisualElement { pickingMode = PickingMode.Ignore };
+                row.AddToClassList("utility");
+
+                var key = new Label(i < UtilityKeys.Length ? UtilityKeys[i] : string.Empty) { pickingMode = PickingMode.Ignore };
+                key.AddToClassList("utility-key");
+                var name = new Label(item != null ? item.displayName.ToUpperInvariant() : "-") { pickingMode = PickingMode.Ignore };
+                name.AddToClassList("utility-name");
+                var count = new Label { pickingMode = PickingMode.Ignore };
+                count.AddToClassList("utility-count");
+
+                row.Add(key);
+                row.Add(name);
+                row.Add(count);
+                _utilities.Add(row);
+                _utilityRows[i] = row;
+                _utilityCounts[i] = count;
+                _shownUtilityCharges[i] = -1;
             }
         }
 
@@ -331,13 +437,29 @@ namespace Pulsebreak.Client.UI
 
         void Update()
         {
+            if (_resumeInputNextFrame)
+            {
+                _resumeInputNextFrame = false;
+                if (_player != null && !IsPaused && !IsQuickSwapOpen) _player.InputEnabled = true;
+            }
+
             Keyboard keyboard = Keyboard.current;
             if (keyboard != null)
             {
-                if (keyboard.escapeKey.wasPressedThisFrame) SetPaused(!IsPaused);
-                if (keyboard.f5Key.wasPressedThisFrame) ResetStatsRequested?.Invoke();
-                if (keyboard.f1Key.wasPressedThisFrame && _ready)
-                    _hints.style.display = _hints.resolvedStyle.display == DisplayStyle.None ? DisplayStyle.Flex : DisplayStyle.None;
+                if (keyboard.escapeKey.wasPressedThisFrame)
+                {
+                    if (IsQuickSwapOpen) SetQuickSwapOpen(false);
+                    else SetPaused(!IsPaused);
+                }
+                // The rest are ignored while the pause menu is up, where the same keys are typed into the name box.
+                else if (!IsPaused)
+                {
+                    if (keyboard.f5Key.wasPressedThisFrame) ResetStatsRequested?.Invoke();
+                    if (keyboard.f1Key.wasPressedThisFrame && _ready)
+                        _hints.style.display = _hints.resolvedStyle.display == DisplayStyle.None ? DisplayStyle.Flex : DisplayStyle.None;
+                    if (keyboard.bKey.wasPressedThisFrame && _library != null) SetQuickSwapOpen(!IsQuickSwapOpen);
+                    else if (IsQuickSwapOpen) HandleQuickSwapKeys(keyboard);
+                }
             }
 
             if (!_ready || _player == null || _player.Inventory == null) return;
@@ -351,6 +473,7 @@ namespace Pulsebreak.Client.UI
             UpdateHitMarker(dt);
             UpdateDamageNumbers(dt);
             UpdateWeaponPanel(inHand, weapon);
+            UpdateUtilities();
 
             _slowTimer -= dt;
             if (_slowTimer <= 0f)
@@ -361,6 +484,30 @@ namespace Pulsebreak.Client.UI
             }
 
             if (_stats != null && _stats.Version != _shownStatsVersion) UpdateStatsPanel();
+        }
+
+        void HandleQuickSwapKeys(Keyboard keyboard)
+        {
+            var all = _library.All();
+            for (int i = 0; i < all.Count && i < 9; i++)
+            {
+                if (!keyboard[Key.Digit1 + i].wasPressedThisFrame) continue;
+                QuickEquip(all[i].id);
+                return;
+            }
+        }
+
+        void UpdateUtilities()
+        {
+            UtilityBelt belt = _player.Utilities;
+            for (int i = 0; i < _utilityCounts.Length && i < belt.SlotCount; i++)
+            {
+                int charges = belt.GetState(i).Charges;
+                if (charges == _shownUtilityCharges[i]) continue;
+                _shownUtilityCharges[i] = charges;
+                _utilityCounts[i].text = "x" + charges;
+                _utilityRows[i].EnableInClassList("utility--empty", charges <= 0);
+            }
         }
 
         /// <summary>Hip-fire crosshair, optic reticle and scope view, blended by how far the weapon is aimed.</summary>

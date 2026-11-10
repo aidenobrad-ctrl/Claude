@@ -77,15 +77,16 @@ namespace Pulsebreak.Shared.Weapons
         }
 
         /// <summary>
-        /// The weapon's base stats with every fitted attachment applied. Additions go first,
-        /// then multipliers, so the order attachments were fitted in never matters.
+        /// The weapon's base stats with every fitted attachment applied, plus any extra
+        /// modifiers from outside the weapon (a perk set). Additions go first, then
+        /// multipliers, so the order things were fitted in never matters.
         /// </summary>
-        public WeaponStats ResolveStats()
+        public WeaponStats ResolveStats(StatModifier[] extraModifiers = null)
         {
             WeaponStats stats = Weapon.stats.Clone();
 
-            ApplyAll(stats, ModifierOp.Add);
-            ApplyAll(stats, ModifierOp.Multiply);
+            ApplyAll(stats, ModifierOp.Add, extraModifiers);
+            ApplyAll(stats, ModifierOp.Multiply, extraModifiers);
 
             AttachmentDefinition sight = Get(AttachmentSlot.Sight);
             if (sight != null && sight.sightZoom > 0f) stats.adsZoom = sight.sightZoom;
@@ -94,7 +95,18 @@ namespace Pulsebreak.Shared.Weapons
             return stats;
         }
 
-        void ApplyAll(WeaponStats stats, ModifierOp op)
+        /// <summary>The ids of the fitted attachments, in slot order. This is what gets saved.</summary>
+        public string[] FittedIds()
+        {
+            var ids = new List<string>();
+            foreach (AttachmentDefinition attachment in _fitted)
+            {
+                if (attachment != null) ids.Add(attachment.attachmentId);
+            }
+            return ids.ToArray();
+        }
+
+        void ApplyAll(WeaponStats stats, ModifierOp op, StatModifier[] extraModifiers)
         {
             foreach (AttachmentDefinition attachment in _fitted)
             {
@@ -103,6 +115,12 @@ namespace Pulsebreak.Shared.Weapons
                 {
                     if (modifier.op == op) stats.Apply(modifier);
                 }
+            }
+
+            if (extraModifiers == null) return;
+            foreach (StatModifier modifier in extraModifiers)
+            {
+                if (modifier.op == op) stats.Apply(modifier);
             }
         }
     }

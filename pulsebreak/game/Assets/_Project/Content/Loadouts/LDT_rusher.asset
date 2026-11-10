@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cf495866b88359d8f1b6e8c964588444, type: 3}
+  m_Name: LDT_rusher
+  m_EditorClassIdentifier: 
+  presetId: rusher
+  displayName: Rusher
+  description: 'Get close and stay close. Fast hands, fast feet.'
+  primary: {fileID: 11400000, guid: a4f848e8d1972eebbaefd993015fce45, type: 2}
+  primaryAttachments:
+  - {fileID: 11400000, guid: e31b4cf7f4f9e8daeb0b6ff9924e6ee0, type: 2}
+  - {fileID: 11400000, guid: 15612471dfbbb722e66de53e9d9648a1, type: 2}
+  secondary: {fileID: 11400000, guid: 0a15440df62ed227a3a3d6e249ab7a4f, type: 2}
+  secondaryAttachments: []
+  melee: {fileID: 11400000, guid: e7a331c50b20c566955bf4b462141e37, type: 2}
+  utility1: {fileID: 11400000, guid: edc0b1651e82dd70e1f880d1c10de4c0, type: 2}
+  utility2: {fileID: 11400000, guid: 3b38c5c467931de36dff563b087dead5, type: 2}
+  perkSet: {fileID: 11400000, guid: 3b1db5a585e809888e9abdfbbacbe84f, type: 2}

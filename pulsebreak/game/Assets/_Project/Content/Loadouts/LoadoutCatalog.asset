@@ -1,0 +1,33 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 196e89685cf58bd254bb27c0993aa9cb, type: 3}
+  m_Name: LoadoutCatalog
+  m_EditorClassIdentifier: 
+  weapons: {fileID: 11400000, guid: af85117c177b588d60f928362e48b1c2, type: 2}
+  utilities:
+  - {fileID: 11400000, guid: 7b11223ef436b8c010a6f236f868451f, type: 2}
+  - {fileID: 11400000, guid: edc0b1651e82dd70e1f880d1c10de4c0, type: 2}
+  - {fileID: 11400000, guid: ab30681abe28888d4278e4f50181af1f, type: 2}
+  - {fileID: 11400000, guid: 3b38c5c467931de36dff563b087dead5, type: 2}
+  perkSets:
+  - {fileID: 11400000, guid: b7716b83694479bb1f63f8b9b512b532, type: 2}
+  - {fileID: 11400000, guid: 3b1db5a585e809888e9abdfbbacbe84f, type: 2}
+  - {fileID: 11400000, guid: 01b6839a97866eac95b727eca781b94b, type: 2}
+  - {fileID: 11400000, guid: 72da7f3e24f0aa6a0a2faee8f82bed94, type: 2}
+  - {fileID: 11400000, guid: 43fe55dc6d0167817de8c89de7131e07, type: 2}
+  presets:
+  - {fileID: 11400000, guid: 6af9df530c6233d2c68e44a20165448a, type: 2}
+  - {fileID: 11400000, guid: 0c8b63bfbb1596bff2fcd0d2264b53fa, type: 2}
+  - {fileID: 11400000, guid: 4067d6febed037ee9c3fe92c22535865, type: 2}
+  - {fileID: 11400000, guid: 3ce7c4b0544cd42ff2f4a05c989cce57, type: 2}
+  - {fileID: 11400000, guid: c15b585bd5bb7d2eb848516372c86630, type: 2}
+  - {fileID: 11400000, guid: c19672bb955924d5174bac1df248a8aa, type: 2}

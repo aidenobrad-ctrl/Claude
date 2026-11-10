@@ -46,6 +46,7 @@ MonoBehaviour:
     explosionRadius: 0
     explosionEdgeDamage: 0.25
     fuseTime: 0
+    detonateOnTarget: 1
     meleeRange: 2
     meleeRadius: 0.4
     meleeHitDelay: 0.1

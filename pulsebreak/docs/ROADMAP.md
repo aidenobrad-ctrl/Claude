@@ -5,12 +5,12 @@ The game is built in phases. Each one ends with something you can run and judge,
 | Phase | Theme | Status |
 | --- | --- | --- |
 | 1 | Movement, one weapon, firing range | Built, awaiting your playtest |
-| 2 | Netcode foundation and 1v1 duels | Next, needs the netcode decision |
-| 3 | Combat core and first arsenal | Planned |
+| 2 | Weapon system, 30 weapons, attachments | Built, awaiting your playtest |
+| 3 | Netcode foundation and 1v1 duels | Next, needs the netcode decision |
 | 4 | Accounts and backend | Planned |
 | 5 | Matchmaking and team modes | Planned |
 | 6 | Loadouts and progression | Planned |
-| 7 | Full arsenal, attachments, streaks | Planned |
+| 7 | Abilities, streaks and utility | Planned |
 | 8 | Maps, objective modes, bots, custom lobbies | Planned |
 | 9 | Ranked and social | Planned |
 | 10 | Customization, store, battle pass | Planned |
@@ -21,36 +21,43 @@ The game is built in phases. Each one ends with something you can run and judge,
 **Built.** Offline, single player.
 
 - Fixed-tick character motor: run, sprint, crouch, slide, jump with coyote time and buffering, mantle, lean.
-- One weapon, the Hadron AR, defined entirely by a ScriptableObject: fire rate, damage falloff, headshot and limb multipliers, magazine and reload, ADS, spread with bloom, a 20-shot recoil pattern.
+- One weapon, the Hadron AR, defined entirely by a ScriptableObject.
 - Hitscan against head, body and limb hitboxes; hit markers, damage numbers, dynamic crosshair, tracers, impacts, placeholder audio.
 - Firing range: static and moving targets from 10 to 75 m, a movement course, a raised perch with stairs, session stats including time to kill.
 - Pause menu with sensitivity, aim sensitivity, field of view, volume and a damage-number toggle.
 
-**You can test:** how movement and the gun feel, and whether the numbers in the two tuning assets are right.
+**You can test:** how movement and the gun feel, and whether the numbers in the tuning assets are right.
 
-## Phase 2: Netcode foundation and 1v1 duels
+## Phase 2: Weapon system, 30 weapons, attachments
+
+**Built.** Offline, single player. You asked for this ahead of netcode, so the phases below moved down one.
+
+- Weapons as data: a definition asset per weapon, an attachment asset per attachment, a catalog listing both, and a validator that checks them.
+- Weapon behaviours: automatic, semi-automatic, burst and charge fire; bullets that can pierce; shotgun pellets; projectiles with gravity, bounces, fuses and explosions; melee. Magazine and shell-by-shell reloads.
+- 30 weapons across assault rifles, SMGs, LMGs, shotguns, sniper and marksman rifles, pistols, launchers, special weapons and melee.
+- 21 attachments in six slots (sights, barrels, magazines, grips, stocks, lasers) that change stats, with optic reticles and a full-screen scope.
+- Three weapon slots with switching; an armory in the pause menu to pick weapons and attachments and compare stats.
+- Placeholder first-person models built from each weapon's proportions and fitted attachments; a synthesised sound per weapon.
+
+**You can test:** every weapon and attachment on the range, and whether each one feels distinct and fairly tuned.
+
+**Deferred from the brief:** the grapple gun (Phase 7, with other movement and ability items), weapon levels gating attachments (Phase 6; the unlock levels are already in the data), camos and charms (Phase 10).
+
+## Phase 3: Netcode foundation and 1v1 duels
 
 The first online build: two players, one dedicated server, one small arena.
 
 - Integrate the netcode library and a headless dedicated server build.
 - Networked motor with client-side prediction and server reconciliation; remote players interpolated.
-- Server-authoritative shooting with lag-compensated hitboxes. Server-side enforcement of fire rate, ammo and movement speed.
-- Player health, death and respawn; a third-person placeholder body so players can see each other.
+- Server-authoritative shooting with lag-compensated hitboxes; projectiles simulated on the server. Server-side enforcement of fire rate, ammo and movement speed.
+- Loadouts sent as weapon and attachment ids and resolved from the catalog on both sides.
+- Player health, death and respawn; a third-person placeholder body so players can see each other; kill feed.
 - Duel rules: best of five rounds, spawn points, round and match flow, a minimal scoreboard.
 - One duel arena built from prototype geometry.
 
 **You can test:** a full 1v1 match between two clients against a local server, including with simulated latency and packet loss.
 
 **Needs from you:** the netcode choice (Fusion 2 recommended), and a Photon account if you take it.
-
-## Phase 3: Combat core and first arsenal
-
-- Weapon behaviours beyond hitscan rifles: projectiles with travel time and drop, shotgun pellets, scoped sniping, melee.
-- Around ten weapons across the main classes, each its own definition asset.
-- Weapon switching: primary, secondary, melee; two utility slots with the first grenades.
-- Kill feed, damage direction indicator, death recap; killcam groundwork (recording the data it needs).
-
-**You can test:** duels with a varied loadout chosen from a temporary in-game menu.
 
 ## Phase 4: Accounts and backend
 
@@ -74,19 +81,20 @@ The first online build: two players, one dedicated server, one small arena.
 
 - Default loadouts to pick instantly; custom loadouts (primary, secondary, melee, two utility, one perk set) created, renamed and saved to the backend.
 - Quick-swap between rounds and on respawn.
-- Player level and XP, weapon levels, unlock rules, post-match XP breakdown.
-- Loadout editor and armory screens.
+- Player level and XP, weapon levels that unlock attachments, unlock rules for weapons, post-match XP breakdown.
+- The armory grows into the full loadout editor.
 
 **You can test:** build a loadout on one machine, log in on another, and find it there.
 
-## Phase 7: Full arsenal, attachments, streaks
+## Phase 7: Abilities, streaks and utility
 
-- Thirty or more weapons, including the arcade set: grapple gun, burst crossbow, ricochet blaster, energy rifle, throwing knives, katana.
-- Attachments (sights, barrels, magazines, grips, stocks, lasers) that modify weapon stats; unlocked by weapon level.
+- Utility items for the two utility slots: grenades and similar throwables.
+- The grapple gun and any other movement tools.
 - Kill streak and ability rewards: area scan, airstrike, personal shield.
 - Perk sets.
+- Killcam.
 
-**You can test:** every weapon on the firing range and in matches; attachment effects visible in the stats and in the hands.
+**You can test:** a match where streaks, utility and movement tools all come into play.
 
 ## Phase 8: Maps, objective modes, bots, custom lobbies
 
@@ -118,7 +126,7 @@ The first online build: two players, one dedicated server, one small arena.
 ## Phase 11: Settings, polish, anti-cheat hardening, launch readiness
 
 - Full settings: keybinds, graphics, audio, crosshair editor, colourblind modes.
-- Killcam, proper audio and visual effects, performance work.
+- Proper audio and visual effects, real weapon models, performance work.
 - Server-side anomaly detection on top of the built-in validation.
 - Build pipeline, server deployment, monitoring.
 
@@ -126,6 +134,6 @@ The first online build: two players, one dedicated server, one small arena.
 
 ## Decisions waiting on you
 
-1. **Netcode library.** Fusion 2 (recommended) or Fish-Networking. Needed before Phase 2.
+1. **Netcode library.** Fusion 2 (recommended) or Fish-Networking. Needed before Phase 3.
 2. **Backend stack.** ASP.NET Core (recommended) or Node.js. Needed before Phase 4.
 3. **The name.** "Pulsebreak" is a working title and I have not checked it against trademarks. It appears in namespaces and asset names, so it is cheapest to change early.

@@ -2,7 +2,7 @@
 
 Pulsebreak (working title) is a fast, competitive multiplayer FPS for PC: tight gunplay and loadouts from modern military shooters, short rounds and snappy movement from arena shooters. This document covers the technology choices, how the repository is laid out, and how the systems connect. The phased plan is in [ROADMAP.md](ROADMAP.md).
 
-Only Phase 1 exists as code today. Sections that describe later phases say so.
+Phases 1 and 2 exist as code today: movement, the weapon system, and a firing range to try them in. Sections that describe later phases say so.
 
 ## Technology choices
 
@@ -11,11 +11,11 @@ Only Phase 1 exists as code today. Sections that describe later phases say so.
 | Engine | Unity 6, URP, C# | In use |
 | Input | Unity Input System | In use |
 | UI | UI Toolkit (UXML + USS) | In use |
-| Netcode | Photon Fusion 2 in dedicated-server mode | Recommended, needs your decision before Phase 2 |
+| Netcode | Photon Fusion 2 in dedicated-server mode | Recommended, needs your decision before Phase 3 |
 | Backend API | ASP.NET Core | Recommended, starts in Phase 4 |
 | Database | PostgreSQL | Phase 4 |
 | Sessions and queues | Redis | Phase 4 and 5 |
-| Game servers | Headless Unity builds in Linux containers | Phase 2 onward |
+| Game servers | Headless Unity builds in Linux containers | Phase 3 onward |
 
 ### Netcode: Photon Fusion 2
 
@@ -37,7 +37,7 @@ Things to weigh before committing:
 - **You still pay for server hosting.** Photon provides relay and matchmaking plumbing, not the machines the matches run on.
 - **Lock-in is limited by design.** All gameplay rules live in plain C# classes that know nothing about the netcode library (see [The simulation core](#the-simulation-core)). Switching library later means rewriting the thin layer that feeds them, not the movement or the guns.
 
-If cost matters more than time, choose Fish-Networking and the roadmap gains a few days in Phase 2 for a hitbox rewind buffer.
+If cost matters more than time, choose Fish-Networking and the roadmap gains a few days in Phase 3 for a hitbox rewind buffer.
 
 ### Backend: ASP.NET Core
 
@@ -71,24 +71,25 @@ game/
     ├── Shared/             Gameplay rules. Runs on client and server.
     │   ├── Simulation/       Tick constants, input commands, layers, seeded random
     │   ├── Movement/         Character motor, its config asset and state
-    │   ├── Weapons/          Weapon definition asset, simulator, damage, hitscan
+    │   ├── Weapons/          Weapon and attachment assets, stats, simulator, inventory,
+    │   │                     projectiles, combat resolution, catalog, validation
     │   └── Combat/           Health, hitboxes, damage types
     ├── Client/             Everything a player sees, hears or touches.
     │   ├── Controls/         Input System reader
     │   ├── Player/           Local player loop, camera, rig assembly
-    │   ├── Weapons/          First-person weapon model, tracers, impacts
+    │   ├── Weapons/          First-person weapon models, tracers, projectiles, explosions
     │   ├── Audio/            Sound playback and placeholder synthesis
-    │   ├── UI/               HUD and pause menu logic
+    │   ├── UI/               HUD, pause menu and armory logic
     │   ├── Settings/         Player settings
     │   ├── Visuals/          Prototype geometry and materials
     │   └── FiringRange/      The range: layout, targets, stats
-    ├── Server/             Authoritative match logic (arrives in Phase 2)
+    ├── Server/             Authoritative match logic (arrives in Phase 3)
     ├── Editor/             Editor tooling (Project Doctor)
-    ├── Content/            Data assets: weapons, movement configs
+    ├── Content/            Data assets: weapons, attachments, movement configs
     ├── Resources/          UI layout, styles and base materials loaded by path
     ├── Rendering/          URP pipeline assets
     ├── Scenes/
-    └── Tests/EditMode/     Unit tests for the simulation
+    └── Tests/EditMode/     Unit tests for the simulation and the content
 ```
 
 Each top-level code folder is its own assembly, and the compiler enforces the direction of dependencies:
@@ -96,7 +97,7 @@ Each top-level code folder is its own assembly, and the compiler enforces the di
 ```mermaid
 flowchart LR
     Client[Pulsebreak.Client] --> Shared[Pulsebreak.Shared]
-    Server["Pulsebreak.Server (Phase 2)"] --> Shared
+    Server["Pulsebreak.Server (Phase 3)"] --> Shared
     Editor[Pulsebreak.Editor] --> Client
     Editor --> Shared
     Tests[Pulsebreak.Tests.EditMode] --> Shared
@@ -123,29 +124,65 @@ flowchart TD
     A[PlayerInputReader<br/>samples mouse look every frame,<br/>latches button taps] --> B{Ticks due?}
     B -- "yes, for each tick" --> C[Build PlayerInputCmd]
     C --> D[PlayerMotor.Simulate<br/>run, sprint, crouch, slide,<br/>jump, mantle, lean]
-    D --> E[WeaponSimulator.Simulate<br/>trigger, fire rate, ammo, reload,<br/>ADS, spread, recoil]
-    E --> F[For each shot:<br/>Hitscan.Trace then DamageCalculator<br/>then IDamageable.ApplyDamage]
-    F --> B
+    D --> E[WeaponInventory.Simulate<br/>switching, then the weapon in hand:<br/>trigger, fire rate, ammo, reload,<br/>ADS, spread, recoil]
+    E --> F[For each shot: CombatResolver<br/>bullet, melee strike,<br/>or spawn a projectile]
+    F --> P[ProjectileSystem.Step<br/>flight, bounces, fuses, explosions]
+    P --> B
     B -- "no" --> G[Present<br/>blend the last two ticks]
     G --> H[FirstPersonCamera]
     G --> I[WeaponViewModel]
     F -. events .-> J[WeaponFx, SfxPlayer,<br/>HudController, RangeStats]
+    P -. events .-> J
 ```
 
 `LocalPlayerController` owns this loop. Position is blended between the last two ticks so motion is smooth at any frame rate, while view angles come straight from the current frame's mouse input, so aiming has no added latency.
+
+## The weapon system
+
+A weapon is data, and the path from an asset to a hit is the same for all thirty of them:
+
+```mermaid
+flowchart LR
+    WD[WeaponDefinition asset<br/>identity, base stats,<br/>accepted attachments] --> WB[WeaponBuild<br/>weapon + fitted attachments]
+    AD[AttachmentDefinition assets<br/>stat modifiers] --> WB
+    WB -- ResolveStats --> WS[WeaponStats<br/>final numbers]
+    WS --> SIM[WeaponSimulator<br/>decides when a shot leaves]
+    SIM -- ShotEvent --> CR{Delivery}
+    CR -- bullet --> B[CombatResolver.FireBullet]
+    CR -- melee --> M[CombatResolver.MeleeStrike]
+    CR -- projectile --> PS[ProjectileSystem]
+    PS -- explosion --> X[CombatResolver.Explode]
+    B --> HR[HitReport]
+    M --> HR
+    PS --> HR
+    X --> HR
+```
+
+- **`WeaponDefinition`** is one asset per weapon: an id, a class, a loadout slot, base stats, the attachments it accepts, and the proportions and sound of its placeholder model. **`WeaponCatalog`** lists them all; a weapon exists for the game once it is in the catalog.
+- **`AttachmentDefinition`** is one asset per attachment: a slot and a list of stat changes such as "magazine size x1.34". Because the changes are relative, one suppressor asset fits every weapon that lists it.
+- **`WeaponBuild`** is a weapon plus at most one attachment per slot. `ResolveStats` copies the base stats, applies additions and then multipliers, and clamps the result. It is the only place attachment effects become numbers.
+- **`WeaponStats`** is a plain class, not a Unity object, so the simulator, the tests and later the server and backend can use it without assets.
+- **`WeaponSimulator`** handles every fire mode (automatic, semi-automatic, burst, charge), both reload styles, spread, recoil and timing. It emits `ShotEvent`s and never touches physics.
+- **`WeaponInventory`** holds one simulator per slot, so ammo is remembered while a weapon is put away, and times the switch between them.
+- **`CombatResolver`** and **`ProjectileSystem`** turn shots into `HitReport`s: bullets that can pierce, melee sweeps, and projectiles with gravity, bounces, fuses and explosions that respect cover.
+
+Adding a weapon or an attachment is therefore an asset and a catalog entry. Code changes only when a weapon needs a behaviour that does not exist yet.
 
 ### Where each requirement lives
 
 | Requirement | Class | Notes |
 | --- | --- | --- |
 | Sprint, slide, crouch, jump, mantle, lean | `PlayerMotor` | Tuned by a `MovementConfig` asset |
-| ADS, recoil patterns, spread, fire modes, reload | `WeaponSimulator` | Tuned by a `WeaponDefinition` asset |
+| ADS, recoil patterns, spread, fire modes, reload | `WeaponSimulator` | Runs on `WeaponStats` |
+| Hitscan and projectile weapons | `CombatResolver`, `ProjectileSystem` | Chosen per weapon by its `ballistics` stat |
 | Damage falloff, headshot multipliers | `DamageCalculator`, `Hitbox` | One function used for feedback and authority |
-| Hitscan | `Hitscan` | Reports what the ray met; applying damage is a separate step |
-| Hit markers, damage numbers, crosshair | `HudController` | Damage numbers toggle in the pause menu |
-| New weapons without code | `WeaponDefinition` | Create an asset, fill in the numbers |
+| Attachments | `AttachmentDefinition`, `WeaponBuild` | Sights, barrels, magazines, grips, stocks, lasers |
+| Weapon switching | `WeaponInventory` | Primary, secondary and melee slots |
+| Hit markers, damage numbers, crosshair, optics | `HudController` | Damage numbers toggle in the pause menu |
+| Choosing weapons and attachments | `ArmoryPanel` | In the pause menu for now; becomes the loadout editor |
+| New weapons without code | `WeaponDefinition`, `WeaponCatalog` | `WeaponValidator` checks the data |
 
-## How this becomes multiplayer (Phase 2)
+## How this becomes multiplayer (Phase 3)
 
 Nothing in `Shared` changes shape. The pieces move:
 
@@ -154,7 +191,9 @@ Nothing in `Shared` changes shape. The pieces move:
 | `LocalPlayerController` runs the tick loop from `Update` | The netcode library's tick callback runs it, on the server and on the owning client |
 | `PlayerInputReader` hands commands to the local loop | Commands are also sent to the server |
 | `MotorState` and `WeaponState` are kept locally | They are the networked state: the server sends them, the client restores them and replays unconfirmed commands |
-| The client applies damage itself | The client only shows predicted feedback. The server traces the shot against lag-compensated hitboxes and applies damage |
+| A loadout is a set of `WeaponBuild` objects | It travels as weapon and attachment ids; both sides look them up in the catalog and resolve the same stats |
+| `ProjectileSystem` runs in the player's loop | The server runs it; clients draw predicted projectiles and correct them |
+| The client calls `CombatResolver` itself | The client only shows predicted feedback. The server calls it, against lag-compensated hitboxes |
 | Events fire immediately | Events are suppressed while re-simulating, so effects do not play twice |
 
 The basic anti-cheat in the brief falls out of this structure rather than being a separate system. The server runs `WeaponSimulator` itself, so fire rate and ammo cannot be exceeded. It runs `PlayerMotor` itself, so speed cannot be exceeded. It regenerates spread from the same seed and traces the shot itself, so a client cannot claim a hit it did not make.
@@ -185,4 +224,4 @@ flowchart LR
 - Data that designers tune lives in ScriptableObject assets under `Content/`, never as constants in code.
 - Physics layers are referenced by index through `GameLayers`: `Character` (8) for movement capsules, `Hitbox` (9) for per-body-part damage colliders. Bullets hit the world and hitboxes; movement collides with the world and other characters.
 - Units are metres, seconds and degrees.
-- Phase 1 levels and props are built from code (`GreyboxKit`, `RangeLayout`) because there is no art yet. They are stand-ins for authored scenes and prefabs, which replace them as content arrives.
+- Levels, props and weapon models are built from code (`GreyboxKit`, `RangeLayout`, `ViewModelBuilder`) because there is no art yet. They are stand-ins for authored scenes and prefabs, which replace them as content arrives.

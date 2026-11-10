@@ -20,14 +20,17 @@ namespace Pulsebreak.Client.Player
 
     /// <summary>
     /// Assembles the local player in code: the simulated body, the camera rig that follows it,
-    /// and the cosmetic layer (viewmodel, effects, audio) wired to simulation events.
+    /// and the cosmetic layer (weapon model, effects, audio) wired to simulation events.
     ///
     /// The body and the camera are deliberately separate objects. The body moves in fixed
     /// ticks; the camera is placed every frame at a blend between ticks.
     /// </summary>
     public static class PlayerRigFactory
     {
-        public static PlayerRig Create(Vector3 position, float yaw, MovementConfig movement, WeaponDefinition weapon)
+        /// <param name="loadout">What the player carries, one build per weapon slot.</param>
+        /// <param name="projectiles">The world's projectile simulation, which this player's weapons fire into.</param>
+        public static PlayerRig Create(Vector3 position, float yaw, MovementConfig movement,
+            WeaponBuild[] loadout, ProjectileSystem projectiles)
         {
             var body = new GameObject("Player") { layer = GameLayers.Character };
             body.transform.position = position;
@@ -46,25 +49,38 @@ namespace Pulsebreak.Client.Player
             var viewModelObject = new GameObject("ViewModel");
             viewModelObject.transform.SetParent(cameraObject.transform, false);
             var viewModel = viewModelObject.AddComponent<WeaponViewModel>();
-            viewModel.Build();
+
+            player.Initialize(movement, loadout, projectiles, playerCamera, viewModel, yaw);
 
             var fx = cameraObject.AddComponent<WeaponFx>();
-            fx.Initialize(viewModel);
-
-            player.Initialize(movement, weapon, playerCamera, viewModel, yaw);
+            fx.Initialize(viewModel, player);
 
             // Presentation listens to the simulation; the simulation never listens back.
-            player.ShotFired += shot =>
+            player.WeaponFired += build =>
             {
-                viewModel.OnShot();
-                fx.PlayShot(shot);
-                sfx.Play(Sfx.Shot, 0.8f, 0.04f);
+                viewModel.OnFired(build);
+                fx.PlayMuzzle(build);
+                sfx.PlayShot(build);
             };
+            player.ShotFired += shot => fx.PlayTracer(shot);
+            player.ProjectileLaunched += fx.TrackProjectile;
             player.HitConfirmed += hit =>
             {
                 if (hit.Killed) sfx.Play(Sfx.Kill, 0.9f);
                 else if (hit.Zone == HitZone.Head) sfx.Play(Sfx.Headshot, 0.9f);
                 else sfx.Play(Sfx.Hit, 0.8f, 0.03f);
+            };
+            player.ActiveWeaponChanged += _ => sfx.Play(Sfx.Swap, 0.7f, 0.05f);
+            player.ReloadStarted += () => sfx.Play(Sfx.ReloadStart, 0.8f);
+            player.RoundInserted += () => sfx.Play(Sfx.RoundIn, 0.7f, 0.04f);
+            player.ReloadFinished += () => sfx.Play(Sfx.ReloadEnd, 0.8f);
+            player.DryFired += () => sfx.Play(Sfx.DryFire, 0.7f);
+
+            projectiles.Happened += projectileEvent =>
+            {
+                fx.OnProjectileEvent(projectileEvent);
+                if (projectileEvent.Kind == ProjectileEventKind.Explosion) sfx.Play(Sfx.Explosion, 1f, 0.06f);
+                else if (projectileEvent.Kind == ProjectileEventKind.Bounce) sfx.Play(Sfx.Bounce, 0.5f, 0.1f);
             };
 
             player.Motor.Jumped += () => sfx.Play(Sfx.Jump, 0.5f, 0.05f);
@@ -75,10 +91,6 @@ namespace Pulsebreak.Client.Player
             };
             player.Motor.SlideStarted += () => sfx.Play(Sfx.Slide, 0.7f, 0.05f);
             player.Motor.MantleStarted += () => sfx.Play(Sfx.Mantle, 0.7f, 0.05f);
-
-            player.Weapon.ReloadStarted += () => sfx.Play(Sfx.ReloadStart, 0.8f);
-            player.Weapon.ReloadFinished += () => sfx.Play(Sfx.ReloadEnd, 0.8f);
-            player.Weapon.DryFired += () => sfx.Play(Sfx.DryFire, 0.7f);
 
             return new PlayerRig
             {

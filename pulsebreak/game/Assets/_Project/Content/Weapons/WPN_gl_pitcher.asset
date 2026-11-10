@@ -1,0 +1,102 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f6a251fe876909704af95a88ea478068, type: 3}
+  m_Name: WPN_gl_pitcher
+  m_EditorClassIdentifier: 
+  weaponId: gl_pitcher
+  displayName: Pitcher GL
+  description: 'Lobs grenades that bounce, then burst. Bank them round corners.'
+  weaponClass: 7
+  slot: 1
+  unlockLevel: 27
+  stats:
+    fireMode: 1
+    roundsPerMinute: 110
+    burstCount: 3
+    burstCooldown: 0.2
+    chargeTime: 0.6
+    minChargeDamage: 0.35
+    ballistics: 1
+    pellets: 1
+    pierceTargets: 0
+    pierceDamageKept: 0.75
+    damage: 110
+    headMultiplier: 1
+    limbMultiplier: 1
+    falloffStart: 1000
+    falloffEnd: 1000
+    minDamageMultiplier: 1
+    maxRange: 300
+    projectileSpeed: 26
+    projectileGravity: 16
+    projectileLifetime: 6
+    projectileRadius: 0.1
+    bounces: 12
+    bounceSpeedKept: 0.45
+    bounceDamageMultiplier: 1
+    explosionRadius: 3.6
+    explosionEdgeDamage: 0.25
+    fuseTime: 1.6
+    meleeRange: 2.2
+    meleeRadius: 0.45
+    meleeHitDelay: 0.12
+    magazineSize: 4
+    reserveAmmo: 12
+    reloadStyle: 1
+    reloadTime: 0.7
+    emptyReloadTime: 2.3
+    reloadIntroTime: 0.4
+    adsTime: 0.26
+    adsZoom: 1.15
+    hipMoveMultiplier: 0.95
+    adsMoveMultiplier: 0.7
+    sprintToFireTime: 0.2
+    equipTime: 0.5
+    holsterTime: 0.3
+    hipSpread: 0.8
+    adsSpread: 0.2
+    moveSpreadPenalty: 0.6
+    airSpreadPenalty: 3
+    crouchSpreadMultiplier: 0.8
+    bloomPerShot: 0
+    maxBloom: 0
+    bloomRecovery: 5
+    adsBloomMultiplier: 0.2
+    recoilPattern:
+    - {x: 0, y: 1.8}
+    recoilLoopStart: 0
+    recoilRandomness: 0.12
+    recoilVerticalScale: 1
+    recoilHorizontalScale: 1
+    adsRecoilMultiplier: 0.75
+    crouchRecoilMultiplier: 0.85
+    recoilSnappiness: 28
+    recoilRecovery: 12
+    recoilRecoveryDelay: 0.12
+    recoilResetTime: 0.35
+  reticle: 2
+  attachments: []
+  view:
+    kind: 0
+    bodyLength: 0.3
+    bulk: 1.5
+    barrelLength: 0.25
+    stockLength: 0.16
+    magazineLength: 0.09
+    bodyColor: {r: 0.42, g: 0.36, b: 0.27, a: 1}
+    accentColor: {r: 0.35, g: 1, b: 0.5, a: 1}
+  audio:
+    kind: 2
+    pitch: 1.25
+    weight: 0.8
+    tail: 0.25
+    volume: 0.8

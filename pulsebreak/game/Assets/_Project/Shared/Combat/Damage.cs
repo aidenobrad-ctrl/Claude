@@ -28,6 +28,21 @@ namespace Pulsebreak.Shared.Combat
         public bool Killed;
     }
 
+    /// <summary>A hit that dealt damage, for hit markers, damage numbers and stats.</summary>
+    public struct HitReport
+    {
+        /// <summary>Simulation tick the damage was applied on.</summary>
+        public int Tick;
+        public Vector3 Point;
+        public float Damage;
+        public HitZone Zone;
+        public bool Killed;
+        /// <summary>How far the shot travelled, or for an explosion, how far from its centre.</summary>
+        public float Distance;
+        public IDamageable Target;
+        public string WeaponId;
+    }
+
     public interface IDamageable
     {
         bool IsAlive { get; }

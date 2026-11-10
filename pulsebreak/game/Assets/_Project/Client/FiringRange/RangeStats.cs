@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using Pulsebreak.Client.Player;
 using Pulsebreak.Shared.Combat;
 using Pulsebreak.Shared.Simulation;
 
@@ -10,7 +9,11 @@ namespace Pulsebreak.Client.FiringRange
     {
         readonly Dictionary<IDamageable, int> _firstHitTick = new Dictionary<IDamageable, int>();
 
+        /// <summary>Trigger pulls that produced a shot. A shotgun blast counts once.</summary>
         public int Shots { get; private set; }
+        /// <summary>Shots that damaged at least one target.</summary>
+        public int ShotsLanded { get; private set; }
+        /// <summary>Individual damage events: every pellet, and every target caught in a blast.</summary>
         public int Hits { get; private set; }
         public int Headshots { get; private set; }
         public int Kills { get; private set; }
@@ -22,7 +25,7 @@ namespace Pulsebreak.Client.FiringRange
         /// <summary>Goes up whenever anything changes, so the HUD knows when to redraw.</summary>
         public int Version { get; private set; }
 
-        public float Accuracy => Shots > 0 ? (float)Hits / Shots : 0f;
+        public float Accuracy => Shots > 0 ? (float)ShotsLanded / Shots : 0f;
         public float HeadshotRate => Hits > 0 ? (float)Headshots / Hits : 0f;
 
         public void RecordShot()
@@ -31,7 +34,13 @@ namespace Pulsebreak.Client.FiringRange
             Version++;
         }
 
-        public void RecordHit(in HitFeedback hit)
+        public void RecordShotLanded()
+        {
+            ShotsLanded++;
+            Version++;
+        }
+
+        public void RecordHit(in HitReport hit)
         {
             Hits++;
             DamageDealt += hit.Damage;
@@ -58,7 +67,7 @@ namespace Pulsebreak.Client.FiringRange
 
         public void Reset()
         {
-            Shots = Hits = Headshots = Kills = 0;
+            Shots = ShotsLanded = Hits = Headshots = Kills = 0;
             DamageDealt = 0f;
             LastTimeToKill = -1f;
             _firstHitTick.Clear();

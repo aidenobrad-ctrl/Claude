@@ -27,7 +27,7 @@ namespace Pulsebreak.EditorTools
         const string ScenePath = "Assets/_Project/Scenes/FiringRange.unity";
         const string PipelinePath = "Assets/_Project/Rendering/PB_URP_Asset.asset";
         const string MovementPath = "Assets/_Project/Content/Movement/DefaultMovement.asset";
-        const string WeaponPath = "Assets/_Project/Content/Weapons/AR_Hadron.asset";
+        const string CatalogPath = "Assets/_Project/Content/Weapons/WeaponCatalog.asset";
         const string HudPanelPath = "Assets/_Project/Resources/" + HudController.PanelResource + ".asset";
         const string HudThemePath = "Assets/_Project/Resources/" + HudController.ThemeResource + ".tss";
         const string SessionKey = "Pulsebreak.ProjectDoctor.Ran";
@@ -51,6 +51,25 @@ namespace Pulsebreak.EditorTools
         {
             List<string> report = Run(firstOpen: false);
             if (report.Count == 0) Debug.Log("Pulsebreak Project Doctor: everything is set up correctly.");
+        }
+
+        [MenuItem("Pulsebreak/Validate Weapons")]
+        static void ValidateWeaponsFromMenu() => ValidateWeapons(showAllClear: true);
+
+        /// <summary>Checks every weapon and attachment in the catalog and logs anything that looks wrong.</summary>
+        static void ValidateWeapons(bool showAllClear)
+        {
+            var catalog = AssetDatabase.LoadAssetAtPath<WeaponCatalog>(CatalogPath);
+            if (catalog == null)
+            {
+                Debug.LogWarning("Pulsebreak: no weapon catalog at " + CatalogPath + ". The firing range will use stand-in weapons.");
+                return;
+            }
+
+            List<string> problems = WeaponValidator.Validate(catalog);
+            foreach (string problem in problems) Debug.LogWarning("Pulsebreak weapon data: " + problem, catalog);
+            if (problems.Count == 0 && showAllClear)
+                Debug.Log("Pulsebreak: all " + catalog.weapons.Length + " weapons and " + catalog.attachments.Length + " attachments are valid.");
         }
 
         [MenuItem("Pulsebreak/Open Firing Range")]
@@ -82,6 +101,7 @@ namespace Pulsebreak.EditorTools
             EnsureHudPanel(report);
             EnsureScene(report, firstOpen);
             EnsureSceneInBuild(report);
+            ValidateWeapons(showAllClear: false);
 
             foreach (string line in report) Debug.Log("Pulsebreak Project Doctor: " + line);
             return report;
@@ -199,7 +219,7 @@ namespace Pulsebreak.EditorTools
             {
                 EditorSceneManager.MarkSceneDirty(scene);
                 EditorSceneManager.SaveScene(scene);
-                report.Add("filled in the firing range's missing weapon/movement assets.");
+                report.Add("filled in the firing range's missing movement config or weapon catalog.");
             }
         }
 
@@ -218,7 +238,7 @@ namespace Pulsebreak.EditorTools
         {
             var serialized = new SerializedObject(bootstrap);
             bool changed = AssignIfEmpty(serialized.FindProperty("movement"), AssetDatabase.LoadAssetAtPath<MovementConfig>(MovementPath));
-            changed |= AssignIfEmpty(serialized.FindProperty("weapon"), AssetDatabase.LoadAssetAtPath<WeaponDefinition>(WeaponPath));
+            changed |= AssignIfEmpty(serialized.FindProperty("catalog"), AssetDatabase.LoadAssetAtPath<WeaponCatalog>(CatalogPath));
             if (changed) serialized.ApplyModifiedPropertiesWithoutUndo();
             return changed;
         }

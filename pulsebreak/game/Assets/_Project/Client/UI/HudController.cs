@@ -16,13 +16,13 @@ namespace Pulsebreak.Client.UI
     /// <summary>
     /// The in-game HUD and pause menu, built with UI Toolkit. The layout lives in
     /// Resources/UI/HudLayout.uxml and the look in HudStyles.uss; this class only moves
-    /// data into it: crosshair spread, ammo, hit markers, damage numbers, movement readout,
-    /// session stats and the handful of settings needed to tune feel.
+    /// data into it: crosshair spread, optics, ammo, weapon slots, hit markers, damage
+    /// numbers, movement readout, session stats and a few settings.
     /// </summary>
     [RequireComponent(typeof(UIDocument))]
     public sealed class HudController : MonoBehaviour
     {
-        const int DamageNumberCount = 24;
+        const int DamageNumberCount = 32;
         const float DamageNumberLife = 0.8f;
         const float HitMarkerTime = 0.18f;
         const float CrosshairThickness = 4f;
@@ -45,16 +45,21 @@ namespace Pulsebreak.Client.UI
         LocalPlayerController _player;
         Camera _camera;
         RangeStats _stats;
+        ArmoryPanel _armory;
 
         VisualElement _root;
         bool _ready;
 
-        VisualElement _lineTop, _lineBottom, _lineLeft, _lineRight;
+        VisualElement _lineTop, _lineBottom, _lineLeft, _lineRight, _centreDot;
+        VisualElement _reticle, _reticleDot, _reticleCross, _reticleChevron;
+        VisualElement _scope, _scopeLens;
         VisualElement _hitMarker;
         VisualElement[] _hitTicks;
-        VisualElement _damageLayer, _hints, _pause, _reloadBar, _reloadFill;
+        VisualElement _damageLayer, _hints, _pause, _slots;
+        VisualElement _reloadBar, _reloadFill, _chargeBar, _chargeFill;
         Label _rangefinder, _ammoMag, _ammoReserve, _weaponStatus, _weaponName, _moveState, _moveSpeed;
         Label _statAccuracy, _statHeadshots, _statShots, _statKills, _statTtk;
+        Label[] _slotLabels = new Label[0];
 
         readonly DamageNumber[] _numbers = new DamageNumber[DamageNumberCount];
         int _nextNumber;
@@ -62,8 +67,10 @@ namespace Pulsebreak.Client.UI
         float _gap = 12f;
         float _hitTimer, _hitDuration = HitMarkerTime, _hitScale = 1f;
         float _slowTimer;
-        int _shownAmmo = -1, _shownStatsVersion = -1;
-        WeaponPhase _shownPhase = (WeaponPhase)255;
+        int _shownAmmo = int.MinValue, _shownStatsVersion = -1;
+        string _shownStatus;
+        bool _shownReloadBar, _shownChargeBar, _shownScope;
+        ReticleStyle _shownReticle = (ReticleStyle)255;
 
         public bool IsPaused { get; private set; }
 
@@ -132,6 +139,15 @@ namespace Pulsebreak.Client.UI
             _lineBottom = _root.Q<VisualElement>("ch-bottom");
             _lineLeft = _root.Q<VisualElement>("ch-left");
             _lineRight = _root.Q<VisualElement>("ch-right");
+            _centreDot = _root.Q<VisualElement>("ch-dot");
+            _reticle = _root.Q<VisualElement>("reticle");
+            _reticleDot = _root.Q<VisualElement>("ret-dot");
+            _reticleCross = _root.Q<VisualElement>("ret-cross");
+            _reticleChevron = _root.Q<VisualElement>("ret-chevron");
+            _scope = _root.Q<VisualElement>("scope");
+            _scopeLens = _root.Q<VisualElement>("scope-lens");
+            _scopeLens.style.backgroundImage = new StyleBackground(BuildScopeTexture());
+
             _hitMarker = _root.Q<VisualElement>("hitmarker");
             _hitTicks = new VisualElement[_hitMarker.childCount];
             for (int i = 0; i < _hitTicks.Length; i++) _hitTicks[i] = _hitMarker[i];
@@ -139,8 +155,11 @@ namespace Pulsebreak.Client.UI
             _damageLayer = _root.Q<VisualElement>("damage-layer");
             _hints = _root.Q<VisualElement>("hints");
             _pause = _root.Q<VisualElement>("pause");
+            _slots = _root.Q<VisualElement>("slots");
             _reloadBar = _root.Q<VisualElement>("reload-bar");
             _reloadFill = _root.Q<VisualElement>("reload-fill");
+            _chargeBar = _root.Q<VisualElement>("charge-bar");
+            _chargeFill = _root.Q<VisualElement>("charge-fill");
 
             _rangefinder = _root.Q<Label>("rangefinder");
             _ammoMag = _root.Q<Label>("ammo-mag");
@@ -220,19 +239,27 @@ namespace Pulsebreak.Client.UI
             _root.Q<Button>("btn-quit").clicked += Quit;
         }
 
-        public void Bind(LocalPlayerController player, Camera playerCamera, RangeStats stats)
+        public void Bind(LocalPlayerController player, Camera playerCamera, RangeStats stats, WeaponCatalog catalog)
         {
             _player = player;
             _camera = playerCamera;
             _stats = stats;
             _player.HitConfirmed += OnHitConfirmed;
+            _player.LoadoutChanged += OnLoadoutChanged;
+            _player.ActiveWeaponChanged += OnActiveWeaponChanged;
 
-            if (_ready) _weaponName.text = player.Weapon.Definition.displayName.ToUpperInvariant();
+            if (!_ready) return;
+            _armory = new ArmoryPanel(_root.Q<VisualElement>("armory"), catalog, player);
+            OnLoadoutChanged();
+            OnActiveWeaponChanged(player.ActiveBuild);
         }
 
         void OnDestroy()
         {
-            if (_player != null) _player.HitConfirmed -= OnHitConfirmed;
+            if (_player == null) return;
+            _player.HitConfirmed -= OnHitConfirmed;
+            _player.LoadoutChanged -= OnLoadoutChanged;
+            _player.ActiveWeaponChanged -= OnActiveWeaponChanged;
         }
 
         public void SetPaused(bool paused)
@@ -245,6 +272,7 @@ namespace Pulsebreak.Client.UI
             Cursor.visible = paused;
             if (_ready) _pause.style.display = paused ? DisplayStyle.Flex : DisplayStyle.None;
 
+            if (paused && _armory != null) _armory.Refresh();
             if (wasPaused && !paused) GameSettings.Save();
         }
 
@@ -267,6 +295,38 @@ namespace Pulsebreak.Client.UI
 #endif
         }
 
+        // ------------------------------------------------------------------ loadout
+
+        void OnLoadoutChanged()
+        {
+            if (!_ready) return;
+
+            _slots.Clear();
+            _slotLabels = new Label[_player.SlotCount];
+            for (int i = 0; i < _slotLabels.Length; i++)
+            {
+                WeaponBuild build = _player.GetBuild(i);
+                var label = new Label((i + 1) + "  " + (build != null ? build.Weapon.displayName.ToUpperInvariant() : "-"))
+                {
+                    pickingMode = PickingMode.Ignore,
+                };
+                label.AddToClassList("slot");
+                _slots.Add(label);
+                _slotLabels[i] = label;
+            }
+        }
+
+        void OnActiveWeaponChanged(WeaponBuild build)
+        {
+            if (!_ready) return;
+
+            _weaponName.text = build.Weapon.displayName.ToUpperInvariant();
+            _shownAmmo = int.MinValue;
+
+            int active = _player.Inventory.ActiveIndex;
+            for (int i = 0; i < _slotLabels.Length; i++) _slotLabels[i].EnableInClassList("slot--active", i == active);
+        }
+
         // ------------------------------------------------------------------ per frame
 
         void Update()
@@ -280,16 +340,17 @@ namespace Pulsebreak.Client.UI
                     _hints.style.display = _hints.resolvedStyle.display == DisplayStyle.None ? DisplayStyle.Flex : DisplayStyle.None;
             }
 
-            if (!_ready || _player == null || _player.Weapon == null) return;
+            if (!_ready || _player == null || _player.Inventory == null) return;
 
             float dt = Time.deltaTime;
             MotorState motor = _player.MotorState;
-            WeaponState weapon = _player.Weapon.State;
+            WeaponSimulator inHand = _player.ActiveWeapon;
+            WeaponState weapon = inHand.State;
 
-            UpdateCrosshair(weapon, dt);
+            UpdateSights(inHand, weapon, dt);
             UpdateHitMarker(dt);
             UpdateDamageNumbers(dt);
-            UpdateWeaponPanel(weapon);
+            UpdateWeaponPanel(inHand, weapon);
 
             _slowTimer -= dt;
             if (_slowTimer <= 0f)
@@ -302,14 +363,19 @@ namespace Pulsebreak.Client.UI
             if (_stats != null && _stats.Version != _shownStatsVersion) UpdateStatsPanel();
         }
 
-        void UpdateCrosshair(in WeaponState weapon, float dt)
+        /// <summary>Hip-fire crosshair, optic reticle and scope view, blended by how far the weapon is aimed.</summary>
+        void UpdateSights(WeaponSimulator inHand, in WeaponState weapon, float dt)
         {
+            WeaponStats stats = inHand.Stats;
+            bool melee = stats.ballistics == BallisticsType.Melee;
+            ReticleStyle reticle = _player.ActiveBuild.Reticle;
+
             // Convert the spread cone into pixels at the current field of view, so the gap
-            // between the lines is where bullets can actually land.
+            // between the lines is where shots can actually land.
             float panelHeight = _root.resolvedStyle.height;
             if (float.IsNaN(panelHeight) || panelHeight <= 0f) panelHeight = 1080f;
 
-            float spread = _player.Weapon.CurrentSpread * Mathf.Deg2Rad;
+            float spread = inHand.CurrentSpread * Mathf.Deg2Rad;
             float halfFov = _camera.fieldOfView * 0.5f * Mathf.Deg2Rad;
             float target = Mathf.Tan(spread) / Mathf.Tan(halfFov) * (panelHeight * 0.5f) + 3f;
             _gap = Mathf.Lerp(_gap, target, 1f - Mathf.Exp(-30f * dt));
@@ -320,12 +386,35 @@ namespace Pulsebreak.Client.UI
             Place(_lineLeft, -(_gap + len), -t * 0.5f, len, t);
             Place(_lineRight, _gap, -t * 0.5f, len, t);
 
-            // The lines fade out as the sights come up; the centre dot stays.
-            float opacity = 1f - Mathf.SmoothStep(0f, 1f, weapon.AdsAmount);
-            _lineTop.style.opacity = opacity;
-            _lineBottom.style.opacity = opacity;
-            _lineLeft.style.opacity = opacity;
-            _lineRight.style.opacity = opacity;
+            // The lines fade out as the sights come up. A blade has no spread to show.
+            float aimed = Mathf.SmoothStep(0f, 1f, weapon.AdsAmount);
+            float lines = melee ? 0f : 1f - aimed;
+            _lineTop.style.opacity = lines;
+            _lineBottom.style.opacity = lines;
+            _lineLeft.style.opacity = lines;
+            _lineRight.style.opacity = lines;
+
+            bool optic = reticle == ReticleStyle.Dot || reticle == ReticleStyle.Cross || reticle == ReticleStyle.Chevron;
+            _reticle.style.opacity = optic ? aimed : 0f;
+            _centreDot.style.opacity = optic || reticle == ReticleStyle.Scope ? 1f - aimed : 1f;
+
+            if (reticle != _shownReticle)
+            {
+                _shownReticle = reticle;
+                _reticleDot.style.display = reticle == ReticleStyle.Dot ? DisplayStyle.Flex : DisplayStyle.None;
+                _reticleCross.style.display = reticle == ReticleStyle.Cross ? DisplayStyle.Flex : DisplayStyle.None;
+                _reticleChevron.style.display = reticle == ReticleStyle.Chevron ? DisplayStyle.Flex : DisplayStyle.None;
+            }
+
+            bool swapping = weapon.Phase == WeaponPhase.Holstering || weapon.Phase == WeaponPhase.Equipping;
+            bool scoped = reticle == ReticleStyle.Scope && weapon.AdsAmount > 0.9f && !swapping;
+            if (scoped != _shownScope)
+            {
+                _shownScope = scoped;
+                _scope.style.display = scoped ? DisplayStyle.Flex : DisplayStyle.None;
+                // The lens is square: as wide as the screen is tall.
+                if (scoped) _scopeLens.style.width = panelHeight;
+            }
         }
 
         static void Place(VisualElement element, float left, float top, float width, float height)
@@ -336,28 +425,52 @@ namespace Pulsebreak.Client.UI
             element.style.height = height;
         }
 
-        void UpdateWeaponPanel(in WeaponState weapon)
+        void UpdateWeaponPanel(WeaponSimulator inHand, in WeaponState weapon)
         {
+            WeaponStats stats = inHand.Stats;
+
             if (weapon.AmmoInMagazine != _shownAmmo)
             {
                 _shownAmmo = weapon.AmmoInMagazine;
-                _ammoMag.text = _shownAmmo.ToString();
-
-                WeaponSimulator simulator = _player.Weapon;
-                _ammoMag.EnableInClassList("ammo-mag--low", _shownAmmo * 4 <= simulator.Definition.magazineSize);
-                _ammoReserve.text = simulator.InfiniteReserve ? "/ unlimited" : "/ " + weapon.AmmoReserve;
+                if (stats.UsesAmmo)
+                {
+                    _ammoMag.text = _shownAmmo.ToString();
+                    _ammoMag.EnableInClassList("ammo-mag--low", _shownAmmo * 4 <= stats.magazineSize);
+                    _ammoReserve.text = inHand.InfiniteReserve ? "/ unlimited" : "/ " + weapon.AmmoReserve;
+                }
+                else
+                {
+                    _ammoMag.text = "-";
+                    _ammoMag.EnableInClassList("ammo-mag--low", false);
+                    _ammoReserve.text = string.Empty;
+                }
             }
 
-            if (weapon.Phase != _shownPhase)
+            bool reloading = weapon.Phase == WeaponPhase.Reloading;
+            bool charging = weapon.ChargeAmount > 0f;
+            string status = reloading ? "RELOADING"
+                : weapon.Phase == WeaponPhase.Holstering || weapon.Phase == WeaponPhase.Equipping ? "SWAPPING"
+                : charging ? "CHARGING"
+                : string.Empty;
+            if (status != _shownStatus)
             {
-                _shownPhase = weapon.Phase;
-                bool reloading = _shownPhase == WeaponPhase.Reloading;
-                _weaponStatus.text = reloading ? "RELOADING" : string.Empty;
+                _shownStatus = status;
+                _weaponStatus.text = status;
+            }
+
+            if (reloading != _shownReloadBar)
+            {
+                _shownReloadBar = reloading;
                 _reloadBar.style.display = reloading ? DisplayStyle.Flex : DisplayStyle.None;
             }
+            if (reloading) _reloadFill.style.width = new Length(weapon.ReloadProgress * 100f, LengthUnit.Percent);
 
-            if (_shownPhase == WeaponPhase.Reloading)
-                _reloadFill.style.width = new Length(Mathf.Clamp01(weapon.ReloadProgress) * 100f, LengthUnit.Percent);
+            if (charging != _shownChargeBar)
+            {
+                _shownChargeBar = charging;
+                _chargeBar.style.display = charging ? DisplayStyle.Flex : DisplayStyle.None;
+            }
+            if (charging) _chargeFill.style.width = new Length(Mathf.Clamp01(weapon.ChargeAmount) * 100f, LengthUnit.Percent);
         }
 
         void UpdateMovementPanel(in MotorState motor)
@@ -387,14 +500,14 @@ namespace Pulsebreak.Client.UI
             _shownStatsVersion = _stats.Version;
             _statAccuracy.text = "Accuracy  " + (_stats.Shots > 0 ? Mathf.RoundToInt(_stats.Accuracy * 100f) + "%" : "-");
             _statHeadshots.text = "Headshots  " + (_stats.Hits > 0 ? Mathf.RoundToInt(_stats.HeadshotRate * 100f) + "%" : "-");
-            _statShots.text = "Shots  " + _stats.Shots + "   Hits  " + _stats.Hits;
-            _statKills.text = "Kills  " + _stats.Kills;
+            _statShots.text = "Shots  " + _stats.Shots + "   Landed  " + _stats.ShotsLanded;
+            _statKills.text = "Kills  " + _stats.Kills + "   Damage  " + Mathf.RoundToInt(_stats.DamageDealt);
             _statTtk.text = "Last time to kill  " + (_stats.LastTimeToKill >= 0f ? _stats.LastTimeToKill.ToString("0.00") + " s" : "-");
         }
 
         // ------------------------------------------------------------------ hit feedback
 
-        void OnHitConfirmed(HitFeedback hit)
+        void OnHitConfirmed(HitReport hit)
         {
             if (!_ready) return;
 
@@ -419,7 +532,7 @@ namespace Pulsebreak.Client.UI
             _hitMarker.style.scale = new Scale(new Vector3(scale, scale, 1f));
         }
 
-        void SpawnDamageNumber(in HitFeedback hit, Color color)
+        void SpawnDamageNumber(in HitReport hit, Color color)
         {
             ref DamageNumber number = ref _numbers[_nextNumber];
             _nextNumber = (_nextNumber + 1) % DamageNumberCount;
@@ -452,7 +565,7 @@ namespace Pulsebreak.Client.UI
                     continue;
                 }
 
-                // Pinned to where the bullet landed, rising and fading out.
+                // Pinned to where the shot landed, rising and fading out.
                 float t = number.Age / DamageNumberLife;
                 Vector2 position = RuntimePanelUtils.CameraTransformWorldToPanel(panel, number.World, _camera);
                 number.Label.style.left = position.x + number.Drift * t;
@@ -460,6 +573,41 @@ namespace Pulsebreak.Client.UI
                 number.Label.style.opacity = t < 0.6f ? 1f : 1f - (t - 0.6f) / 0.4f;
                 number.Label.style.display = DisplayStyle.Flex;
             }
+        }
+
+        /// <summary>The scope view: a clear circle with a crosshair, black outside it.</summary>
+        static Texture2D BuildScopeTexture()
+        {
+            const int size = 512;
+            const float half = size * 0.5f;
+            var pixels = new Color32[size * size];
+
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    float dx = x + 0.5f - half, dy = y + 0.5f - half;
+                    float distance = Mathf.Sqrt(dx * dx + dy * dy) / half;
+
+                    // Clear in the middle, darkening into a black rim.
+                    float alpha = Mathf.InverseLerp(0.86f, 0.95f, distance);
+                    bool hair = Mathf.Abs(dx) < 1.2f || Mathf.Abs(dy) < 1.2f;
+                    bool post = (Mathf.Abs(dy) < 4f && Mathf.Abs(dx) > half * 0.45f) || (Mathf.Abs(dx) < 4f && dy < -half * 0.45f);
+                    if (hair || post) alpha = Mathf.Max(alpha, 0.9f);
+
+                    pixels[y * size + x] = new Color32(0, 0, 0, (byte)Mathf.RoundToInt(Mathf.Clamp01(alpha) * 255f));
+                }
+            }
+
+            var texture = new Texture2D(size, size, TextureFormat.RGBA32, false)
+            {
+                name = "Scope Lens",
+                wrapMode = TextureWrapMode.Clamp,
+                filterMode = FilterMode.Bilinear,
+            };
+            texture.SetPixels32(pixels);
+            texture.Apply(false, true);
+            return texture;
         }
     }
 }

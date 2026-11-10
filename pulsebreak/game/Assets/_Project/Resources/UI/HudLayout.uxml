@@ -1,6 +1,12 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements" editor-extension-mode="False">
     <ui:VisualElement name="hud" class="hud" picking-mode="Ignore">
 
+        <ui:VisualElement name="scope" class="scope" picking-mode="Ignore">
+            <ui:VisualElement class="scope-bar" picking-mode="Ignore" />
+            <ui:VisualElement name="scope-lens" class="scope-lens" picking-mode="Ignore" />
+            <ui:VisualElement class="scope-bar" picking-mode="Ignore" />
+        </ui:VisualElement>
+
         <ui:VisualElement name="damage-layer" class="layer" picking-mode="Ignore" />
 
         <ui:VisualElement name="crosshair" class="crosshair" picking-mode="Ignore">
@@ -9,6 +15,17 @@
             <ui:VisualElement name="ch-left" class="ch-line" picking-mode="Ignore" />
             <ui:VisualElement name="ch-right" class="ch-line" picking-mode="Ignore" />
             <ui:VisualElement name="ch-dot" class="ch-dot" picking-mode="Ignore" />
+            <ui:VisualElement name="reticle" class="reticle" picking-mode="Ignore">
+                <ui:VisualElement name="ret-dot" class="ret-dot" picking-mode="Ignore" />
+                <ui:VisualElement name="ret-cross" class="ret-shape" picking-mode="Ignore">
+                    <ui:VisualElement class="ret-line ret-cross-h" picking-mode="Ignore" />
+                    <ui:VisualElement class="ret-line ret-cross-v" picking-mode="Ignore" />
+                </ui:VisualElement>
+                <ui:VisualElement name="ret-chevron" class="ret-shape" picking-mode="Ignore">
+                    <ui:VisualElement class="ret-line ret-chevron-l" picking-mode="Ignore" />
+                    <ui:VisualElement class="ret-line ret-chevron-r" picking-mode="Ignore" />
+                </ui:VisualElement>
+            </ui:VisualElement>
             <ui:VisualElement name="hitmarker" class="hitmarker" picking-mode="Ignore">
                 <ui:VisualElement class="hm-tick hm-top" picking-mode="Ignore" />
                 <ui:VisualElement class="hm-tick hm-bottom" picking-mode="Ignore" />
@@ -19,8 +36,12 @@
 
         <ui:Label name="rangefinder" class="rangefinder" text="" picking-mode="Ignore" />
 
-        <ui:VisualElement name="reload-bar" class="reload-bar" picking-mode="Ignore">
-            <ui:VisualElement name="reload-fill" class="reload-fill" picking-mode="Ignore" />
+        <ui:VisualElement name="reload-bar" class="center-bar reload-bar" picking-mode="Ignore">
+            <ui:VisualElement name="reload-fill" class="center-fill reload-fill" picking-mode="Ignore" />
+        </ui:VisualElement>
+
+        <ui:VisualElement name="charge-bar" class="center-bar charge-bar" picking-mode="Ignore">
+            <ui:VisualElement name="charge-fill" class="center-fill charge-fill" picking-mode="Ignore" />
         </ui:VisualElement>
 
         <ui:VisualElement name="hints" class="panel hints" picking-mode="Ignore">
@@ -30,8 +51,9 @@
             <ui:Label class="hint" text="Ctrl / C  crouch      sprint + crouch  slide" picking-mode="Ignore" />
             <ui:Label class="hint" text="hold Space + W at a ledge  mantle" picking-mode="Ignore" />
             <ui:Label class="hint" text="Q / E  lean      RMB  aim      LMB  fire" picking-mode="Ignore" />
-            <ui:Label class="hint" text="R  reload      F5  reset stats" picking-mode="Ignore" />
-            <ui:Label class="hint" text="Esc  settings      F1  hide this" picking-mode="Ignore" />
+            <ui:Label class="hint" text="1 2 3 / wheel  switch weapon      R  reload" picking-mode="Ignore" />
+            <ui:Label class="hint" text="Esc  armory and settings" picking-mode="Ignore" />
+            <ui:Label class="hint" text="F5  reset stats      F1  hide this" picking-mode="Ignore" />
         </ui:VisualElement>
 
         <ui:VisualElement name="range-stats" class="panel range-stats" picking-mode="Ignore">
@@ -48,6 +70,8 @@
             <ui:Label name="move-speed" class="move-speed" text="0.0 m/s" picking-mode="Ignore" />
         </ui:VisualElement>
 
+        <ui:VisualElement name="slots" class="slots" picking-mode="Ignore" />
+
         <ui:VisualElement name="ammo" class="panel ammo" picking-mode="Ignore">
             <ui:Label name="weapon-name" class="weapon-name" text="" picking-mode="Ignore" />
             <ui:VisualElement class="ammo-row" picking-mode="Ignore">
@@ -58,7 +82,23 @@
         </ui:VisualElement>
 
         <ui:VisualElement name="pause" class="pause">
-            <ui:VisualElement class="pause-card">
+            <ui:VisualElement name="armory" class="pause-card armory-card">
+                <ui:Label class="pause-title" text="ARMORY" />
+                <ui:VisualElement name="armory-tabs" class="armory-tabs" />
+                <ui:VisualElement class="armory-body">
+                    <ui:ScrollView name="armory-weapons" class="armory-weapons" />
+                    <ui:VisualElement class="armory-detail">
+                        <ui:Label name="armory-name" class="armory-name" />
+                        <ui:Label name="armory-class" class="armory-class" />
+                        <ui:Label name="armory-description" class="armory-description" />
+                        <ui:VisualElement name="armory-attachments" class="armory-attachments" />
+                        <ui:VisualElement name="armory-bars" class="armory-bars" />
+                        <ui:Label name="armory-numbers" class="armory-numbers" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+            </ui:VisualElement>
+
+            <ui:VisualElement class="pause-card settings-card">
                 <ui:Label class="pause-title" text="PAUSED" />
                 <ui:Slider name="set-sensitivity" label="Sensitivity" low-value="0.2" high-value="8" show-input-field="true" />
                 <ui:Slider name="set-ads" label="Aim sensitivity" low-value="0.3" high-value="1.5" show-input-field="true" />

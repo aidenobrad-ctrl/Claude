@@ -7,7 +7,8 @@ namespace Pulsebreak.Client.FiringRange
     /// Builds the firing range out of prototype boxes. The origin is the firing line and +Z
     /// points downrange.
     ///
-    ///   Centre   shooting lanes with targets at 10, 20, 35, 50 and 75 m, some of them moving
+    ///   Centre   shooting lanes with targets at 10, 20, 35, 50 and 75 m, some of them moving,
+    ///            and a tight group of three to the right for explosives
     ///   West     movement course: mantle steps up to a platform, a ramp, a slide tunnel, jump gaps
     ///   East     a raised perch reached by stairs, for long shots and testing steps
     ///
@@ -85,6 +86,11 @@ namespace Pulsebreak.Client.FiringRange
             Target(parent, 0f, 50f, travel: 6f, speed: 4.5f);
             Target(parent, -4f, 75f);
             Target(parent, 4f, 75f);
+
+            // A tight group off to the right, for explosives and for shots that pierce.
+            Target(parent, 13f, 16f);
+            Target(parent, 14.4f, 17.2f);
+            Target(parent, 15.6f, 15.4f);
         }
 
         static void Target(Transform parent, float x, float z, float travel = 0f, float speed = 0f)

@@ -38,6 +38,9 @@ namespace Pulsebreak.Shared.Simulation
         /// <summary>Buttons held this tick. A tap shorter than a tick still shows as held for one tick.</summary>
         public InputButtons Buttons;
 
+        /// <summary>Weapon slot to switch to, counting from 1. 0 means no change.</summary>
+        public byte SelectSlot;
+
         public bool Has(InputButtons button) => (Buttons & button) != 0;
     }
 

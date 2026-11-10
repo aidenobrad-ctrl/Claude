@@ -1,0 +1,119 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f6a251fe876909704af95a88ea478068, type: 3}
+  m_Name: WPN_sp_carom
+  m_EditorClassIdentifier: 
+  weaponId: sp_carom
+  displayName: Carom Blaster
+  description: 'Its shots bounce, and hit harder every time they do. Play the angles.'
+  weaponClass: 8
+  slot: 0
+  unlockLevel: 11
+  stats:
+    fireMode: 0
+    roundsPerMinute: 300
+    burstCount: 3
+    burstCooldown: 0.2
+    chargeTime: 0.6
+    minChargeDamage: 0.35
+    ballistics: 1
+    pellets: 1
+    pierceTargets: 0
+    pierceDamageKept: 0.75
+    damage: 34
+    headMultiplier: 1.3
+    limbMultiplier: 0.9
+    falloffStart: 1000
+    falloffEnd: 1000
+    minDamageMultiplier: 1
+    maxRange: 300
+    projectileSpeed: 70
+    projectileGravity: 0
+    projectileLifetime: 3.5
+    projectileRadius: 0.07
+    bounces: 3
+    bounceSpeedKept: 1
+    bounceDamageMultiplier: 1.35
+    explosionRadius: 0
+    explosionEdgeDamage: 0.25
+    fuseTime: 0
+    meleeRange: 2.2
+    meleeRadius: 0.45
+    meleeHitDelay: 0.12
+    magazineSize: 16
+    reserveAmmo: 80
+    reloadStyle: 0
+    reloadTime: 2
+    emptyReloadTime: 2.4
+    reloadIntroTime: 0
+    adsTime: 0.2
+    adsZoom: 1.25
+    hipMoveMultiplier: 1
+    adsMoveMultiplier: 0.72
+    sprintToFireTime: 0.14
+    equipTime: 0.35
+    holsterTime: 0.2
+    hipSpread: 0.7
+    adsSpread: 0.1
+    moveSpreadPenalty: 1.2
+    airSpreadPenalty: 3
+    crouchSpreadMultiplier: 0.8
+    bloomPerShot: 0.15
+    maxBloom: 0.9
+    bloomRecovery: 5
+    adsBloomMultiplier: 0.2
+    recoilPattern:
+    - {x: 0.06, y: 0.5}
+    - {x: -0.046, y: 0.442}
+    - {x: 0.066, y: 0.383}
+    - {x: 0.199, y: 0.3}
+    - {x: 0.076, y: 0.3}
+    - {x: -0.153, y: 0.3}
+    - {x: -0.17, y: 0.3}
+    - {x: 0.047, y: 0.3}
+    - {x: 0.199, y: 0.3}
+    recoilLoopStart: 3
+    recoilRandomness: 0.12
+    recoilVerticalScale: 1
+    recoilHorizontalScale: 1
+    adsRecoilMultiplier: 0.75
+    crouchRecoilMultiplier: 0.85
+    recoilSnappiness: 28
+    recoilRecovery: 9
+    recoilRecoveryDelay: 0.12
+    recoilResetTime: 0.35
+  reticle: 0
+  attachments:
+  - {fileID: 11400000, guid: f95313d2c50561b865952851718eecf8, type: 2}
+  - {fileID: 11400000, guid: 9ae6080a6981af55082842fd53486649, type: 2}
+  - {fileID: 11400000, guid: cac71da591c30ba7b76f5be7c7364e9d, type: 2}
+  - {fileID: 11400000, guid: 3ddd05335cec6df3a100b9686cfbb4e3, type: 2}
+  - {fileID: 11400000, guid: f0ccfc29c240b707a378dce542d86b1c, type: 2}
+  - {fileID: 11400000, guid: 6242cd4f3400567a3f05abf96ff54fc1, type: 2}
+  - {fileID: 11400000, guid: 6fada89d01e99c15bea4104ac352bec9, type: 2}
+  - {fileID: 11400000, guid: e31b4cf7f4f9e8daeb0b6ff9924e6ee0, type: 2}
+  - {fileID: 11400000, guid: fcde29bc8d2181595d2d7045faa9886a, type: 2}
+  view:
+    kind: 0
+    bodyLength: 0.3
+    bulk: 1.2
+    barrelLength: 0.18
+    stockLength: 0.12
+    magazineLength: 0.1
+    bodyColor: {r: 0.62, g: 0.65, b: 0.7, a: 1}
+    accentColor: {r: 1, g: 0.55, b: 0.15, a: 1}
+  audio:
+    kind: 1
+    pitch: 0.9
+    weight: 0.6
+    tail: 0.22
+    volume: 0.8

@@ -1,0 +1,132 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f6a251fe876909704af95a88ea478068, type: 3}
+  m_Name: WPN_sp_stinger
+  m_EditorClassIdentifier: 
+  weaponId: sp_stinger
+  displayName: Stinger Repeater
+  description: 'Rapid plasma bolts with travel time. Lead your target and it shreds.'
+  weaponClass: 8
+  slot: 0
+  unlockLevel: 25
+  stats:
+    fireMode: 0
+    roundsPerMinute: 540
+    burstCount: 3
+    burstCooldown: 0.2
+    chargeTime: 0.6
+    minChargeDamage: 0.35
+    ballistics: 1
+    pellets: 1
+    pierceTargets: 0
+    pierceDamageKept: 0.75
+    damage: 27
+    headMultiplier: 1.4
+    limbMultiplier: 0.9
+    falloffStart: 1000
+    falloffEnd: 1000
+    minDamageMultiplier: 1
+    maxRange: 300
+    projectileSpeed: 110
+    projectileGravity: 0
+    projectileLifetime: 3
+    projectileRadius: 0.06
+    bounces: 0
+    bounceSpeedKept: 0.6
+    bounceDamageMultiplier: 1
+    explosionRadius: 0
+    explosionEdgeDamage: 0.25
+    fuseTime: 0
+    meleeRange: 2.2
+    meleeRadius: 0.45
+    meleeHitDelay: 0.12
+    magazineSize: 40
+    reserveAmmo: 160
+    reloadStyle: 0
+    reloadTime: 2.3
+    emptyReloadTime: 2.7
+    reloadIntroTime: 0
+    adsTime: 0.2
+    adsZoom: 1.25
+    hipMoveMultiplier: 1
+    adsMoveMultiplier: 0.72
+    sprintToFireTime: 0.14
+    equipTime: 0.35
+    holsterTime: 0.2
+    hipSpread: 0.9
+    adsSpread: 0.06
+    moveSpreadPenalty: 1.2
+    airSpreadPenalty: 3
+    crouchSpreadMultiplier: 0.8
+    bloomPerShot: 0.12
+    maxBloom: 1
+    bloomRecovery: 5
+    adsBloomMultiplier: 0.2
+    recoilPattern:
+    - {x: -0.004, y: 0.4}
+    - {x: 0.022, y: 0.372}
+    - {x: -0.016, y: 0.344}
+    - {x: 0.071, y: 0.316}
+    - {x: -0.081, y: 0.288}
+    - {x: -0.019, y: 0.14}
+    - {x: 0.198, y: 0.14}
+    - {x: 0.217, y: 0.14}
+    - {x: 0.019, y: 0.14}
+    - {x: -0.198, y: 0.14}
+    - {x: -0.217, y: 0.14}
+    - {x: -0.019, y: 0.14}
+    - {x: 0.198, y: 0.14}
+    - {x: 0.217, y: 0.14}
+    - {x: 0.019, y: 0.14}
+    - {x: -0.198, y: 0.14}
+    - {x: -0.217, y: 0.14}
+    recoilLoopStart: 5
+    recoilRandomness: 0.12
+    recoilVerticalScale: 1
+    recoilHorizontalScale: 1
+    adsRecoilMultiplier: 0.75
+    crouchRecoilMultiplier: 0.85
+    recoilSnappiness: 28
+    recoilRecovery: 9
+    recoilRecoveryDelay: 0.12
+    recoilResetTime: 0.35
+  reticle: 0
+  attachments:
+  - {fileID: 11400000, guid: f95313d2c50561b865952851718eecf8, type: 2}
+  - {fileID: 11400000, guid: 9ae6080a6981af55082842fd53486649, type: 2}
+  - {fileID: 11400000, guid: 9bbb22842c1e974ed9f3cde99ab748e6, type: 2}
+  - {fileID: 11400000, guid: cac71da591c30ba7b76f5be7c7364e9d, type: 2}
+  - {fileID: 11400000, guid: c92efc48bdc9d36f8ca7f9e6b37cf357, type: 2}
+  - {fileID: 11400000, guid: 3ddd05335cec6df3a100b9686cfbb4e3, type: 2}
+  - {fileID: 11400000, guid: f0ccfc29c240b707a378dce542d86b1c, type: 2}
+  - {fileID: 11400000, guid: 6242cd4f3400567a3f05abf96ff54fc1, type: 2}
+  - {fileID: 11400000, guid: 6fada89d01e99c15bea4104ac352bec9, type: 2}
+  - {fileID: 11400000, guid: 544b4d67a6a8b3c512f4ae072f7a831b, type: 2}
+  - {fileID: 11400000, guid: c1d00cf082de219ca93f6697e4b0579c, type: 2}
+  - {fileID: 11400000, guid: 15612471dfbbb722e66de53e9d9648a1, type: 2}
+  - {fileID: 11400000, guid: e31b4cf7f4f9e8daeb0b6ff9924e6ee0, type: 2}
+  - {fileID: 11400000, guid: fcde29bc8d2181595d2d7045faa9886a, type: 2}
+  view:
+    kind: 0
+    bodyLength: 0.28
+    bulk: 1.1
+    barrelLength: 0.26
+    stockLength: 0.16
+    magazineLength: 0.12
+    bodyColor: {r: 0.62, g: 0.65, b: 0.7, a: 1}
+    accentColor: {r: 0.35, g: 1, b: 0.5, a: 1}
+  audio:
+    kind: 1
+    pitch: 1.25
+    weight: 0.4
+    tail: 0.14
+    volume: 0.65

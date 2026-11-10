@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using Pulsebreak.Client.Controls;
 using Pulsebreak.Client.Settings;
@@ -13,12 +14,13 @@ namespace Pulsebreak.Client.Player
     /// <summary>
     /// Drives the local player. Each rendered frame it:
     ///   1. samples input,
-    ///   2. runs as many fixed simulation ticks as have come due (movement, then weapon, then shots),
+    ///   2. runs as many fixed simulation ticks as have come due (movement, then the weapon in
+    ///      hand, then its shots, then projectiles in flight),
     ///   3. presents the result, blending between the last two ticks so motion is smooth at any frame rate.
     ///
-    /// In Phase 1 this object is also the authority: it applies damage itself. Once the game
-    /// is networked, step 2 is what moves into the netcode's tick callback, and damage is
-    /// applied by the server instead.
+    /// Offline this object is also the authority: it applies damage itself. Once the game is
+    /// networked, step 2 is what moves into the netcode's tick callback, and damage is applied
+    /// by the server instead.
     /// </summary>
     [DisallowMultipleComponent]
     [RequireComponent(typeof(CharacterController))]
@@ -28,10 +30,17 @@ namespace Pulsebreak.Client.Player
 
         PlayerInputReader _input;
         PlayerMotor _motor;
-        WeaponSimulator _weapon;
-        WeaponDefinition _weaponDefinition;
+        ProjectileSystem _projectiles;
         FirstPersonCamera _camera;
         WeaponViewModel _viewModel;
+
+        // The loadout: what is carried in each slot, and the running weapon for it.
+        WeaponBuild[] _builds;
+        WeaponSimulator[] _weapons;
+        WeaponInventory _inventory;
+        bool _infiniteReserve;
+
+        readonly List<HitReport> _reports = new List<HitReport>(8);
 
         int _tick;
         float _accumulator;
@@ -43,29 +52,119 @@ namespace Pulsebreak.Client.Player
         Vector2 _previousRecoil, _currentRecoil;
 
         public PlayerMotor Motor => _motor;
-        public WeaponSimulator Weapon => _weapon;
         public MotorState MotorState => _currentMotor;
+        public WeaponInventory Inventory => _inventory;
+        public ProjectileSystem Projectiles => _projectiles;
+
+        /// <summary>The weapon in hand.</summary>
+        public WeaponSimulator ActiveWeapon => _inventory.Active;
+        public WeaponBuild ActiveBuild => _builds[_inventory.ActiveIndex];
+        public int SlotCount => _builds.Length;
+
+        /// <summary>How far the current frame sits between the last two ticks, 0..1.</summary>
+        public float TickAlpha { get; private set; }
 
         /// <summary>False while a menu is open: the player keeps simulating but receives no input.</summary>
         public bool InputEnabled { get; set; } = true;
 
-        public event Action<ShotPresentation> ShotFired;
-        public event Action<HitFeedback> HitConfirmed;
+        /// <summary>Reloads never drain the reserve. Used by the firing range.</summary>
+        public bool InfiniteReserve
+        {
+            get => _infiniteReserve;
+            set
+            {
+                _infiniteReserve = value;
+                if (_weapons == null) return;
+                foreach (WeaponSimulator weapon in _weapons)
+                {
+                    if (weapon != null) weapon.InfiniteReserve = value;
+                }
+            }
+        }
 
-        public void Initialize(MovementConfig movement, WeaponDefinition weapon,
+        // Presentation events. They keep working when the loadout changes, so listeners
+        // subscribe once to the player rather than to individual weapons.
+        /// <summary>The trigger produced a shot (once per shot, however many pellets).</summary>
+        public event Action<WeaponBuild> WeaponFired;
+        /// <summary>The path of one bullet or pellet.</summary>
+        public event Action<ShotPresentation> ShotFired;
+        /// <summary>A projectile left the weapon. Arguments are its id and the weapon that fired it.</summary>
+        public event Action<int, WeaponBuild> ProjectileLaunched;
+        /// <summary>A shot (bullet, blast, projectile or swing) damaged at least one target.</summary>
+        public event Action ShotLanded;
+        public event Action<HitReport> HitConfirmed;
+        public event Action<WeaponBuild> ActiveWeaponChanged;
+        public event Action LoadoutChanged;
+        public event Action ReloadStarted;
+        public event Action RoundInserted;
+        public event Action ReloadFinished;
+        public event Action DryFired;
+
+        public void Initialize(MovementConfig movement, WeaponBuild[] loadout, ProjectileSystem projectiles,
             FirstPersonCamera playerCamera, WeaponViewModel viewModel, float yaw)
         {
-            _weaponDefinition = weapon;
             _camera = playerCamera;
             _viewModel = viewModel;
+            _projectiles = projectiles;
             _spawnPosition = transform.position;
             _spawnYaw = yaw;
 
             _input = new PlayerInputReader();
             _motor = new PlayerMotor(GetComponent<CharacterController>(), movement);
-            _weapon = new WeaponSimulator(weapon, seed: 0x5EEDu);
 
+            _projectiles.HitConfirmed += report => HitConfirmed?.Invoke(report);
+            _projectiles.Happened += OnProjectileEvent;
+
+            SetLoadout(loadout, 0);
             Respawn();
+        }
+
+        // ------------------------------------------------------------------ loadout
+
+        public WeaponBuild GetBuild(int slot) => _builds[slot];
+
+        /// <summary>Replaces everything the player carries. Weapons start with full ammunition.</summary>
+        public void SetLoadout(WeaponBuild[] loadout, int activeSlot)
+        {
+            _builds = loadout;
+            _weapons = new WeaponSimulator[loadout.Length];
+            for (int i = 0; i < loadout.Length; i++)
+            {
+                if (loadout[i] == null) continue;
+
+                var weapon = new WeaponSimulator(loadout[i].ResolveStats(), seed: 0x5EED0000u + (uint)i)
+                {
+                    InfiniteReserve = _infiniteReserve,
+                };
+                int slot = i;
+                weapon.Fired += () => WeaponFired?.Invoke(_builds[slot]);
+                weapon.ReloadStarted += () => ReloadStarted?.Invoke();
+                weapon.RoundInserted += () => RoundInserted?.Invoke();
+                weapon.ReloadFinished += () => ReloadFinished?.Invoke();
+                weapon.DryFired += () => DryFired?.Invoke();
+                _weapons[i] = weapon;
+            }
+
+            _inventory = new WeaponInventory(_weapons, activeSlot);
+            _inventory.ActiveChanged += _ => OnActiveWeaponChanged();
+            _previousRecoil = _currentRecoil = Vector2.zero;
+
+            LoadoutChanged?.Invoke();
+            OnActiveWeaponChanged();
+        }
+
+        /// <summary>Swaps the weapon or attachments in one slot, keeping the others as they are.</summary>
+        public void SetBuild(int slot, WeaponBuild build)
+        {
+            var loadout = (WeaponBuild[])_builds.Clone();
+            loadout[slot] = build;
+            SetLoadout(loadout, _inventory.ActiveIndex);
+        }
+
+        void OnActiveWeaponChanged()
+        {
+            _viewModel.Show(ActiveBuild);
+            ActiveWeaponChanged?.Invoke(ActiveBuild);
         }
 
         public void Respawn()
@@ -80,6 +179,8 @@ namespace Pulsebreak.Client.Player
         {
             _input?.Dispose();
         }
+
+        // ------------------------------------------------------------------ simulation
 
         void Update()
         {
@@ -104,22 +205,26 @@ namespace Pulsebreak.Client.Player
 
             if (_currentMotor.Position.y < KillPlaneY) Respawn();
 
-            Present(Mathf.Clamp01(_accumulator / SimConstants.TickDelta));
+            TickAlpha = Mathf.Clamp01(_accumulator / SimConstants.TickDelta);
+            Present(TickAlpha);
         }
 
         /// <summary>One fixed simulation tick.</summary>
         void Step()
         {
             const float dt = SimConstants.TickDelta;
-            PlayerInputCmd cmd = InputEnabled ? _input.BuildCmd(_tick) : _input.BuildIdleCmd(_tick);
+            PlayerInputCmd cmd = InputEnabled
+                ? _input.BuildCmd(_tick, _inventory.TargetIndex, _inventory.SlotCount)
+                : _input.BuildIdleCmd(_tick);
 
             _previousMotor = _currentMotor;
             _previousRecoil = _currentRecoil;
 
+            WeaponSimulator inHand = _inventory.Active;
             var modifiers = new MoveModifiers
             {
                 SpeedMultiplier = Mathf.Lerp(
-                    _weaponDefinition.hipMoveMultiplier, _weaponDefinition.adsMoveMultiplier, _weapon.State.AdsAmount),
+                    inHand.Stats.hipMoveMultiplier, inHand.Stats.adsMoveMultiplier, inHand.State.AdsAmount),
             };
             _motor.Simulate(cmd, modifiers, dt);
             _currentMotor = _motor.State;
@@ -133,72 +238,93 @@ namespace Pulsebreak.Client.Player
                 Grounded = _currentMotor.Grounded,
                 Crouched = _currentMotor.Stance != Stance.Standing,
             };
-            _weapon.Simulate(cmd, context, dt);
-            _currentRecoil = _weapon.State.RecoilCurrent;
+            _inventory.Simulate(cmd, context, dt);
+            _currentRecoil = _inventory.Active.State.RecoilCurrent;
 
-            if (_weapon.Shots.Count > 0)
-            {
-                // Targets move in Update; make sure the physics scene has their latest poses.
-                Physics.SyncTransforms();
-                for (int i = 0; i < _weapon.Shots.Count; i++) ResolveShot(cmd, _weapon.Shots[i]);
-            }
+            // Shots belong to the weapon that was simulated, which is not necessarily the one
+            // now in hand if a switch completed this tick.
+            WeaponSimulator fired = _inventory.Simulated;
+            bool anythingToHit = fired.Shots.Count > 0 || _projectiles.Live.Count > 0;
+
+            // Targets move in Update; make sure the physics scene has their latest poses.
+            if (anythingToHit) Physics.SyncTransforms();
+
+            if (fired.Shots.Count > 0) ResolveShots(cmd, fired, _builds[Array.IndexOf(_weapons, fired)]);
+            _projectiles.Step(_tick, dt);
 
             _tick++;
         }
 
-        void ResolveShot(in PlayerInputCmd cmd, in ShotEvent shot)
+        void ResolveShots(in PlayerInputCmd cmd, WeaponSimulator weapon, WeaponBuild build)
         {
+            WeaponStats stats = weapon.Stats;
+            string weaponId = build.Weapon.weaponId;
             Vector3 origin = _currentMotor.EyePosition;
-            Vector3 direction = AimMath.Direction(cmd.Yaw + shot.AimOffset.x, cmd.Pitch - shot.AimOffset.y);
-            HitscanHit hit = Hitscan.Trace(origin, direction, _weaponDefinition.maxRange);
+            bool bulletLanded = false;
 
-            bool hitTarget = false;
-            if (hit.Hitbox != null)
+            for (int i = 0; i < weapon.Shots.Count; i++)
             {
-                IDamageable target = hit.Hitbox.Owner;
-                if (target != null && target.IsAlive)
-                {
-                    HitZone zone = hit.Hitbox.zone;
-                    var info = new DamageInfo
-                    {
-                        Amount = DamageCalculator.Compute(_weaponDefinition, hit.Distance, zone),
-                        Zone = zone,
-                        Point = hit.Point,
-                        Direction = direction,
-                        Distance = hit.Distance,
-                        WeaponId = _weaponDefinition.weaponId,
-                    };
-                    DamageResult result = target.ApplyDamage(info);
-                    hitTarget = true;
+                ShotEvent shot = weapon.Shots[i];
+                Vector3 direction = AimMath.Direction(cmd.Yaw + shot.AimOffset.x, cmd.Pitch - shot.AimOffset.y);
 
-                    HitConfirmed?.Invoke(new HitFeedback
+                switch (shot.Kind)
+                {
+                    case ShotKind.Bullet:
                     {
-                        Tick = cmd.Tick,
-                        Point = hit.Point,
-                        Damage = result.Applied,
-                        Zone = zone,
-                        Killed = result.Killed,
-                        Distance = hit.Distance,
-                        Target = target,
-                    });
+                        _reports.Clear();
+                        HitscanHit end = CombatResolver.FireBullet(origin, direction, stats, weaponId, shot.DamageScale, cmd.Tick, _reports);
+                        foreach (HitReport report in _reports) HitConfirmed?.Invoke(report);
+                        bulletLanded |= _reports.Count > 0;
+
+                        ShotFired?.Invoke(new ShotPresentation
+                        {
+                            Origin = origin,
+                            End = end.Point,
+                            Normal = end.Normal,
+                            HitWorld = end.HasHit && end.Hitbox == null,
+                            HitTarget = _reports.Count > 0,
+                            Build = build,
+                        });
+                        break;
+                    }
+
+                    case ShotKind.Projectile:
+                    {
+                        int id = _projectiles.Spawn(origin, direction, stats, weaponId, shot.DamageScale);
+                        ProjectileLaunched?.Invoke(id, build);
+                        break;
+                    }
+
+                    case ShotKind.Melee:
+                    {
+                        if (CombatResolver.MeleeStrike(origin, direction, stats, weaponId, cmd.Tick, out HitReport report))
+                        {
+                            HitConfirmed?.Invoke(report);
+                            ShotLanded?.Invoke();
+                        }
+                        break;
+                    }
                 }
             }
 
-            ShotFired?.Invoke(new ShotPresentation
-            {
-                Origin = origin,
-                End = hit.Point,
-                Normal = hit.Normal,
-                HitWorld = hit.HasHit && hit.Hitbox == null,
-                HitTarget = hitTarget,
-            });
+            // A shotgun blast counts as one shot landing, however many pellets connected.
+            if (bulletLanded) ShotLanded?.Invoke();
         }
+
+        void OnProjectileEvent(ProjectileEvent projectileEvent)
+        {
+            if (projectileEvent.HitTarget) ShotLanded?.Invoke();
+        }
+
+        // ------------------------------------------------------------------ presentation
 
         /// <summary>Renders the state between the last two ticks. <paramref name="alpha"/> is 0..1 between them.</summary>
         void Present(float alpha)
         {
             MotorState a = _previousMotor, b = _currentMotor;
-            WeaponState weapon = _weapon.State;
+            WeaponSimulator inHand = _inventory.Active;
+            WeaponState weapon = inHand.State;
+            WeaponStats stats = inHand.Stats;
 
             // Position is blended between ticks; the view angles are not, they come straight
             // from this frame's mouse input so aiming has no added latency.
@@ -220,18 +346,22 @@ namespace Pulsebreak.Client.Player
                 Lean = Mathf.Lerp(a.Lean, b.Lean, alpha),
                 LeanAngle = _motor.Config.leanAngle,
                 AdsAmount = weapon.AdsAmount,
-                AdsZoom = _weaponDefinition.adsZoom,
+                AdsZoom = stats.adsZoom,
                 Sprinting = b.Sprinting,
                 Sliding = b.Stance == Stance.Sliding,
             }, Time.deltaTime);
 
+            bool swapping = weapon.Phase == WeaponPhase.Holstering || weapon.Phase == WeaponPhase.Equipping;
             _viewModel.Tick(new ViewModelInput
             {
                 AdsAmount = weapon.AdsAmount,
                 Sprinting = b.Sprinting,
-                Lowered = b.Mantling,
+                Lowered = b.Mantling || weapon.Phase == WeaponPhase.Holstering,
                 Reloading = weapon.Phase == WeaponPhase.Reloading,
                 ReloadProgress = weapon.ReloadProgress,
+                Charge = weapon.ChargeAmount,
+                // A full scope view replaces the weapon model while it is up.
+                Hidden = !swapping && ActiveBuild.Reticle == ReticleStyle.Scope && weapon.AdsAmount > 0.9f,
                 MoveAmount = b.Grounded ? Mathf.Clamp01(b.HorizontalSpeed / _motor.Config.sprintSpeed) : 0f,
                 Yaw = viewYaw,
                 Pitch = viewPitch,
@@ -244,8 +374,9 @@ namespace Pulsebreak.Client.Player
         /// </summary>
         float LookScale()
         {
-            float adsScale = GameSettings.AdsSensitivityMultiplier / Mathf.Max(_weaponDefinition.adsZoom, 1f);
-            return GameSettings.Sensitivity * Mathf.Lerp(1f, adsScale, _weapon.State.AdsAmount);
+            WeaponSimulator inHand = _inventory.Active;
+            float adsScale = GameSettings.AdsSensitivityMultiplier / Mathf.Max(inHand.Stats.adsZoom, 1f);
+            return GameSettings.Sensitivity * Mathf.Lerp(1f, adsScale, inHand.State.AdsAmount);
         }
     }
 }

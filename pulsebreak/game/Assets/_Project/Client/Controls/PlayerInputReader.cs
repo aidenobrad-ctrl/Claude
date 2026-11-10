@@ -21,7 +21,11 @@ namespace Pulsebreak.Client.Controls
         readonly InputActionMap _map;
         readonly InputAction _move, _look;
         readonly InputAction _jump, _sprint, _crouch, _fire, _ads, _reload, _leanLeft, _leanRight;
+        readonly InputAction _scroll;
+        readonly InputAction[] _slotKeys;
         InputButtons _latched;
+        int _latchedSlot;
+        int _scrollSteps;
 
         public float Yaw { get; private set; }
         public float Pitch { get; private set; }
@@ -47,6 +51,14 @@ namespace Pulsebreak.Client.Controls
             _reload = AddButton("Reload", "<Keyboard>/r");
             _leanLeft = AddButton("LeanLeft", "<Keyboard>/q");
             _leanRight = AddButton("LeanRight", "<Keyboard>/e");
+
+            _scroll = _map.AddAction("WeaponScroll", InputActionType.Value, "<Mouse>/scroll");
+            _slotKeys = new[]
+            {
+                AddButton("Weapon1", "<Keyboard>/1"),
+                AddButton("Weapon2", "<Keyboard>/2"),
+                AddButton("Weapon3", "<Keyboard>/3"),
+            };
 
             _map.Enable();
         }
@@ -82,6 +94,16 @@ namespace Pulsebreak.Client.Controls
             Latch(_reload, InputButtons.Reload);
             Latch(_leanLeft, InputButtons.LeanLeft);
             Latch(_leanRight, InputButtons.LeanRight);
+
+            for (int i = 0; i < _slotKeys.Length; i++)
+            {
+                if (_slotKeys[i].WasPressedThisFrame()) _latchedSlot = i + 1;
+            }
+
+            // Wheel up is the previous weapon, wheel down the next.
+            float wheel = _scroll.ReadValue<Vector2>().y;
+            if (wheel > 0.01f) _scrollSteps--;
+            else if (wheel < -0.01f) _scrollSteps++;
         }
 
         void Latch(InputAction action, InputButtons button)
@@ -90,7 +112,9 @@ namespace Pulsebreak.Client.Controls
         }
 
         /// <summary>Call once per simulation tick.</summary>
-        public PlayerInputCmd BuildCmd(int tick)
+        /// <param name="currentSlot">The weapon slot in hand (or being switched to), counting from 0.</param>
+        /// <param name="slotCount">How many weapon slots there are, for wrapping the mouse wheel.</param>
+        public PlayerInputCmd BuildCmd(int tick, int currentSlot, int slotCount)
         {
             InputButtons held = InputButtons.None;
             if (_jump.IsPressed()) held |= InputButtons.Jump;
@@ -109,15 +133,36 @@ namespace Pulsebreak.Client.Controls
                 Yaw = Yaw,
                 Pitch = Pitch,
                 Buttons = held | _latched,
+                SelectSlot = ConsumeSlotRequest(currentSlot, slotCount),
             };
             _latched = InputButtons.None;
             return cmd;
+        }
+
+        byte ConsumeSlotRequest(int currentSlot, int slotCount)
+        {
+            int request = 0;
+            if (_latchedSlot > 0 && _latchedSlot <= slotCount)
+            {
+                request = _latchedSlot;
+            }
+            else if (_scrollSteps != 0 && slotCount > 1)
+            {
+                int step = _scrollSteps > 0 ? 1 : -1;
+                request = ((currentSlot + step) % slotCount + slotCount) % slotCount + 1;
+            }
+
+            _latchedSlot = 0;
+            _scrollSteps = 0;
+            return (byte)request;
         }
 
         /// <summary>A command with no input, keeping the current view. Used while a menu is open.</summary>
         public PlayerInputCmd BuildIdleCmd(int tick)
         {
             _latched = InputButtons.None;
+            _latchedSlot = 0;
+            _scrollSteps = 0;
             return new PlayerInputCmd { Tick = tick, Yaw = Yaw, Pitch = Pitch };
         }
 

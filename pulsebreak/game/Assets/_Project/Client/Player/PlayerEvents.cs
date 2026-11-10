@@ -1,9 +1,9 @@
 using UnityEngine;
-using Pulsebreak.Shared.Combat;
+using Pulsebreak.Shared.Weapons;
 
 namespace Pulsebreak.Client.Player
 {
-    /// <summary>Where a bullet went, for tracers and impact marks.</summary>
+    /// <summary>Where one bullet or pellet went, for tracers and impact marks.</summary>
     public struct ShotPresentation
     {
         public Vector3 Origin;
@@ -13,18 +13,6 @@ namespace Pulsebreak.Client.Player
         public bool HitWorld;
         /// <summary>The bullet damaged something.</summary>
         public bool HitTarget;
-    }
-
-    /// <summary>A confirmed hit, for hit markers, damage numbers and stats.</summary>
-    public struct HitFeedback
-    {
-        /// <summary>Simulation tick the bullet was fired on.</summary>
-        public int Tick;
-        public Vector3 Point;
-        public float Damage;
-        public HitZone Zone;
-        public bool Killed;
-        public float Distance;
-        public IDamageable Target;
+        public WeaponBuild Build;
     }
 }

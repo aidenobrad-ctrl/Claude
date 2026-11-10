@@ -9,16 +9,17 @@ namespace Pulsebreak.Tests
 {
     public class DamageCalculatorTests
     {
-        static WeaponDefinition MakeWeapon()
+        static WeaponStats MakeStats()
         {
-            var weapon = ScriptableObject.CreateInstance<WeaponDefinition>();
-            weapon.damage = 30f;
-            weapon.headMultiplier = 1.5f;
-            weapon.limbMultiplier = 0.8f;
-            weapon.falloffStart = 20f;
-            weapon.falloffEnd = 40f;
-            weapon.minDamageMultiplier = 0.5f;
-            return weapon;
+            return new WeaponStats
+            {
+                damage = 30f,
+                headMultiplier = 1.5f,
+                limbMultiplier = 0.8f,
+                falloffStart = 20f,
+                falloffEnd = 40f,
+                minDamageMultiplier = 0.5f,
+            };
         }
 
         [TestCase(0f, 30f)]
@@ -28,23 +29,33 @@ namespace Pulsebreak.Tests
         [TestCase(200f, 15f)]
         public void BodyDamage_FallsOffWithDistance(float distance, float expected)
         {
-            Assert.That(DamageCalculator.Compute(MakeWeapon(), distance, HitZone.Body), Is.EqualTo(expected).Within(0.001f));
+            Assert.That(DamageCalculator.Compute(MakeStats(), distance, HitZone.Body), Is.EqualTo(expected).Within(0.001f));
         }
 
         [Test]
         public void HitZones_ScaleDamage()
         {
-            WeaponDefinition weapon = MakeWeapon();
-            Assert.That(DamageCalculator.Compute(weapon, 5f, HitZone.Head), Is.EqualTo(45f).Within(0.001f));
-            Assert.That(DamageCalculator.Compute(weapon, 5f, HitZone.Limb), Is.EqualTo(24f).Within(0.001f));
+            WeaponStats stats = MakeStats();
+            Assert.That(DamageCalculator.Compute(stats, 5f, HitZone.Head), Is.EqualTo(45f).Within(0.001f));
+            Assert.That(DamageCalculator.Compute(stats, 5f, HitZone.Limb), Is.EqualTo(24f).Within(0.001f));
         }
 
         [Test]
         public void Falloff_IsIgnored_WhenTheRangeIsNotConfigured()
         {
-            WeaponDefinition weapon = MakeWeapon();
-            weapon.falloffEnd = weapon.falloffStart;
-            Assert.That(DamageCalculator.FalloffMultiplier(weapon, 500f), Is.EqualTo(1f));
+            WeaponStats stats = MakeStats();
+            stats.falloffEnd = stats.falloffStart;
+            Assert.That(DamageCalculator.FalloffMultiplier(stats, 500f), Is.EqualTo(1f));
+        }
+
+        [TestCase(0f, 100f)]
+        [TestCase(2f, 70f)]
+        [TestCase(4f, 40f)]
+        [TestCase(4.1f, 0f)]
+        public void ExplosionDamage_FallsFromTheCentreToTheEdge_ThenStops(float distance, float expected)
+        {
+            var stats = new WeaponStats { damage = 100f, explosionRadius = 4f, explosionEdgeDamage = 0.4f };
+            Assert.That(DamageCalculator.ExplosionDamage(stats, distance), Is.EqualTo(expected).Within(0.001f));
         }
     }
 

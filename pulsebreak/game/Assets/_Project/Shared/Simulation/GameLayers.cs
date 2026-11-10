@@ -19,6 +19,9 @@ namespace Pulsebreak.Shared.Simulation
         /// <summary>Static level geometry: what movement collides with and probes against.</summary>
         public const int WorldMask = 1 << Default;
 
+        /// <summary>Damageable body parts only. Used by explosions and melee.</summary>
+        public const int HitboxMask = 1 << Hitbox;
+
         /// <summary>What a bullet can hit: level geometry and hitboxes.</summary>
         public const int ShotMask = (1 << Default) | (1 << Hitbox);
 

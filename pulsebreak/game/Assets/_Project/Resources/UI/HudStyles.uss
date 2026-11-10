@@ -97,24 +97,91 @@
     text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.9);
 }
 
-.reload-bar {
+/* Thin bars under the crosshair: reload progress and charge. */
+.center-bar {
     position: absolute;
     left: 50%;
     top: 50%;
     width: 120px;
     height: 5px;
     margin-left: -60px;
-    margin-top: 54px;
     background-color: rgba(10, 14, 20, 0.7);
     border-radius: 3px;
     display: none;
 }
 
-.reload-fill {
+.center-fill {
     height: 100%;
     width: 0;
-    background-color: rgb(38, 216, 255);
     border-radius: 3px;
+}
+
+.reload-bar { margin-top: 54px; }
+.reload-fill { background-color: rgb(38, 216, 255); }
+.charge-bar { margin-top: 40px; }
+.charge-fill { background-color: rgb(255, 196, 64); }
+
+/* ---------------------------------------------------------------- optics */
+
+/* Drawn at screen centre while aiming with an optic. Opacity is driven from code. */
+.reticle {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 0;
+    height: 0;
+    opacity: 0;
+}
+
+.ret-dot {
+    position: absolute;
+    left: -3px;
+    top: -3px;
+    width: 6px;
+    height: 6px;
+    border-radius: 3px;
+    background-color: rgb(255, 60, 48);
+    display: none;
+}
+
+.ret-shape {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 0;
+    height: 0;
+    display: none;
+}
+
+.ret-line {
+    position: absolute;
+    background-color: rgb(255, 60, 48);
+}
+
+.ret-cross-h { left: -16px; top: -1px; width: 32px; height: 2px; }
+.ret-cross-v { left: -1px; top: -16px; width: 2px; height: 32px; }
+.ret-chevron-l { left: -13px; top: 4px; width: 15px; height: 3px; rotate: -40deg; }
+.ret-chevron-r { left: -2px; top: 4px; width: 15px; height: 3px; rotate: 40deg; }
+
+/* Full-screen scope: black bars either side of a square lens image. */
+.scope {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    flex-direction: row;
+    display: none;
+}
+
+.scope-bar {
+    flex-grow: 1;
+    background-color: rgb(0, 0, 0);
+}
+
+.scope-lens {
+    height: 100%;
+    flex-shrink: 0;
 }
 
 /* ---------------------------------------------------------------- panels */
@@ -167,6 +234,29 @@
     border-left-width: 0;
     border-right-width: 3px;
     border-right-color: rgb(38, 216, 255);
+}
+
+.slots {
+    position: absolute;
+    right: 28px;
+    bottom: 168px;
+    align-items: flex-end;
+}
+
+.slot {
+    font-size: 14px;
+    letter-spacing: 2px;
+    padding: 3px 10px;
+    margin-top: 3px;
+    color: rgba(240, 244, 250, 0.55);
+    background-color: rgba(10, 14, 20, 0.45);
+    border-radius: 4px;
+}
+
+.slot--active {
+    color: rgb(6, 20, 26);
+    background-color: rgb(38, 216, 255);
+    -unity-font-style: bold;
 }
 
 .weapon-name {
@@ -224,19 +314,29 @@
     top: 0;
     right: 0;
     bottom: 0;
+    flex-direction: row;
     align-items: center;
     justify-content: center;
-    background-color: rgba(6, 9, 14, 0.72);
+    background-color: rgba(6, 9, 14, 0.78);
     display: none;
 }
 
 .pause-card {
-    width: 560px;
     padding: 28px 32px;
+    margin: 0 14px;
     background-color: rgb(18, 23, 32);
     border-radius: 10px;
     border-top-width: 3px;
     border-top-color: rgb(38, 216, 255);
+}
+
+.settings-card {
+    width: 500px;
+}
+
+.armory-card {
+    width: 960px;
+    height: 760px;
 }
 
 .pause-title {
@@ -290,4 +390,185 @@
 
 .pause-button.primary:hover {
     background-color: rgb(120, 232, 255);
+}
+
+/* ---------------------------------------------------------------- armory */
+
+.armory-tabs {
+    flex-direction: row;
+    margin-bottom: 14px;
+}
+
+.armory-tab {
+    height: 34px;
+    min-width: 130px;
+    margin: 0 8px 0 0;
+    font-size: 14px;
+    letter-spacing: 2px;
+    color: rgb(240, 244, 250);
+    background-color: rgb(40, 48, 62);
+    border-width: 0;
+    border-radius: 6px;
+}
+
+.armory-tab--active {
+    color: rgb(6, 20, 26);
+    background-color: rgb(38, 216, 255);
+    -unity-font-style: bold;
+}
+
+.armory-body {
+    flex-direction: row;
+    flex-grow: 1;
+}
+
+.armory-weapons {
+    width: 260px;
+    margin-right: 22px;
+}
+
+.armory-weapon {
+    height: 34px;
+    margin: 0 6px 4px 0;
+    padding-left: 12px;
+    font-size: 15px;
+    -unity-text-align: middle-left;
+    color: rgb(240, 244, 250);
+    background-color: rgb(28, 34, 46);
+    border-width: 0;
+    border-radius: 5px;
+}
+
+.armory-weapon:hover {
+    background-color: rgb(44, 53, 70);
+}
+
+.armory-weapon--active {
+    background-color: rgb(38, 216, 255);
+    color: rgb(6, 20, 26);
+    -unity-font-style: bold;
+}
+
+.armory-group {
+    font-size: 12px;
+    letter-spacing: 3px;
+    color: rgb(38, 216, 255);
+    margin: 10px 0 5px 2px;
+}
+
+.armory-detail {
+    flex-grow: 1;
+}
+
+.armory-name {
+    font-size: 26px;
+    -unity-font-style: bold;
+}
+
+.armory-class {
+    font-size: 12px;
+    letter-spacing: 3px;
+    color: rgb(38, 216, 255);
+    margin-bottom: 6px;
+}
+
+.armory-description {
+    font-size: 14px;
+    color: rgba(240, 244, 250, 0.75);
+    white-space: normal;
+    min-height: 38px;
+    margin-bottom: 8px;
+}
+
+.armory-attachments {
+    margin-bottom: 10px;
+}
+
+.attachment-row {
+    flex-direction: row;
+    align-items: center;
+    height: 30px;
+    margin-bottom: 3px;
+}
+
+.attachment-slot {
+    width: 92px;
+    font-size: 12px;
+    letter-spacing: 2px;
+    color: rgba(240, 244, 250, 0.6);
+}
+
+.attachment-step {
+    width: 30px;
+    height: 26px;
+    margin: 0;
+    padding: 0;
+    font-size: 15px;
+    color: rgb(240, 244, 250);
+    background-color: rgb(40, 48, 62);
+    border-width: 0;
+    border-radius: 5px;
+}
+
+.attachment-step:hover {
+    background-color: rgb(56, 66, 84);
+}
+
+.attachment-name {
+    width: 170px;
+    font-size: 15px;
+    -unity-text-align: middle-center;
+}
+
+.attachment-effect {
+    flex-grow: 1;
+    font-size: 12px;
+    color: rgba(240, 244, 250, 0.6);
+    margin-left: 8px;
+    white-space: normal;
+}
+
+.bar-row {
+    flex-direction: row;
+    align-items: center;
+    height: 20px;
+}
+
+.bar-label {
+    width: 120px;
+    font-size: 13px;
+    color: rgba(240, 244, 250, 0.8);
+}
+
+.bar-track {
+    flex-grow: 1;
+    height: 8px;
+    background-color: rgb(34, 41, 54);
+    border-radius: 4px;
+}
+
+/* The base weapon's value, then the part an attachment added or took away. */
+.bar-base {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    background-color: rgb(210, 218, 230);
+    border-radius: 4px;
+}
+
+.bar-change {
+    position: absolute;
+    top: 0;
+    height: 100%;
+}
+
+.bar-change--better { background-color: rgb(64, 220, 120); }
+.bar-change--worse { background-color: rgb(255, 92, 72); }
+
+.armory-numbers {
+    margin-top: 10px;
+    font-size: 14px;
+    color: rgba(240, 244, 250, 0.85);
+    white-space: normal;
 }

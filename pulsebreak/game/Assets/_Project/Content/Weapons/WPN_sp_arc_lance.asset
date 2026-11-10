@@ -1,0 +1,108 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f6a251fe876909704af95a88ea478068, type: 3}
+  m_Name: WPN_sp_arc_lance
+  m_EditorClassIdentifier: 
+  weaponId: sp_arc_lance
+  displayName: Arc Lance
+  description: 'Hold to charge, release to fire a beam through everything in a line.'
+  weaponClass: 8
+  slot: 0
+  unlockLevel: 19
+  stats:
+    fireMode: 3
+    roundsPerMinute: 100
+    burstCount: 3
+    burstCooldown: 0.2
+    chargeTime: 0.75
+    minChargeDamage: 0.3
+    ballistics: 0
+    pellets: 1
+    pierceTargets: 3
+    pierceDamageKept: 0.85
+    damage: 110
+    headMultiplier: 1.5
+    limbMultiplier: 0.9
+    falloffStart: 60
+    falloffEnd: 120
+    minDamageMultiplier: 0.8
+    maxRange: 400
+    projectileSpeed: 60
+    projectileGravity: 0
+    projectileLifetime: 5
+    projectileRadius: 0.05
+    bounces: 0
+    bounceSpeedKept: 0.6
+    bounceDamageMultiplier: 1
+    explosionRadius: 0
+    explosionEdgeDamage: 0.25
+    fuseTime: 0
+    meleeRange: 2.2
+    meleeRadius: 0.45
+    meleeHitDelay: 0.12
+    magazineSize: 5
+    reserveAmmo: 25
+    reloadStyle: 0
+    reloadTime: 2.5
+    emptyReloadTime: 2.9
+    reloadIntroTime: 0
+    adsTime: 0.3
+    adsZoom: 2
+    hipMoveMultiplier: 0.96
+    adsMoveMultiplier: 0.6
+    sprintToFireTime: 0.14
+    equipTime: 0.35
+    holsterTime: 0.2
+    hipSpread: 1.6
+    adsSpread: 0
+    moveSpreadPenalty: 1.2
+    airSpreadPenalty: 3
+    crouchSpreadMultiplier: 0.8
+    bloomPerShot: 0
+    maxBloom: 0
+    bloomRecovery: 5
+    adsBloomMultiplier: 0.2
+    recoilPattern:
+    - {x: 0, y: 2}
+    recoilLoopStart: 0
+    recoilRandomness: 0.12
+    recoilVerticalScale: 1
+    recoilHorizontalScale: 1
+    adsRecoilMultiplier: 0.75
+    crouchRecoilMultiplier: 0.85
+    recoilSnappiness: 20
+    recoilRecovery: 10
+    recoilRecoveryDelay: 0.12
+    recoilResetTime: 0.35
+  reticle: 3
+  attachments:
+  - {fileID: 11400000, guid: 9bbb22842c1e974ed9f3cde99ab748e6, type: 2}
+  - {fileID: 11400000, guid: b6b35a37f7d5eaf3115602c03e93a623, type: 2}
+  - {fileID: 11400000, guid: cac71da591c30ba7b76f5be7c7364e9d, type: 2}
+  - {fileID: 11400000, guid: 3ddd05335cec6df3a100b9686cfbb4e3, type: 2}
+  - {fileID: 11400000, guid: 544b4d67a6a8b3c512f4ae072f7a831b, type: 2}
+  - {fileID: 11400000, guid: c1d00cf082de219ca93f6697e4b0579c, type: 2}
+  view:
+    kind: 0
+    bodyLength: 0.34
+    bulk: 1.1
+    barrelLength: 0.5
+    stockLength: 0.22
+    magazineLength: 0.08
+    bodyColor: {r: 0.62, g: 0.65, b: 0.7, a: 1}
+    accentColor: {r: 0.7, g: 0.4, b: 1, a: 1}
+  audio:
+    kind: 1
+    pitch: 0.55
+    weight: 1.3
+    tail: 0.45
+    volume: 0.9

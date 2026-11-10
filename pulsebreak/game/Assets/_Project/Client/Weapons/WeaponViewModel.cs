@@ -1,5 +1,5 @@
 using UnityEngine;
-using Pulsebreak.Client.Visuals;
+using Pulsebreak.Shared.Weapons;
 
 namespace Pulsebreak.Client.Weapons
 {
@@ -8,10 +8,14 @@ namespace Pulsebreak.Client.Weapons
     {
         public float AdsAmount;
         public bool Sprinting;
-        /// <summary>Hands are busy (mantling): drop the weapon out of view.</summary>
+        /// <summary>Hands are busy (mantling, or putting the weapon away): drop it out of view.</summary>
         public bool Lowered;
         public bool Reloading;
         public float ReloadProgress;
+        /// <summary>Charge weapons: 0..1 while the trigger is held.</summary>
+        public float Charge;
+        /// <summary>Do not draw the model at all (a full-screen scope is up).</summary>
+        public bool Hidden;
         /// <summary>0 = standing still, 1 = sprint speed. 0 while airborne.</summary>
         public float MoveAmount;
         public float Yaw;
@@ -19,84 +23,88 @@ namespace Pulsebreak.Client.Weapons
     }
 
     /// <summary>
-    /// The gun you see in first person. Purely cosmetic: it is posed from weapon and movement
-    /// state each frame and never feeds back into the simulation. The model is a placeholder
-    /// built from boxes, and all motion is procedural, so no art or animation clips are needed yet.
+    /// The weapon you see in first person. Purely cosmetic: it is posed from weapon and
+    /// movement state each frame and never feeds back into the simulation. The model itself
+    /// comes from <see cref="ViewModelBuilder"/>, and all motion is procedural, so no art or
+    /// animation clips are needed yet.
     /// </summary>
     public sealed class WeaponViewModel : MonoBehaviour
     {
-        // Poses are in camera space. The aimed pose puts the sight line through screen centre.
-        static readonly Vector3 HipPosition = new Vector3(0.17f, -0.17f, 0.36f);
-        static readonly Vector3 AdsPosition = new Vector3(0f, -0.0605f, 0.24f);
-        static readonly Vector3 SprintPosition = new Vector3(0.1f, -0.2f, 0.3f);
+        static readonly Vector3 SprintOffset = new Vector3(-0.07f, -0.03f, -0.06f);
         static readonly Vector3 SprintEuler = new Vector3(10f, -35f, 6f);
         static readonly Vector3 ReloadOffset = new Vector3(0f, -0.09f, -0.02f);
         static readonly Vector3 ReloadEuler = new Vector3(-22f, 8f, 22f);
-        static readonly Vector3 LoweredOffset = new Vector3(0f, -0.32f, -0.05f);
+        static readonly Vector3 LoweredOffset = new Vector3(0f, -0.34f, -0.05f);
         static readonly Vector3 LoweredEuler = new Vector3(28f, 0f, 0f);
+        const float SwingTime = 0.3f;
 
-        Transform _gun;
-        Transform _muzzle;
+        ViewModelLayout _layout;
+        Transform _muzzleAnchor;
 
         float _kick, _kickVelocity;
-        float _sprintBlend, _reloadBlend, _lowerBlend;
+        float _sprintBlend, _reloadBlend, _lowerBlend = 1f;
+        float _swing;
         Vector2 _sway;
         float _bobTime;
         float _lastYaw, _lastPitch;
         bool _hasLastAngles;
 
-        public Transform Muzzle => _muzzle;
-
-        /// <summary>Builds the placeholder rifle under this object.</summary>
-        public void Build()
+        /// <summary>
+        /// Follows the muzzle of whichever weapon is shown. It outlives weapon switches, so
+        /// effects can stay parented to it.
+        /// </summary>
+        public Transform Muzzle
         {
-            _gun = new GameObject("Gun").transform;
-            _gun.SetParent(transform, false);
-
-            Material body = GreyboxMaterials.Flat(new Color(0.16f, 0.17f, 0.2f));
-            Material dark = GreyboxMaterials.Flat(new Color(0.08f, 0.08f, 0.1f));
-            Material accent = GreyboxMaterials.Unlit(new Color(0.15f, 0.85f, 1f));
-
-            Part("Receiver", new Vector3(0f, 0f, 0f), new Vector3(0.055f, 0.075f, 0.3f), body);
-            Part("Handguard", new Vector3(0f, 0.004f, 0.27f), new Vector3(0.046f, 0.052f, 0.26f), dark);
-            Part("Barrel", new Vector3(0f, 0.008f, 0.44f), new Vector3(0.022f, 0.022f, 0.1f), dark);
-            Part("Stock", new Vector3(0f, -0.012f, -0.25f), new Vector3(0.045f, 0.065f, 0.2f), body);
-            Part("Magazine", new Vector3(0f, -0.095f, 0.035f), new Vector3(0.034f, 0.14f, 0.06f), dark)
-                .localRotation = Quaternion.Euler(-8f, 0f, 0f);
-            Part("Grip", new Vector3(0f, -0.075f, -0.085f), new Vector3(0.034f, 0.09f, 0.045f), dark)
-                .localRotation = Quaternion.Euler(18f, 0f, 0f);
-            Part("Accent", new Vector3(0f, 0.012f, 0.2f), new Vector3(0.05f, 0.012f, 0.1f), accent);
-
-            // Open sights: two rear posts and one front post, tips just under the aim line.
-            Part("RearSightL", new Vector3(-0.012f, 0.047f, -0.06f), new Vector3(0.007f, 0.02f, 0.012f), dark);
-            Part("RearSightR", new Vector3(0.012f, 0.047f, -0.06f), new Vector3(0.007f, 0.02f, 0.012f), dark);
-            Part("FrontSight", new Vector3(0f, 0.043f, 0.38f), new Vector3(0.005f, 0.03f, 0.005f), dark);
-
-            _muzzle = new GameObject("Muzzle").transform;
-            _muzzle.SetParent(_gun, false);
-            _muzzle.localPosition = new Vector3(0f, 0.008f, 0.5f);
-
-            // Start lowered so the weapon rises into view when it is first drawn.
-            _lowerBlend = 1f;
-            _gun.localPosition = HipPosition + LoweredOffset;
+            get
+            {
+                if (_muzzleAnchor == null)
+                {
+                    _muzzleAnchor = new GameObject("MuzzleAnchor").transform;
+                    _muzzleAnchor.SetParent(transform, false);
+                }
+                return _muzzleAnchor;
+            }
         }
 
-        Transform Part(string partName, Vector3 position, Vector3 scale, Material material) =>
-            GreyboxKit.Visual(_gun, partName, PrimitiveType.Cube, position, scale, material, castShadows: false).transform;
-
-        /// <summary>Call for every shot fired.</summary>
-        public void OnShot()
+        /// <summary>Replaces the model with the one for this weapon and its attachments.</summary>
+        public void Show(WeaponBuild build)
         {
-            _kickVelocity += 16f;
+            if (_layout.Root != null) Destroy(_layout.Root.gameObject);
+
+            _layout = ViewModelBuilder.Build(transform, build);
+            _kick = _kickVelocity = 0f;
+            _swing = 0f;
+            _reloadBlend = 0f;
+            // Start lowered so the new weapon rises into view.
+            _lowerBlend = 1f;
+            _layout.Root.localPosition = _layout.HipPosition + LoweredOffset;
+            _layout.Root.localRotation = Quaternion.Euler(_layout.HipEuler);
+        }
+
+        /// <summary>Call once for every shot fired or swing started.</summary>
+        public void OnFired(WeaponBuild build)
+        {
+            if (_layout.Kind == ViewModelKind.Blade)
+            {
+                _swing = SwingTime;
+                return;
+            }
+
+            // Heavier-hitting weapons kick the model harder.
+            WeaponStats stats = build.Weapon.stats;
+            float punch = stats.damage * Mathf.Max(1, stats.pellets);
+            _kickVelocity += Mathf.Lerp(12f, 34f, Mathf.InverseLerp(15f, 130f, punch));
         }
 
         public void Tick(in ViewModelInput input, float deltaTime)
         {
-            if (_gun == null) return;
+            if (_layout.Root == null) return;
             float dt = Mathf.Min(deltaTime, 1f / 30f);
 
+            if (_layout.Root.gameObject.activeSelf == input.Hidden) _layout.Root.gameObject.SetActive(!input.Hidden);
+
             _sprintBlend = Mathf.MoveTowards(_sprintBlend, input.Sprinting ? 1f : 0f, dt / 0.16f);
-            _lowerBlend = Mathf.MoveTowards(_lowerBlend, input.Lowered ? 1f : 0f, dt / (input.Lowered ? 0.12f : 0.28f));
+            _lowerBlend = Mathf.MoveTowards(_lowerBlend, input.Lowered ? 1f : 0f, dt / (input.Lowered ? 0.12f : 0.24f));
 
             // Dips into the reload pose, holds, and comes back up as the reload completes.
             float reloadTarget = input.Reloading
@@ -109,7 +117,7 @@ namespace Pulsebreak.Client.Weapons
             _kickVelocity += (-stiffness * _kick - damping * _kickVelocity) * dt;
             _kick += _kickVelocity * dt;
 
-            // Sway: the gun lags slightly behind the view as it turns.
+            // Sway: the weapon lags slightly behind the view as it turns.
             if (!_hasLastAngles)
             {
                 _lastYaw = input.Yaw;
@@ -132,12 +140,13 @@ namespace Pulsebreak.Client.Weapons
             float bobScale = input.MoveAmount * (1f - 0.85f * ads);
             var bob = new Vector3(Mathf.Sin(_bobTime) * 0.006f, Mathf.Sin(_bobTime * 2f) * 0.004f, 0f) * bobScale;
 
-            Vector3 position = Vector3.Lerp(HipPosition, AdsPosition, ads);
-            Quaternion rotation = Quaternion.identity;
+            Vector3 position = Vector3.Lerp(_layout.HipPosition, _layout.AdsPosition, ads);
+            Quaternion rotation = Quaternion.Slerp(Quaternion.Euler(_layout.HipEuler), Quaternion.identity,
+                _layout.Kind == ViewModelKind.Gun || _layout.Kind == ViewModelKind.Launcher ? 1f : ads * 0.3f);
 
             float sprint = _sprintBlend * (1f - ads);
-            position = Vector3.Lerp(position, SprintPosition, sprint);
-            rotation = Quaternion.Slerp(rotation, Quaternion.Euler(SprintEuler), sprint);
+            position += SprintOffset * sprint;
+            rotation *= Quaternion.Euler(SprintEuler * sprint);
 
             position += ReloadOffset * _reloadBlend + LoweredOffset * _lowerBlend;
             rotation *= Quaternion.Euler(ReloadEuler * _reloadBlend + LoweredEuler * _lowerBlend);
@@ -147,8 +156,28 @@ namespace Pulsebreak.Client.Weapons
             position += Vector3.back * (_kick * 0.06f * kickScale);
             rotation *= Quaternion.Euler(-_kick * 3.2f * kickScale, 0f, 0f);
 
-            _gun.localPosition = position;
-            _gun.localRotation = rotation;
+            // Charging: the weapon draws back and trembles harder as power builds.
+            if (input.Charge > 0f)
+            {
+                float tremble = input.Charge * 0.004f;
+                position += new Vector3(Random.Range(-tremble, tremble), Random.Range(-tremble, tremble), -0.03f * input.Charge);
+            }
+
+            // A blade sweeps across the view from right to left.
+            if (_swing > 0f)
+            {
+                _swing -= dt;
+                float t = 1f - Mathf.Clamp01(_swing / SwingTime);
+                float arc = Mathf.Sin(t * Mathf.PI);
+                position += new Vector3(Mathf.Lerp(0.08f, -0.32f, t), 0.06f * arc, 0.12f * arc);
+                rotation *= Quaternion.Euler(Mathf.Lerp(-10f, 35f, t), Mathf.Lerp(40f, -75f, t), -30f * arc);
+            }
+
+            _layout.Root.localPosition = position;
+            _layout.Root.localRotation = rotation;
+
+            Transform anchor = Muzzle;
+            anchor.SetPositionAndRotation(_layout.Muzzle.position, _layout.Muzzle.rotation);
         }
     }
 }

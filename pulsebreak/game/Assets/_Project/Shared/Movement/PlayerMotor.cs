@@ -63,6 +63,17 @@ namespace Pulsebreak.Shared.Movement
             _state.Position = position;
         }
 
+        /// <summary>
+        /// Puts the character into a saved state, body and all. This is what prediction uses
+        /// to go back to what the server said and replay from there.
+        /// </summary>
+        public void SetState(in MotorState state)
+        {
+            _state = state;
+            ApplyCapsule();
+            MoveTransform(state.Position);
+        }
+
         /// <summary>Advances the character by one tick.</summary>
         public void Simulate(in PlayerInputCmd cmd, in MoveModifiers modifiers, float dt)
         {

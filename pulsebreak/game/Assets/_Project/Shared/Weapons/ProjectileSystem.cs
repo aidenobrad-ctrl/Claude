@@ -20,6 +20,10 @@ namespace Pulsebreak.Shared.Weapons
         public float DamageScale;
         public WeaponStats Stats;
         public string WeaponId;
+        /// <summary>Who launched it. It passes through their own body and never damages them. May be null.</summary>
+        public IDamageable Owner;
+        /// <summary>Visual-only systems: it has reached where it would end and is waiting to be told how.</summary>
+        public bool Finished;
     }
 
     public enum ProjectileEventKind : byte
@@ -66,13 +70,25 @@ namespace Pulsebreak.Shared.Weapons
 
         public IReadOnlyList<Projectile> Live => _live;
 
+        /// <summary>
+        /// A system that only draws. It flies projectiles against the level so they look
+        /// right, but never touches a target, deals damage or decides how one ends: a client
+        /// uses it to show projectiles the server is simulating, and removes each when the
+        /// server says what became of it.
+        /// </summary>
+        public bool VisualOnly { get; set; }
+
+        /// <param name="owner">Who launched it; may be null.</param>
+        /// <param name="id">Leave at 0 to assign one. A visual-only system passes the server's id.</param>
         /// <returns>The new projectile's id.</returns>
-        public int Spawn(Vector3 origin, Vector3 direction, WeaponStats stats, string weaponId, float damageScale)
+        public int Spawn(Vector3 origin, Vector3 direction, WeaponStats stats, string weaponId, float damageScale,
+            IDamageable owner = null, int id = 0)
         {
-            int id = _nextId++;
+            if (id == 0) id = _nextId++;
             _live.Add(new Projectile
             {
                 Id = id,
+                Owner = owner,
                 Position = origin,
                 PreviousPosition = origin,
                 Velocity = direction * stats.projectileSpeed,
@@ -85,6 +101,20 @@ namespace Pulsebreak.Shared.Weapons
         }
 
         public void Clear() => _live.Clear();
+
+        /// <summary>Removes one projectile without any event. Returns where it was.</summary>
+        public bool Remove(int id, out Vector3 lastPosition)
+        {
+            for (int i = 0; i < _live.Count; i++)
+            {
+                if (_live[i].Id != id) continue;
+                lastPosition = _live[i].Position;
+                _live.RemoveAt(i);
+                return true;
+            }
+            lastPosition = default;
+            return false;
+        }
 
         /// <summary>Advances every projectile by one tick.</summary>
         public void Step(int tick, float dt)
@@ -106,6 +136,7 @@ namespace Pulsebreak.Shared.Weapons
 
             p.PreviousPosition = p.Position;
             p.Age += dt;
+            if (p.Finished) return p.Age < stats.projectileLifetime + 2f;
 
             // Same integration as the character: average of start and end velocity.
             Vector3 startVelocity = p.Velocity;
@@ -118,7 +149,7 @@ namespace Pulsebreak.Shared.Weapons
                 if (distance < 0.00001f) break;
                 Vector3 direction = displacement / distance;
 
-                if (!Sweep(p.Position, direction, distance, stats.projectileRadius, out RaycastHit hit))
+                if (!Sweep(p.Position, direction, distance, stats.projectileRadius, VisualOnly, out RaycastHit hit))
                 {
                     p.Position += displacement;
                     p.Travelled += distance;
@@ -128,9 +159,20 @@ namespace Pulsebreak.Shared.Weapons
                 p.Position += direction * hit.distance;
                 p.Travelled += hit.distance;
 
+                Hitbox hitbox = null;
+                bool struckTarget = !VisualOnly && hit.collider.TryGetComponent(out hitbox);
+
+                // It flies through whoever launched it.
+                if (struckTarget && p.Owner != null && hitbox.Owner == p.Owner)
+                {
+                    p.Position += direction * 0.05f;
+                    displacement = direction * Mathf.Max(0f, distance - hit.distance - 0.05f);
+                    continue;
+                }
+
                 // A fused explosive can be set to bounce off targets and wait for its fuse.
                 bool bouncesOffTargets = explosive && fused && !stats.detonateOnTarget;
-                if (!bouncesOffTargets && hit.collider.TryGetComponent(out Hitbox hitbox))
+                if (struckTarget && !bouncesOffTargets)
                 {
                     if (explosive)
                     {
@@ -139,7 +181,7 @@ namespace Pulsebreak.Shared.Weapons
                     else
                     {
                         bool hitTarget = CombatResolver.ApplyHit(stats, p.WeaponId, hitbox, hit.point, direction,
-                            p.Travelled, p.DamageScale, tick, out HitReport report);
+                            p.Travelled, p.DamageScale, tick, out HitReport report, p.Owner);
                         if (hitTarget) HitConfirmed?.Invoke(report);
                         Raise(ProjectileEventKind.Impact, p, hit.point, hit.normal, 0f, hitTarget);
                     }
@@ -165,10 +207,13 @@ namespace Pulsebreak.Shared.Weapons
                     break;
                 }
 
+                if (VisualOnly) return Finish(ref p);
                 if (explosive) Detonate(ref p, hit.point + hit.normal * 0.05f, hit.normal, tick);
                 else Raise(ProjectileEventKind.Impact, p, hit.point, hit.normal, 0f, false);
                 return false;
             }
+
+            if (VisualOnly) return (fused && p.Age >= stats.fuseTime) || p.Age >= stats.projectileLifetime ? Finish(ref p) : true;
 
             if (fused && p.Age >= stats.fuseTime)
             {
@@ -186,17 +231,26 @@ namespace Pulsebreak.Shared.Weapons
             return true;
         }
 
-        static bool Sweep(Vector3 from, Vector3 direction, float distance, float radius, out RaycastHit hit)
+        /// <summary>A visual-only projectile stops where it would end and waits to be removed.</summary>
+        static bool Finish(ref Projectile p)
         {
+            p.Finished = true;
+            p.Velocity = Vector3.zero;
+            return true;
+        }
+
+        static bool Sweep(Vector3 from, Vector3 direction, float distance, float radius, bool worldOnly, out RaycastHit hit)
+        {
+            int mask = worldOnly ? GameLayers.WorldMask : GameLayers.ShotMask;
             return radius > 0.001f
-                ? Physics.SphereCast(from, radius, direction, out hit, distance, GameLayers.ShotMask, QueryTriggerInteraction.Ignore)
-                : Physics.Raycast(from, direction, out hit, distance, GameLayers.ShotMask, QueryTriggerInteraction.Ignore);
+                ? Physics.SphereCast(from, radius, direction, out hit, distance, mask, QueryTriggerInteraction.Ignore)
+                : Physics.Raycast(from, direction, out hit, distance, mask, QueryTriggerInteraction.Ignore);
         }
 
         void Detonate(ref Projectile p, Vector3 centre, Vector3 normal, int tick)
         {
             _reports.Clear();
-            CombatResolver.Explode(centre, p.Stats, p.WeaponId, p.DamageScale, tick, _reports);
+            CombatResolver.Explode(centre, p.Stats, p.WeaponId, p.DamageScale, tick, _reports, p.Owner);
             Raise(ProjectileEventKind.Explosion, p, centre, normal, p.Stats.explosionRadius, _reports.Count > 0);
             for (int i = 0; i < _reports.Count; i++) HitConfirmed?.Invoke(_reports[i]);
         }

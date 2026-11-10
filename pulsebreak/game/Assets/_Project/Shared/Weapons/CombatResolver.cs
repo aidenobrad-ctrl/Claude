@@ -25,10 +25,12 @@ namespace Pulsebreak.Shared.Weapons
         /// targets as the weapon's piercing allows, losing damage each time.
         /// </summary>
         /// <returns>Where the bullet ended up, for tracers and impact marks.</returns>
+        /// <param name="attacker">Who fired. Their own body is never hit. May be null.</param>
         public static HitscanHit FireBullet(Vector3 origin, Vector3 direction, WeaponStats stats, string weaponId,
-            float damageScale, int tick, List<HitReport> reports)
+            float damageScale, int tick, List<HitReport> reports, IDamageable attacker = null)
         {
             Targets.Clear();
+            if (attacker != null) Targets.Add(attacker);
             float travelled = 0f;
             int pierced = 0;
             HitscanHit last = default;
@@ -48,7 +50,7 @@ namespace Pulsebreak.Shared.Weapons
                 if (target != null && target.IsAlive && !Targets.Contains(target))
                 {
                     Targets.Add(target);
-                    if (ApplyHit(stats, weaponId, hit.Hitbox, hit.Point, direction, hit.Distance, damageScale, tick, out HitReport report))
+                    if (ApplyHit(stats, weaponId, hit.Hitbox, hit.Point, direction, hit.Distance, damageScale, tick, out HitReport report, attacker))
                         reports.Add(report);
 
                     if (pierced >= stats.pierceTargets) break;
@@ -64,15 +66,15 @@ namespace Pulsebreak.Shared.Weapons
 
         /// <summary>Applies a direct hit on a body part, with range falloff and the body part's multiplier.</summary>
         public static bool ApplyHit(WeaponStats stats, string weaponId, Hitbox hitbox, Vector3 point, Vector3 direction,
-            float distance, float damageScale, int tick, out HitReport report)
+            float distance, float damageScale, int tick, out HitReport report, IDamageable attacker = null)
         {
             report = default;
             IDamageable target = hitbox.Owner;
-            if (target == null || !target.IsAlive) return false;
+            if (target == null || !target.IsAlive || target == attacker) return false;
 
             float amount = DamageCalculator.Compute(stats, distance, hitbox.zone) * damageScale;
-            report = Deliver(target, amount, hitbox.zone, point, direction, distance, weaponId, tick);
-            return true;
+            report = Deliver(target, amount, hitbox.zone, point, direction, distance, weaponId, tick, attacker);
+            return report.Damage > 0f || report.Killed;
         }
 
         /// <summary>
@@ -80,7 +82,7 @@ namespace Pulsebreak.Shared.Weapons
         /// attacker, unless a wall is in the way. Melee damage is flat.
         /// </summary>
         public static bool MeleeStrike(Vector3 origin, Vector3 direction, WeaponStats stats, string weaponId,
-            int tick, out HitReport report)
+            int tick, out HitReport report, IDamageable attacker = null)
         {
             report = default;
             Vector3 end = origin + direction * stats.meleeRange;
@@ -94,7 +96,7 @@ namespace Pulsebreak.Shared.Weapons
             {
                 if (!Overlaps[i].TryGetComponent(out Hitbox hitbox)) continue;
                 IDamageable target = hitbox.Owner;
-                if (target == null || !target.IsAlive) continue;
+                if (target == null || !target.IsAlive || target == attacker) continue;
 
                 Vector3 point = Overlaps[i].ClosestPoint(origin);
                 float distance = Vector3.Distance(origin, point);
@@ -107,16 +109,17 @@ namespace Pulsebreak.Shared.Weapons
             }
 
             if (best == null) return false;
-            report = Deliver(best, stats.damage, HitZone.Body, bestPoint, direction, bestDistance, weaponId, tick);
-            return true;
+            report = Deliver(best, stats.damage, HitZone.Body, bestPoint, direction, bestDistance, weaponId, tick, attacker);
+            return report.Damage > 0f || report.Killed;
         }
 
         /// <summary>
         /// An explosion: damages every living target within the radius that is not behind
         /// cover, once each, by how close its nearest body part is to the centre.
         /// </summary>
+        /// <param name="attacker">Who caused it. They take no damage from their own blast. May be null.</param>
         public static void Explode(Vector3 centre, WeaponStats stats, string weaponId, float damageScale, int tick,
-            List<HitReport> reports)
+            List<HitReport> reports, IDamageable attacker = null)
         {
             if (stats.explosionRadius <= 0f) return;
 
@@ -130,7 +133,7 @@ namespace Pulsebreak.Shared.Weapons
             {
                 if (!Overlaps[i].TryGetComponent(out Hitbox hitbox)) continue;
                 IDamageable target = hitbox.Owner;
-                if (target == null || !target.IsAlive) continue;
+                if (target == null || !target.IsAlive || target == attacker) continue;
 
                 Vector3 point = Overlaps[i].ClosestPoint(centre);
                 float distance = Vector3.Distance(centre, point);
@@ -159,12 +162,13 @@ namespace Pulsebreak.Shared.Weapons
 
                 Vector3 away = point - centre;
                 Vector3 direction = away.sqrMagnitude > 0.0001f ? away.normalized : Vector3.up;
-                reports.Add(Deliver(Targets[i], amount, HitZone.Body, point, direction, TargetDistances[i], weaponId, tick));
+                HitReport report = Deliver(Targets[i], amount, HitZone.Body, point, direction, TargetDistances[i], weaponId, tick, attacker);
+                if (report.Damage > 0f || report.Killed) reports.Add(report);
             }
         }
 
         static HitReport Deliver(IDamageable target, float amount, HitZone zone, Vector3 point, Vector3 direction,
-            float distance, string weaponId, int tick)
+            float distance, string weaponId, int tick, IDamageable attacker)
         {
             DamageResult result = target.ApplyDamage(new DamageInfo
             {
@@ -174,6 +178,7 @@ namespace Pulsebreak.Shared.Weapons
                 Direction = direction,
                 Distance = distance,
                 WeaponId = weaponId,
+                Attacker = attacker,
             });
 
             return new HitReport
@@ -186,6 +191,7 @@ namespace Pulsebreak.Shared.Weapons
                 Distance = distance,
                 Target = target,
                 WeaponId = weaponId,
+                Attacker = attacker,
             };
         }
     }

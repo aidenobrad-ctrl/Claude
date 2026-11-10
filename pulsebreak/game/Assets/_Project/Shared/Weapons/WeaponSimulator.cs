@@ -59,6 +59,13 @@ namespace Pulsebreak.Shared.Weapons
             _state.TimeSinceLastShot = 10f;
         }
 
+        /// <summary>Puts the weapon into a saved state.</summary>
+        public void SetState(in WeaponState state)
+        {
+            _state = state;
+            _shots.Clear();
+        }
+
         /// <summary>
         /// Starts bringing the weapon up. Recoil still on the view from the previous weapon is
         /// carried over so the camera does not snap, and buttons already held do not count as

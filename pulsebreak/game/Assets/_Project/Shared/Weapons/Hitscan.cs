@@ -22,8 +22,10 @@ namespace Pulsebreak.Shared.Weapons
     /// </summary>
     public static class Hitscan
     {
-        public static HitscanHit Trace(Vector3 origin, Vector3 direction, float maxRange, int layerMask = GameLayers.ShotMask)
+        /// <param name="layerMask">0 uses whatever bullets can currently hit.</param>
+        public static HitscanHit Trace(Vector3 origin, Vector3 direction, float maxRange, int layerMask = 0)
         {
+            if (layerMask == 0) layerMask = GameLayers.ShotMask;
             var result = new HitscanHit
             {
                 Point = origin + direction * maxRange,

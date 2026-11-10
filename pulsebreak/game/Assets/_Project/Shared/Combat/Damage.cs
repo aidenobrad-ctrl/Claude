@@ -18,6 +18,8 @@ namespace Pulsebreak.Shared.Combat
         public Vector3 Direction;
         public float Distance;
         public string WeaponId;
+        /// <summary>Who dealt it, when known. Lets a target refuse its own damage and the match credit a kill.</summary>
+        public IDamageable Attacker;
     }
 
     /// <summary>What actually happened when damage was applied.</summary>
@@ -41,6 +43,8 @@ namespace Pulsebreak.Shared.Combat
         public float Distance;
         public IDamageable Target;
         public string WeaponId;
+        /// <summary>Who dealt it, when known.</summary>
+        public IDamageable Attacker;
     }
 
     public interface IDamageable

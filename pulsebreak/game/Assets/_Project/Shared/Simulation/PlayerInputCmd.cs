@@ -43,6 +43,13 @@ namespace Pulsebreak.Shared.Simulation
         /// <summary>Weapon slot to switch to, counting from 1. 0 means no change.</summary>
         public byte SelectSlot;
 
+        /// <summary>
+        /// Online only: the server tick the player was looking at when this was sampled.
+        /// Other players are drawn slightly in the past, and the server uses this to put
+        /// them back where the shooter saw them before working out what a shot hit.
+        /// </summary>
+        public float ViewTick;
+
         public bool Has(InputButtons button) => (Buttons & button) != 0;
     }
 

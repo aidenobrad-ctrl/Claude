@@ -53,6 +53,21 @@ namespace Pulsebreak.Shared.Loadouts
             for (int i = 0; i < items.Length; i++) _slots[i].Charges = charges[i];
         }
 
+        /// <summary>The slot whose throw is winding up, or -1.</summary>
+        public int ThrowingSlot => _throwing;
+        public float ThrowTimer => _throwTimer;
+        public InputButtons PreviousButtons => _previousButtons;
+
+        /// <summary>Puts the belt into a saved state.</summary>
+        public void SetState(UtilitySlotState[] slots, int throwingSlot, float throwTimer, InputButtons previousButtons)
+        {
+            for (int i = 0; i < _slots.Length && i < slots.Length; i++) _slots[i] = slots[i];
+            _throwing = throwingSlot >= 0 && throwingSlot < _slots.Length ? throwingSlot : -1;
+            _throwTimer = throwTimer;
+            _previousButtons = previousButtons;
+            ReleasedSlot = -1;
+        }
+
         public UtilityDefinition GetItem(int slot) => _items[slot];
         public UtilitySlotState GetState(int slot) => _slots[slot];
         public int MaxCharges(int slot) => _maxCharges[slot];

@@ -21,5 +21,8 @@ namespace Pulsebreak.Shared.Combat
                 return _owner;
             }
         }
+
+        /// <summary>For owners that are not components, such as a player whose health lives in the match.</summary>
+        public void SetOwner(IDamageable owner) => _owner = owner;
     }
 }

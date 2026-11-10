@@ -53,6 +53,17 @@ namespace Pulsebreak.Shared.Weapons
 
         public WeaponSimulator Get(int index) => index >= 0 && index < _slots.Length ? _slots[index] : null;
 
+        /// <summary>The slot being switched to, or -1.</summary>
+        public int PendingIndex => _pending;
+
+        /// <summary>Puts which weapon is in hand, and any switch under way, back to a saved state. Raises no event.</summary>
+        public void SetSlots(int active, int pending)
+        {
+            if (active >= 0 && active < _slots.Length && _slots[active] != null) _active = active;
+            _pending = pending >= 0 && pending < _slots.Length && _slots[pending] != null ? pending : -1;
+            Simulated = Active;
+        }
+
         /// <summary>Advances the weapon in hand by one tick, handling any request to switch.</summary>
         public void Simulate(in PlayerInputCmd cmd, in WeaponContext context, float dt)
         {

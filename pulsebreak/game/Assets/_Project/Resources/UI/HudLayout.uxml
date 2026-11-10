@@ -1,0 +1,77 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" editor-extension-mode="False">
+    <ui:VisualElement name="hud" class="hud" picking-mode="Ignore">
+
+        <ui:VisualElement name="damage-layer" class="layer" picking-mode="Ignore" />
+
+        <ui:VisualElement name="crosshair" class="crosshair" picking-mode="Ignore">
+            <ui:VisualElement name="ch-top" class="ch-line" picking-mode="Ignore" />
+            <ui:VisualElement name="ch-bottom" class="ch-line" picking-mode="Ignore" />
+            <ui:VisualElement name="ch-left" class="ch-line" picking-mode="Ignore" />
+            <ui:VisualElement name="ch-right" class="ch-line" picking-mode="Ignore" />
+            <ui:VisualElement name="ch-dot" class="ch-dot" picking-mode="Ignore" />
+            <ui:VisualElement name="hitmarker" class="hitmarker" picking-mode="Ignore">
+                <ui:VisualElement class="hm-tick hm-top" picking-mode="Ignore" />
+                <ui:VisualElement class="hm-tick hm-bottom" picking-mode="Ignore" />
+                <ui:VisualElement class="hm-tick hm-left" picking-mode="Ignore" />
+                <ui:VisualElement class="hm-tick hm-right" picking-mode="Ignore" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+
+        <ui:Label name="rangefinder" class="rangefinder" text="" picking-mode="Ignore" />
+
+        <ui:VisualElement name="reload-bar" class="reload-bar" picking-mode="Ignore">
+            <ui:VisualElement name="reload-fill" class="reload-fill" picking-mode="Ignore" />
+        </ui:VisualElement>
+
+        <ui:VisualElement name="hints" class="panel hints" picking-mode="Ignore">
+            <ui:Label class="panel-title" text="FIRING RANGE" picking-mode="Ignore" />
+            <ui:Label class="hint" text="WASD  move      Mouse  look" picking-mode="Ignore" />
+            <ui:Label class="hint" text="Shift  sprint      Space  jump" picking-mode="Ignore" />
+            <ui:Label class="hint" text="Ctrl / C  crouch      sprint + crouch  slide" picking-mode="Ignore" />
+            <ui:Label class="hint" text="hold Space + W at a ledge  mantle" picking-mode="Ignore" />
+            <ui:Label class="hint" text="Q / E  lean      RMB  aim      LMB  fire" picking-mode="Ignore" />
+            <ui:Label class="hint" text="R  reload      F5  reset stats" picking-mode="Ignore" />
+            <ui:Label class="hint" text="Esc  settings      F1  hide this" picking-mode="Ignore" />
+        </ui:VisualElement>
+
+        <ui:VisualElement name="range-stats" class="panel range-stats" picking-mode="Ignore">
+            <ui:Label class="panel-title" text="SESSION" picking-mode="Ignore" />
+            <ui:Label name="stat-accuracy" class="stat" text="Accuracy  -" picking-mode="Ignore" />
+            <ui:Label name="stat-headshots" class="stat" text="Headshots  -" picking-mode="Ignore" />
+            <ui:Label name="stat-shots" class="stat" text="Shots  0" picking-mode="Ignore" />
+            <ui:Label name="stat-kills" class="stat" text="Kills  0" picking-mode="Ignore" />
+            <ui:Label name="stat-ttk" class="stat" text="Last time to kill  -" picking-mode="Ignore" />
+        </ui:VisualElement>
+
+        <ui:VisualElement name="movement" class="panel movement" picking-mode="Ignore">
+            <ui:Label name="move-state" class="move-state" text="RUN" picking-mode="Ignore" />
+            <ui:Label name="move-speed" class="move-speed" text="0.0 m/s" picking-mode="Ignore" />
+        </ui:VisualElement>
+
+        <ui:VisualElement name="ammo" class="panel ammo" picking-mode="Ignore">
+            <ui:Label name="weapon-name" class="weapon-name" text="" picking-mode="Ignore" />
+            <ui:VisualElement class="ammo-row" picking-mode="Ignore">
+                <ui:Label name="ammo-mag" class="ammo-mag" text="30" picking-mode="Ignore" />
+                <ui:Label name="ammo-reserve" class="ammo-reserve" text="/ 120" picking-mode="Ignore" />
+            </ui:VisualElement>
+            <ui:Label name="weapon-status" class="weapon-status" text="" picking-mode="Ignore" />
+        </ui:VisualElement>
+
+        <ui:VisualElement name="pause" class="pause">
+            <ui:VisualElement class="pause-card">
+                <ui:Label class="pause-title" text="PAUSED" />
+                <ui:Slider name="set-sensitivity" label="Sensitivity" low-value="0.2" high-value="8" show-input-field="true" />
+                <ui:Slider name="set-ads" label="Aim sensitivity" low-value="0.3" high-value="1.5" show-input-field="true" />
+                <ui:SliderInt name="set-fov" label="Field of view" low-value="70" high-value="120" show-input-field="true" />
+                <ui:Slider name="set-volume" label="Volume" low-value="0" high-value="1" show-input-field="true" />
+                <ui:Toggle name="set-damage-numbers" label="Damage numbers" />
+                <ui:VisualElement class="pause-buttons">
+                    <ui:Button name="btn-resume" class="pause-button primary" text="Resume" />
+                    <ui:Button name="btn-reset" class="pause-button" text="Reset stats" />
+                    <ui:Button name="btn-quit" class="pause-button" text="Quit" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+        </ui:VisualElement>
+
+    </ui:VisualElement>
+</ui:UXML>

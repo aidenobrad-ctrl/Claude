@@ -1,0 +1,17 @@
+{
+    "name": "Pulsebreak.Client",
+    "rootNamespace": "Pulsebreak.Client",
+    "references": [
+        "Pulsebreak.Shared",
+        "Unity.InputSystem"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

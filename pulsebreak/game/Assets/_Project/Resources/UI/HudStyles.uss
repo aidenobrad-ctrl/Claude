@@ -1,0 +1,293 @@
+/* Pulsebreak HUD. Sizes are in reference pixels: the panel scales from 1920x1080 by screen height. */
+
+.hud {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    color: rgb(240, 244, 250);
+    font-size: 16px;
+}
+
+.layer {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+}
+
+.panel {
+    position: absolute;
+    padding: 12px 16px;
+    background-color: rgba(10, 14, 20, 0.55);
+    border-radius: 6px;
+    border-left-width: 3px;
+    border-left-color: rgb(38, 216, 255);
+}
+
+.panel-title {
+    font-size: 13px;
+    letter-spacing: 3px;
+    color: rgb(38, 216, 255);
+    -unity-font-style: bold;
+    margin-bottom: 6px;
+}
+
+/* ---------------------------------------------------------------- crosshair */
+
+/* A zero-size anchor at screen centre; the lines are placed around it from code. */
+.crosshair {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 0;
+    height: 0;
+}
+
+.ch-line {
+    position: absolute;
+    background-color: rgb(255, 255, 255);
+    border-width: 1px;
+    border-color: rgba(0, 0, 0, 0.55);
+}
+
+.ch-dot {
+    position: absolute;
+    left: -2px;
+    top: -2px;
+    width: 4px;
+    height: 4px;
+    border-radius: 2px;
+    background-color: rgb(255, 255, 255);
+    border-width: 1px;
+    border-color: rgba(0, 0, 0, 0.55);
+}
+
+/* Four ticks laid out as a plus, then turned 45 degrees into an X. */
+.hitmarker {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 0;
+    height: 0;
+    rotate: 45deg;
+    opacity: 0;
+}
+
+.hm-tick {
+    position: absolute;
+    background-color: rgb(255, 255, 255);
+}
+
+.hm-top { left: -1.5px; top: -20px; width: 3px; height: 11px; }
+.hm-bottom { left: -1.5px; top: 9px; width: 3px; height: 11px; }
+.hm-left { left: -20px; top: -1.5px; width: 11px; height: 3px; }
+.hm-right { left: 9px; top: -1.5px; width: 11px; height: 3px; }
+
+.rangefinder {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    margin-left: 34px;
+    margin-top: 18px;
+    font-size: 14px;
+    color: rgba(240, 244, 250, 0.75);
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.9);
+}
+
+.reload-bar {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 120px;
+    height: 5px;
+    margin-left: -60px;
+    margin-top: 54px;
+    background-color: rgba(10, 14, 20, 0.7);
+    border-radius: 3px;
+    display: none;
+}
+
+.reload-fill {
+    height: 100%;
+    width: 0;
+    background-color: rgb(38, 216, 255);
+    border-radius: 3px;
+}
+
+/* ---------------------------------------------------------------- panels */
+
+.hints {
+    left: 28px;
+    top: 28px;
+}
+
+.hint {
+    font-size: 14px;
+    color: rgba(240, 244, 250, 0.82);
+    margin-top: 1px;
+}
+
+.range-stats {
+    right: 28px;
+    top: 28px;
+    min-width: 230px;
+}
+
+.stat {
+    font-size: 15px;
+    margin-top: 1px;
+}
+
+.movement {
+    left: 28px;
+    bottom: 28px;
+    min-width: 150px;
+}
+
+.move-state {
+    font-size: 13px;
+    letter-spacing: 3px;
+    color: rgb(38, 216, 255);
+    -unity-font-style: bold;
+}
+
+.move-speed {
+    font-size: 26px;
+    -unity-font-style: bold;
+}
+
+.ammo {
+    right: 28px;
+    bottom: 28px;
+    min-width: 190px;
+    align-items: flex-end;
+    border-left-width: 0;
+    border-right-width: 3px;
+    border-right-color: rgb(38, 216, 255);
+}
+
+.weapon-name {
+    font-size: 13px;
+    letter-spacing: 3px;
+    color: rgb(38, 216, 255);
+    -unity-font-style: bold;
+}
+
+.ammo-row {
+    flex-direction: row;
+    align-items: flex-end;
+}
+
+.ammo-mag {
+    font-size: 46px;
+    -unity-font-style: bold;
+}
+
+.ammo-mag--low {
+    color: rgb(255, 92, 72);
+}
+
+.ammo-reserve {
+    font-size: 20px;
+    margin-left: 8px;
+    margin-bottom: 8px;
+    color: rgba(240, 244, 250, 0.7);
+}
+
+.weapon-status {
+    font-size: 13px;
+    letter-spacing: 2px;
+    color: rgb(255, 196, 64);
+    min-height: 18px;
+}
+
+/* ---------------------------------------------------------------- damage numbers */
+
+.damage-number {
+    position: absolute;
+    translate: -50% -50%;
+    font-size: 24px;
+    -unity-font-style: bold;
+    color: rgb(255, 255, 255);
+    text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.95);
+    display: none;
+}
+
+/* ---------------------------------------------------------------- pause menu */
+
+.pause {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(6, 9, 14, 0.72);
+    display: none;
+}
+
+.pause-card {
+    width: 560px;
+    padding: 28px 32px;
+    background-color: rgb(18, 23, 32);
+    border-radius: 10px;
+    border-top-width: 3px;
+    border-top-color: rgb(38, 216, 255);
+}
+
+.pause-title {
+    font-size: 30px;
+    letter-spacing: 6px;
+    -unity-font-style: bold;
+    margin-bottom: 18px;
+}
+
+.pause-card .unity-base-field {
+    margin-top: 8px;
+    margin-bottom: 8px;
+}
+
+.pause-card .unity-base-field__label {
+    min-width: 170px;
+    color: rgb(240, 244, 250);
+    font-size: 16px;
+}
+
+.pause-card .unity-text-field__input {
+    min-width: 64px;
+}
+
+.pause-buttons {
+    flex-direction: row;
+    justify-content: flex-end;
+    margin-top: 22px;
+}
+
+.pause-button {
+    min-width: 120px;
+    height: 40px;
+    margin-left: 10px;
+    font-size: 16px;
+    color: rgb(240, 244, 250);
+    background-color: rgb(40, 48, 62);
+    border-width: 0;
+    border-radius: 6px;
+}
+
+.pause-button:hover {
+    background-color: rgb(56, 66, 84);
+}
+
+.pause-button.primary {
+    color: rgb(6, 20, 26);
+    background-color: rgb(38, 216, 255);
+    -unity-font-style: bold;
+}
+
+.pause-button.primary:hover {
+    background-color: rgb(120, 232, 255);
+}

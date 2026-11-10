@@ -1,0 +1,57 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bc561568de33860c38bf3dfa8f3be0dc, type: 3}
+  m_Name: DefaultMovement
+  m_EditorClassIdentifier: 
+  standHeight: 1.8
+  crouchHeight: 1.15
+  radius: 0.35
+  standEyeHeight: 1.62
+  crouchEyeHeight: 0.98
+  slideEyeHeight: 0.82
+  eyeHeightSpeed: 5.5
+  stepOffset: 0.35
+  slopeLimit: 50
+  runSpeed: 5.6
+  sprintSpeed: 7.8
+  crouchSpeed: 3.2
+  groundAcceleration: 14
+  groundFriction: 8
+  stopSpeed: 2.5
+  groundStickSpeed: 3
+  gravity: 24
+  jumpHeight: 1.2
+  airAcceleration: 3.5
+  terminalVelocity: 45
+  coyoteTime: 0.1
+  jumpBufferTime: 0.12
+  slideMinEntrySpeed: 6.2
+  slideBoostSpeed: 10.5
+  slideMaxSpeed: 13
+  slideFriction: 5
+  slideEndSpeed: 3.6
+  slideMinDuration: 0.25
+  slideMaxDuration: 1
+  slideCooldown: 0.6
+  slideSteerDegPerSec: 45
+  slideSlopeFactor: 1
+  mantleMinHeight: 0.55
+  mantleMaxHeight: 1.6
+  mantleReach: 0.45
+  mantleMinDuration: 0.2
+  mantleMaxDuration: 0.38
+  mantleExitSpeed: 3
+  mantleCooldown: 0.25
+  leanOffset: 0.38
+  leanAngle: 13
+  leanSpeed: 7
+  leanProbeRadius: 0.14

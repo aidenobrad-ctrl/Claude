@@ -1,0 +1,29 @@
+# PostgreSQL and Redis for running the backend and its tests on your own machine.
+#   docker compose up -d      start them
+#   docker compose down       stop them (data is kept)
+#   docker compose down -v    stop them and delete the data
+# The credentials match appsettings.Development.json and the test defaults. They are for
+# local development only.
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: pulsebreak
+      POSTGRES_PASSWORD: pulsebreak_dev
+      POSTGRES_DB: pulsebreak
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pulsebreak"]
+      interval: 2s
+      retries: 30
+
+  redis:
+    image: redis:7
+    ports:
+      - "127.0.0.1:6379:6379"
+
+volumes:
+  postgres-data:

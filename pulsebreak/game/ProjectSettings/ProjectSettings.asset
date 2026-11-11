@@ -11,3 +11,4 @@ PlayerSettings:
   runInBackground: 1
   bundleVersion: 0.1.0
   activeInputHandler: 2
+  insecureHttpOption: 2

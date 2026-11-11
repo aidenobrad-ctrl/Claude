@@ -252,10 +252,12 @@ namespace Pulsebreak.Shared.Net
             return data;
         }
 
-        public static void WriteHello(NetWriter writer, string name, LoadoutData loadout)
+        /// <param name="ticket">The join ticket from the backend, or empty when playing without an account.</param>
+        public static void WriteHello(NetWriter writer, string name, LoadoutData loadout, string ticket = "")
         {
             writer.WriteByte((byte)NetMessage.Hello);
             writer.WriteString(name);
+            writer.WriteLongString(ticket, GameTicket.MaxLength);
             WriteLoadout(writer, loadout);
         }
 

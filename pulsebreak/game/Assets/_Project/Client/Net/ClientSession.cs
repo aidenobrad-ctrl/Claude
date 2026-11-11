@@ -93,6 +93,7 @@ namespace Pulsebreak.Client.Net
         readonly INetSocket _socket;
         readonly LoadoutCatalog _catalog;
         readonly string _name;
+        readonly string _ticket;
         readonly uint _clientSalt;
         readonly ClientPlayer[] _players = new ClientPlayer[NetProtocol.MaxPlayers];
         readonly byte[] _receiveBuffer = new byte[2048];
@@ -164,11 +165,13 @@ namespace Pulsebreak.Client.Net
         public event Action<Vector3> Corrected;
 
         /// <param name="salt">Any number that is different each time. 0 picks one.</param>
-        public ClientSession(INetSocket socket, LoadoutCatalog catalog, string playerName, LoadoutData loadout, uint salt = 0)
+        /// <param name="ticket">A join ticket from the backend, for servers that only admit signed-in players. Empty otherwise.</param>
+        public ClientSession(INetSocket socket, LoadoutCatalog catalog, string playerName, LoadoutData loadout, uint salt = 0, string ticket = "")
         {
             _socket = socket;
             _catalog = catalog;
             _name = playerName ?? "";
+            _ticket = ticket ?? "";
             _loadout = loadout;
             _clientSalt = salt != 0 ? salt : (uint)Guid.NewGuid().GetHashCode() | 1u;
             _onMessage = OnMessage;
@@ -453,7 +456,7 @@ namespace Pulsebreak.Client.Net
                     StatusText = "";
 
                     _out.Reset();
-                    NetMessages.WriteHello(_out, _name, _loadout);
+                    NetMessages.WriteHello(_out, _name, _loadout, _ticket);
                     _connection.Send(_out, true);
                     Connected?.Invoke();
                     break;
@@ -471,9 +474,16 @@ namespace Pulsebreak.Client.Net
                 }
 
                 case PacketType.Disconnect:
-                    if (_connection != null && _reader.ReadUInt() == _token && !_reader.Failed)
-                        Stop(ClientStatus.Disconnected, "The server closed the connection.");
+                {
+                    if (_connection == null || _reader.ReadUInt() != _token || _reader.Failed) break;
+                    var why = _reader.Remaining > 0 ? (DisconnectReason)_reader.ReadByte() : DisconnectReason.None;
+                    Stop(ClientStatus.Disconnected,
+                        why == DisconnectReason.TicketRequired ? "That server only admits signed-in players. Sign in from the menu and join again."
+                        : why == DisconnectReason.AlreadyHere ? "Your account is already in that match."
+                        : why == DisconnectReason.RankedOnly ? "That match is ranked. Verify your email address to play ranked."
+                        : "The server closed the connection.");
                     break;
+                }
             }
         }
 

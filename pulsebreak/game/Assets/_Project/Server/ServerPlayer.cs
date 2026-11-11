@@ -25,6 +25,9 @@ namespace Pulsebreak.Server
         public readonly PlayerSimState State = new PlayerSimState();
 
         public string Name = "";
+        /// <summary>The backend account this player proved they own, or empty on a server that does not ask.</summary>
+        public string AccountId = "";
+        public bool EmailVerified;
         /// <summary>Has said hello: has a name and a loadout, and takes part in the match.</summary>
         public bool Ready;
 

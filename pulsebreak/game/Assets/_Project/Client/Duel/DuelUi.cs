@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UIElements;
+using Pulsebreak.Client.Online;
 using Pulsebreak.Client.UI;
 using Cursor = UnityEngine.Cursor;
 
@@ -50,7 +51,12 @@ namespace Pulsebreak.Client.Duel
 
         public string PlayerName => _nameField != null ? _nameField.value.Trim() : "";
 
-        public static DuelUi Create()
+        AccountPanel _account;
+        VisualElement _mainCard;
+        GameServices _services;
+
+        /// <param name="services">The player's account and loadouts. The menu shows who is signed in and offers the sign-in forms.</param>
+        public static DuelUi Create(GameServices services)
         {
             var go = new GameObject("Duel UI");
             var document = go.AddComponent<UIDocument>();
@@ -58,6 +64,7 @@ namespace Pulsebreak.Client.Duel
             document.sortingOrder = 10f;
 
             var ui = go.AddComponent<DuelUi>();
+            ui._services = services;
             ui.Build(document.rootVisualElement);
             return ui;
         }
@@ -112,11 +119,25 @@ namespace Pulsebreak.Client.Duel
             subtitle.style.marginTop = -12;
             subtitle.style.marginBottom = 18;
             card.Add(subtitle);
+            _mainCard = card;
+
+            if (_services != null)
+            {
+                var accountHost = new VisualElement();
+                card.Add(accountHost);
+                _account = new AccountPanel(_services, card, accountHost, _menu);
+                // Signed in, a player goes by their account's name, so there is nothing to type.
+                _account.Changed += () =>
+                {
+                    if (_nameField != null) _nameField.style.display = _services.Account.SignedIn ? DisplayStyle.None : DisplayStyle.Flex;
+                };
+            }
 
             _nameField = new TextField("Name") { value = PlayerPrefs.GetString(NameKey, "Player"), maxLength = 24 };
             _nameField.AddToClassList("loadout-name");
             _nameField.style.fontSize = 16;
             card.Add(_nameField);
+            _account?.Refresh();
 
             _hostButton = MenuButton("Host a match", true, () => HostRequested?.Invoke());
             _hostButton.style.marginTop = 14;
@@ -403,6 +424,8 @@ namespace Pulsebreak.Client.Duel
             _feed.RemoveAt(0);
             _feedAge.RemoveAt(0);
         }
+
+        void OnDestroy() => _account?.Dispose();
 
         void Update()
         {

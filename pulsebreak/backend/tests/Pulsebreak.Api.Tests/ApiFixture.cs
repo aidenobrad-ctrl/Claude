@@ -67,7 +67,7 @@ public sealed class ApiFixture : WebApplicationFactory<Program>
         string database = "pulsebreak_test_" + Guid.NewGuid().ToString("N")[..8];
         string postgres = Environment.GetEnvironmentVariable("PULSEBREAK_TEST_POSTGRES")
                           ?? "Host=127.0.0.1;Port=5432;Username=pulsebreak;Password=pulsebreak_dev";
-        string redis = Environment.GetEnvironmentVariable("PULSEBREAK_TEST_REDIS") ?? "127.0.0.1:6390";
+        string redis = Environment.GetEnvironmentVariable("PULSEBREAK_TEST_REDIS") ?? "127.0.0.1:6379";
 
         var all = new Dictionary<string, string>
         {

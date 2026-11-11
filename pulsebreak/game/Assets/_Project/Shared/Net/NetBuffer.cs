@@ -83,6 +83,15 @@ namespace Pulsebreak.Shared.Net
             WriteBytes(bytes, 0, bytes.Length);
         }
 
+        /// <summary>Text of up to <paramref name="maxBytes"/> bytes of UTF-8, for the few things longer than a name. Longer text is refused.</summary>
+        public void WriteLongString(string value, int maxBytes = 1024)
+        {
+            byte[] bytes = Encoding.UTF8.GetBytes(value ?? "");
+            if (bytes.Length > maxBytes) bytes = new byte[0];
+            WriteUShort((ushort)bytes.Length);
+            WriteBytes(bytes, 0, bytes.Length);
+        }
+
         public void WriteBytes(byte[] source, int offset, int count)
         {
             Ensure(count);
@@ -169,6 +178,20 @@ namespace Pulsebreak.Shared.Net
         public string ReadString()
         {
             int count = ReadByte();
+            if (!Need(count)) return "";
+            string value = Encoding.UTF8.GetString(_data, _position, count);
+            _position += count;
+            return value;
+        }
+
+        public string ReadLongString(int maxBytes = 1024)
+        {
+            int count = ReadUShort();
+            if (count > maxBytes)
+            {
+                Failed = true;
+                return "";
+            }
             if (!Need(count)) return "";
             string value = Encoding.UTF8.GetString(_data, _position, count);
             _position += count;

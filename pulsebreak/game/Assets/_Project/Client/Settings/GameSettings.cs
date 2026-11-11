@@ -22,13 +22,19 @@ namespace Pulsebreak.Client.Settings
         public static bool ShowDamageNumbers = true;
         public static float MasterVolume = 0.8f;
 
+        /// <summary>When the settings were last changed by the player. Seconds since 1970 (UTC). Decides which copy wins when they sync.</summary>
+        public static long UpdatedAt;
+
         public static event Action Changed;
+        /// <summary>The player finished changing settings and they were saved.</summary>
+        public static event Action Saved;
 
         // Statics survive between Play sessions when domain reload is off, so reset them explicitly.
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         static void ResetStatics()
         {
             Changed = null;
+            Saved = null;
         }
 
         public static void Load()
@@ -38,11 +44,34 @@ namespace Pulsebreak.Client.Settings
             FieldOfView = Mathf.Clamp(PlayerPrefs.GetFloat("pb.fov", 100f), MinFieldOfView, MaxFieldOfView);
             ShowDamageNumbers = PlayerPrefs.GetInt("pb.damageNumbers", 1) != 0;
             MasterVolume = Mathf.Clamp01(PlayerPrefs.GetFloat("pb.masterVolume", 0.8f));
+            UpdatedAt = long.TryParse(PlayerPrefs.GetString("pb.settingsUpdatedAt", "0"), out long stamp) ? stamp : 0;
             Apply();
         }
 
+        /// <summary>Saves the settings as the player's latest choice.</summary>
         public static void Save()
         {
+            UpdatedAt = Math.Max(DateTimeOffset.UtcNow.ToUnixTimeSeconds(), UpdatedAt + 1);
+            Write();
+            Saved?.Invoke();
+        }
+
+        /// <summary>Takes settings that came from the player's account. They keep the time they were made, so they do not look newer than they are.</summary>
+        public static void Adopt(float sensitivity, float adsMultiplier, float fieldOfView, bool damageNumbers, float volume, long updatedAt)
+        {
+            Sensitivity = Mathf.Clamp(sensitivity, MinSensitivity, MaxSensitivity);
+            AdsSensitivityMultiplier = Mathf.Clamp(adsMultiplier, MinAdsMultiplier, MaxAdsMultiplier);
+            FieldOfView = Mathf.Clamp(fieldOfView, MinFieldOfView, MaxFieldOfView);
+            ShowDamageNumbers = damageNumbers;
+            MasterVolume = Mathf.Clamp01(volume);
+            UpdatedAt = updatedAt;
+            Write();
+            Apply();
+        }
+
+        static void Write()
+        {
+            PlayerPrefs.SetString("pb.settingsUpdatedAt", UpdatedAt.ToString());
             PlayerPrefs.SetFloat("pb.sensitivity", Sensitivity);
             PlayerPrefs.SetFloat("pb.adsSensitivity", AdsSensitivityMultiplier);
             PlayerPrefs.SetFloat("pb.fov", FieldOfView);

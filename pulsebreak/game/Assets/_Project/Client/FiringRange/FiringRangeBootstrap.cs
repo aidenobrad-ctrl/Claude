@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using Pulsebreak.Client.Loadouts;
+using Pulsebreak.Client.Online;
 using Pulsebreak.Client.Player;
 using Pulsebreak.Client.Settings;
 using Pulsebreak.Client.UI;
@@ -54,8 +55,8 @@ namespace Pulsebreak.Client.FiringRange
 
             RangeLayout layout = RangeLayout.Build(transform);
 
-            // Saved loadouts live in a file for now. A backend store replaces this line later.
-            _library = new LoadoutLibrary(catalog, new LocalFileLoadoutStore());
+            // The player's loadouts: on this computer, or on their account if they are signed in.
+            _library = GameServices.Get(catalog).Library;
 
             _rig = PlayerRigFactory.Create(layout.PlayerSpawn, layout.SpawnYaw, movement, _library.ResolveEquipped(), new ProjectileSystem());
             _rig.Player.InfiniteReserve = true;
@@ -63,8 +64,7 @@ namespace Pulsebreak.Client.FiringRange
             RangeEnvironment.ConfigureCamera(_rig.Camera.Camera);
 
             // Whenever another loadout is equipped, or the equipped one is edited, hand it to the player.
-            _library.EquippedChanged += () =>
-                _rig.Player.SetLoadout(_library.ResolveEquipped(), _rig.Player.Inventory.ActiveIndex);
+            _library.EquippedChanged += OnEquippedChanged;
 
             _stats = new RangeStats();
             // A thrown utility item counts as a shot too, so accuracy stays a true fraction.
@@ -84,6 +84,14 @@ namespace Pulsebreak.Client.FiringRange
                 _hud.SetQuitLabel("Main menu");
                 _hud.QuitRequested += () => UnityEngine.SceneManagement.SceneManager.LoadScene(MenuScene);
             }
+        }
+
+        void OnEquippedChanged() => _rig.Player.SetLoadout(_library.ResolveEquipped(), _rig.Player.Inventory.ActiveIndex);
+
+        // The library outlives this scene, so let go of it on the way out.
+        void OnDestroy()
+        {
+            if (_library != null) _library.EquippedChanged -= OnEquippedChanged;
         }
     }
 

@@ -18,7 +18,11 @@ namespace Pulsebreak.Client.Loadouts
         readonly Func<long> _clock;
         readonly List<LoadoutData> _presets = new List<LoadoutData>();
         readonly List<LoadoutData> _custom = new List<LoadoutData>();
+        // Loadouts that were deleted here, remembered so the deletion can be passed on to the
+        // player's other devices instead of being undone by them.
+        readonly List<DeletedLoadout> _deleted = new List<DeletedLoadout>();
         string _equippedId = "";
+        long _equippedUpdatedAt;
 
         /// <summary>The list, a name, or a loadout's contents changed.</summary>
         public event Action Changed;
@@ -44,20 +48,89 @@ namespace Pulsebreak.Client.Loadouts
             }
 
             LoadoutCollection saved = store.Load();
-            if (saved != null)
-            {
-                foreach (LoadoutData data in saved.loadouts)
-                {
-                    // Skip anything unusable: no id, an id already taken, or more than the limit.
-                    if (data == null || string.IsNullOrEmpty(data.id) || Find(data.id) != null) continue;
-                    if (_custom.Count >= MaxCustomLoadouts) break;
-                    _custom.Add(LoadoutRules.Sanitize(data, catalog));
-                }
-                _equippedId = saved.equippedId ?? "";
-            }
-
+            if (saved != null) Take(saved);
             if (Find(_equippedId) == null) _equippedId = _presets.Count > 0 ? _presets[0].id : "";
         }
+
+        /// <summary>Replaces what is held with the contents of a collection, checking each loadout against the rules.</summary>
+        void Take(LoadoutCollection collection)
+        {
+            _custom.Clear();
+            _deleted.Clear();
+
+            foreach (LoadoutData data in collection.loadouts ?? new LoadoutData[0])
+            {
+                // Skip anything unusable: no id, an id already taken, or more than the limit.
+                if (data == null || string.IsNullOrEmpty(data.id) || Find(data.id) != null) continue;
+                if (_custom.Count >= MaxCustomLoadouts) break;
+                _custom.Add(LoadoutRules.Sanitize(data, _catalog));
+            }
+            foreach (DeletedLoadout record in collection.deleted ?? new DeletedLoadout[0])
+            {
+                if (record != null && !string.IsNullOrEmpty(record.id)) _deleted.Add(record);
+            }
+
+            _equippedId = collection.equippedId ?? "";
+            _equippedUpdatedAt = collection.equippedUpdatedAt;
+        }
+
+        /// <summary>Everything held, in the form that is saved and synced.</summary>
+        public LoadoutCollection Snapshot()
+        {
+            var loadouts = new LoadoutData[_custom.Count];
+            for (int i = 0; i < loadouts.Length; i++) loadouts[i] = _custom[i].Clone();
+            return new LoadoutCollection
+            {
+                version = LoadoutCollection.CurrentVersion,
+                equippedId = _equippedId,
+                equippedUpdatedAt = _equippedUpdatedAt,
+                loadouts = loadouts,
+                deleted = _deleted.ToArray(),
+            };
+        }
+
+        /// <summary>
+        /// Brings in a copy of the loadouts from elsewhere, normally the player's account.
+        /// The newest change to each loadout wins, so anything changed here since that copy
+        /// was made is kept.
+        /// </summary>
+        /// <param name="replace">Discard what is held instead of merging. For when the copy belongs to a different account.</param>
+        /// <returns>True if anything the player can see changed.</returns>
+        public bool MergeFrom(LoadoutCollection other, bool replace = false)
+        {
+            string before = Fingerprint();
+            string equippedBefore = EquippedFingerprint();
+
+            Take(replace ? LoadoutSync.Merge(other, null, _clock()) : LoadoutSync.Merge(Snapshot(), other, _clock()));
+            if (Find(_equippedId) == null) _equippedId = _presets.Count > 0 ? _presets[0].id : "";
+            Persist();
+
+            if (EquippedFingerprint() != equippedBefore) EquippedChanged?.Invoke();
+            bool changed = Fingerprint() != before;
+            if (changed) Changed?.Invoke();
+            return changed;
+        }
+
+        /// <summary>Changes whenever the list a player sees would look different.</summary>
+        string Fingerprint()
+        {
+            var text = new System.Text.StringBuilder(_equippedId);
+            foreach (LoadoutData custom in _custom) text.Append('|').Append(custom.id).Append(':').Append(custom.updatedAt).Append(':').Append(custom.name);
+            return text.ToString();
+        }
+
+        /// <summary>Changes whenever what the player should be carrying would.</summary>
+        string EquippedFingerprint()
+        {
+            LoadoutData equipped = Equipped;
+            return _equippedId + ":" + (equipped != null ? equipped.updatedAt : 0);
+        }
+
+        /// <summary>
+        /// The time to put on a change. Never earlier than the change it replaces, even if the
+        /// clock stands still or runs backwards, so "newest wins" always has a newest.
+        /// </summary>
+        long Stamp(long previous) => Math.Max(_clock(), previous + 1);
 
         public LoadoutData Equipped => Find(_equippedId);
         public string EquippedId => _equippedId;
@@ -103,6 +176,7 @@ namespace Pulsebreak.Client.Loadouts
         {
             if (id == _equippedId || Find(id) == null) return;
             _equippedId = id;
+            _equippedUpdatedAt = Stamp(_equippedUpdatedAt);
             Persist();
             EquippedChanged?.Invoke();
             Changed?.Invoke();
@@ -133,7 +207,7 @@ namespace Pulsebreak.Client.Loadouts
             string clean = LoadoutRules.CleanName(name);
             if (clean == target.name) return;
             target.name = clean;
-            target.updatedAt = _clock();
+            target.updatedAt = Stamp(target.updatedAt);
 
             Persist();
             Changed?.Invoke();
@@ -149,7 +223,7 @@ namespace Pulsebreak.Client.Loadouts
             if (index < 0) return;
 
             LoadoutData clean = LoadoutRules.Sanitize(edited, _catalog);
-            clean.updatedAt = _clock();
+            clean.updatedAt = Stamp(_custom[index].updatedAt);
             _custom[index] = clean;
 
             Persist();
@@ -162,9 +236,15 @@ namespace Pulsebreak.Client.Loadouts
             LoadoutData target = FindCustom(id);
             if (target == null) return false;
             _custom.Remove(target);
+            _deleted.Insert(0, new DeletedLoadout { id = id, deletedAt = Stamp(target.updatedAt) });
+            if (_deleted.Count > LoadoutSync.MaxDeleted) _deleted.RemoveRange(LoadoutSync.MaxDeleted, _deleted.Count - LoadoutSync.MaxDeleted);
 
             bool wasEquipped = id == _equippedId;
-            if (wasEquipped) _equippedId = _presets.Count > 0 ? _presets[0].id : (_custom.Count > 0 ? _custom[0].id : "");
+            if (wasEquipped)
+            {
+                _equippedId = _presets.Count > 0 ? _presets[0].id : (_custom.Count > 0 ? _custom[0].id : "");
+                _equippedUpdatedAt = Stamp(_equippedUpdatedAt);
+            }
 
             Persist();
             if (wasEquipped) EquippedChanged?.Invoke();
@@ -210,14 +290,6 @@ namespace Pulsebreak.Client.Loadouts
             return false;
         }
 
-        void Persist()
-        {
-            _store.Save(new LoadoutCollection
-            {
-                version = LoadoutCollection.CurrentVersion,
-                equippedId = _equippedId,
-                loadouts = _custom.ToArray(),
-            });
-        }
+        void Persist() => _store.Save(Snapshot());
     }
 }

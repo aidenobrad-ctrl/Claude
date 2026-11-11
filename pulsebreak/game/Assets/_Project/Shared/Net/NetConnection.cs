@@ -26,10 +26,23 @@ namespace Pulsebreak.Shared.Net
         WrongVersion = 2,
     }
 
+    /// <summary>Why a server ended a connection. Sent with the goodbye so the player can be told.</summary>
+    public enum DisconnectReason : byte
+    {
+        /// <summary>The server shut down, or gave no reason.</summary>
+        None = 0,
+        /// <summary>This server only admits signed-in players, and no valid ticket was shown.</summary>
+        TicketRequired = 1,
+        /// <summary>The same account is already in this match.</summary>
+        AlreadyHere = 2,
+        /// <summary>A ranked server, and the player's ticket is not good for ranked (their email is not verified).</summary>
+        RankedOnly = 3,
+    }
+
     public static class NetProtocol
     {
         /// <summary>Changes whenever anything about what goes over the wire changes, so mismatched builds refuse each other.</summary>
-        public const uint Version = 0x50420401u;
+        public const uint Version = 0x50420501u;
         public const int DefaultPort = 7777;
         /// <summary>A duel. Team modes raise this in a later phase.</summary>
         public const int MaxPlayers = 2;

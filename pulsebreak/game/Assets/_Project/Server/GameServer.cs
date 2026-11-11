@@ -20,6 +20,22 @@ namespace Pulsebreak.Server
         [Min(1)] public int snapshotInterval = 1;
         [Tooltip("The furthest back in time a shot may be judged. Caps the advantage a very laggy player gets.")]
         [Range(0f, 0.5f)] public float maxRewindSeconds = 0.3f;
+
+        /// <summary>
+        /// The secret shared with the backend for checking join tickets. When set, only
+        /// players who show a valid ticket get in, and they play under their account's name.
+        /// When empty (a match hosted from the menu, or on a LAN) anyone can join under any name.
+        ///
+        /// A secret does not belong in a scene file, so this is not saved with one: a dedicated
+        /// server is given it on the command line or in its environment.
+        /// </summary>
+        [NonSerialized] public string ticketKey = "";
+
+        /// <summary>
+        /// Admit only players whose ticket is good for ranked play. The backend gives those
+        /// only to accounts with a verified email. Needs a ticket key.
+        /// </summary>
+        public bool rankedOnly;
     }
 
     /// <summary>
@@ -47,6 +63,8 @@ namespace Pulsebreak.Server
         readonly ServerConfig _config;
         readonly ArenaLayout _arena;
         readonly uint _secret;
+        readonly byte[] _ticketKey;
+        readonly Func<long> _unixTime;
 
         readonly ServerPlayer[] _players = new ServerPlayer[MaxPlayers];
         readonly Dictionary<NetAddress, ServerPlayer> _byAddress = new Dictionary<NetAddress, ServerPlayer>();
@@ -75,9 +93,13 @@ namespace Pulsebreak.Server
         /// <summary>Things worth a line in the server log.</summary>
         public event Action<string> Logged;
 
+        /// <summary>True if this server only admits players who show a valid ticket from the backend.</summary>
+        public bool RequiresTicket => _ticketKey != null;
+
         /// <param name="secret">Any number nobody else knows. It keeps the connection handshake from being forged.</param>
+        /// <param name="unixTime">Seconds since 1970 (UTC), for judging whether a ticket has expired. Replaceable for tests.</param>
         public GameServer(INetSocket socket, IGameWorld world, MovementConfig movement, LoadoutCatalog catalog,
-            ServerConfig config, uint secret)
+            ServerConfig config, uint secret, Func<long> unixTime = null)
         {
             _socket = socket;
             _world = world;
@@ -85,7 +107,19 @@ namespace Pulsebreak.Server
             _catalog = catalog;
             _config = config ?? new ServerConfig();
             _secret = secret;
+            _unixTime = unixTime ?? (() => DateTimeOffset.UtcNow.ToUnixTimeSeconds());
             _onMessage = OnMessage;
+
+            if (!string.IsNullOrEmpty(_config.ticketKey))
+            {
+                _ticketKey = System.Text.Encoding.UTF8.GetBytes(_config.ticketKey);
+                if (_ticketKey.Length < GameTicket.MinKeyBytes)
+                    throw new ArgumentException("The ticket key must be at least " + GameTicket.MinKeyBytes + " characters, the same value the backend uses.");
+            }
+            else if (_config.rankedOnly)
+            {
+                throw new ArgumentException("A ranked server needs a ticket key: without one it cannot tell who has verified their email.");
+            }
 
             _arena = ArenaLayout.Find(_config.arenaId);
             bool previous = GameLayers.ServerContext;
@@ -269,20 +303,21 @@ namespace Pulsebreak.Server
             _socket.Send(from, _handshake.Data, _handshake.Length);
         }
 
-        void SendDisconnect(ServerPlayer player)
+        void SendDisconnect(ServerPlayer player, DisconnectReason why = DisconnectReason.None)
         {
             _handshake.Reset();
             _handshake.WriteByte((byte)PacketType.Disconnect);
             _handshake.WriteUInt(player.Connection.Token);
+            _handshake.WriteByte((byte)why);
             for (int i = 0; i < 3; i++) _socket.Send(player.Connection.Remote, _handshake.Data, _handshake.Length);
         }
 
-        void Remove(ServerPlayer player, string reason)
+        void Remove(ServerPlayer player, string reason, DisconnectReason why = DisconnectReason.None)
         {
             if (_players[player.Id] != player) return;
             _players[player.Id] = null;
             _byAddress.Remove(player.Connection.Remote);
-            SendDisconnect(player);
+            SendDisconnect(player, why);
 
             player.Spawned = false;
             player.Vitals.Clear();
@@ -322,8 +357,37 @@ namespace Pulsebreak.Server
         {
             if (player.Ready) return;
             string name = reader.ReadString();
+            string ticket = reader.ReadLongString(GameTicket.MaxLength);
             LoadoutData loadout = NetMessages.ReadLoadout(reader);
             if (reader.Failed) return;
+
+            if (_ticketKey != null)
+            {
+                // A server run for signed-in players: who they are comes from the backend's
+                // signature, not from what the client says its name is.
+                if (!GameTicket.TryVerify(ticket, _ticketKey, _unixTime(), out TicketClaims claims, out string problem))
+                {
+                    Log("Refused " + player.Connection.Remote + ": " + problem + ".");
+                    Remove(player, "was refused", DisconnectReason.TicketRequired);
+                    return;
+                }
+                if (_config.rankedOnly && claims.Mode != GameTicket.Ranked)
+                {
+                    Log("Refused " + claims.Name + ": this server is ranked and their ticket is not.");
+                    Remove(player, "was refused", DisconnectReason.RankedOnly);
+                    return;
+                }
+                foreach (ServerPlayer other in _players)
+                {
+                    if (other == null || other == player || other.AccountId != claims.AccountId) continue;
+                    Log("Refused " + player.Connection.Remote + ": " + claims.Name + " is already in this match.");
+                    Remove(player, "was refused", DisconnectReason.AlreadyHere);
+                    return;
+                }
+                player.AccountId = claims.AccountId;
+                player.EmailVerified = claims.EmailVerified;
+                name = claims.Name;
+            }
 
             // Whatever the client asked for is checked against the server's own content.
             // Anything it cannot have is replaced, exactly as it would be on loading a save.

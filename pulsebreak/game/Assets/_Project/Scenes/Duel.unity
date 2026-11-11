@@ -105,6 +105,7 @@ MonoBehaviour:
   movement: {fileID: 11400000, guid: 0dce6ff93db380799fa86cba03614ae5, type: 2}
   catalog: {fileID: 11400000, guid: ec40c63fe24d9887cbc19c26c71fcc25, type: 2}
   createSunLight: 1
+  backendUrl: http://localhost:5080
   port: 7777
   server:
     arenaId: relay_yard
@@ -117,6 +118,7 @@ MonoBehaviour:
       maxHealth: 100
     snapshotInterval: 1
     maxRewindSeconds: 0.3
+    rankedOnly: 0
   simulatedConnection:
     latencyMs: 0
     jitterMs: 0

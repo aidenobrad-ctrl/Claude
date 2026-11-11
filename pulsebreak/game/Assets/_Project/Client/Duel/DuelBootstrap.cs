@@ -9,6 +9,7 @@ using Pulsebreak.Client.Audio;
 using Pulsebreak.Client.FiringRange;
 using Pulsebreak.Client.Loadouts;
 using Pulsebreak.Client.Net;
+using Pulsebreak.Client.Online;
 using Pulsebreak.Client.Player;
 using Pulsebreak.Client.Settings;
 using Pulsebreak.Client.UI;
@@ -55,6 +56,10 @@ namespace Pulsebreak.Client.Duel
         [Tooltip("Turn off if the scene already has its own directional light.")]
         [SerializeField] bool createSunLight = true;
 
+        [Header("Accounts")]
+        [Tooltip("Where the accounts backend is. -backend URL on the command line overrides it.")]
+        [SerializeField] string backendUrl = GameServices.DefaultBackendUrl;
+
         [Header("Hosting")]
         [SerializeField] int port = NetProtocol.DefaultPort;
         [SerializeField] ServerConfig server = new ServerConfig();
@@ -64,6 +69,7 @@ namespace Pulsebreak.Client.Duel
         [SerializeField] NetConditions simulatedConnection = new NetConditions();
 
         LoadoutLibrary _library;
+        GameServices _services;
         DuelUi _ui;
         ServerHost _host;
         Camera _menuCamera;
@@ -77,6 +83,9 @@ namespace Pulsebreak.Client.Duel
         ProjectileSystem _projectiles;
         readonly RemotePlayerView[] _remotes = new RemotePlayerView[NetProtocol.MaxPlayers];
         bool _showNetStats = true;
+        // Goes up with every attempt to connect and every return to the menu, so an attempt
+        // still waiting for its ticket can tell it has been called off.
+        int _attempt;
         float _noticeTimer, _fightTimer, _textTimer;
 
         void Awake()
@@ -106,19 +115,26 @@ namespace Pulsebreak.Client.Duel
             {
                 // A dedicated server: nothing to draw and nobody to draw it for.
                 Application.targetFrameRate = 120;
+
+                // Given the backend's ticket key, it admits only signed-in players. The
+                // environment is the better place for a secret: the command line can be read
+                // by anyone on the machine who can list processes.
+                server.ticketKey = Environment.GetEnvironmentVariable("PULSEBREAK_TICKET_KEY") ?? ArgText(args, "-ticket-key") ?? "";
+                server.rankedOnly |= HasArg(args, "-ranked");
                 if (!StartServer(out string problem)) Debug.LogError("[Server] " + problem);
                 return;
             }
 
             GameSettings.Load();
             RangeEnvironment.Apply(createSunLight);
-            _library = new LoadoutLibrary(catalog, new LocalFileLoadoutStore());
+            _services = GameServices.Get(catalog, backendUrl);
+            _library = _services.Library;
             _library.EquippedChanged += OnEquippedChanged;
 
             BuildArena(ArenaLayout.Find(server.arenaId));
             CreateMenuCamera();
 
-            _ui = DuelUi.Create();
+            _ui = DuelUi.Create(_services);
             _ui.HostRequested += Host;
             _ui.JoinRequested += Join;
             _ui.CancelRequested += () => Leave("");
@@ -148,6 +164,7 @@ namespace Pulsebreak.Client.Duel
             try
             {
                 _host.Begin(port, movement, catalog, server);
+                if (_host.Server.RequiresTicket) Debug.Log("[Server] Only signed-in players are admitted" + (server.rankedOnly ? ", and only with a verified email (ranked)." : "."));
                 return true;
             }
             catch (SocketException)
@@ -158,6 +175,7 @@ namespace Pulsebreak.Client.Duel
             {
                 problem = "Could not start the server: " + e.Message;
             }
+            Debug.LogError("[Server] " + problem);
 
             Destroy(_host);
             _host = null;
@@ -196,8 +214,26 @@ namespace Pulsebreak.Client.Duel
             Connect(target);
         }
 
-        void Connect(NetAddress target)
+        /// <summary>Signed in: get a ticket from the backend first, so servers that ask know who this is.</summary>
+        async void Connect(NetAddress target)
         {
+            int attempt = ++_attempt;
+            string ticket = "";
+            if (_services.Account.SignedIn)
+            {
+                _ui.ShowConnecting("Getting a ticket from the account server...");
+                AccountResult<string> result = await _services.Account.GetTicketAsync(ranked: _services.Account.Account.emailVerified);
+                // Left the scene, or pressed Cancel, while waiting.
+                if (this == null || attempt != _attempt) return;
+                if (result.Ok) ticket = result.Value;
+                else Debug.LogWarning("Pulsebreak: could not get a join ticket (" + result.Message + "). Joining without one; servers that need one will say so.");
+            }
+            ConnectWithTicket(target, ticket);
+        }
+
+        void ConnectWithTicket(NetAddress target, string ticket)
+        {
+            if (_session != null) return;
             INetSocket socket;
             try
             {
@@ -212,8 +248,11 @@ namespace Pulsebreak.Client.Duel
             if (simulatedConnection.Any)
                 socket = new ConditionedSocket(socket, simulatedConnection, () => Time.realtimeSinceStartupAsDouble, (uint)Environment.TickCount | 1u);
 
-            string playerName = string.IsNullOrEmpty(_nameOverride) ? _ui.PlayerName : _nameOverride;
-            _session = new ClientSession(socket, catalog, playerName, _library.Equipped);
+            // Signed in, a player goes by their account's name everywhere. (On a server that checks
+            // tickets, the name comes from the ticket whatever is sent here.)
+            string playerName = _services.Account.SignedIn ? _services.Account.Account.username
+                : string.IsNullOrEmpty(_nameOverride) ? _ui.PlayerName : _nameOverride;
+            _session = new ClientSession(socket, catalog, playerName, _library.Equipped, ticket: ticket);
             _session.Connected += EnterMatch;
             _session.PlayerChanged += OnPlayerChanged;
             _session.PlayerSpawned += OnPlayerSpawned;
@@ -254,6 +293,7 @@ namespace Pulsebreak.Client.Duel
         /// <summary>Back to the menu, whether we chose to go or were dropped.</summary>
         void Leave(string reason)
         {
+            _attempt++;
             TearDownMatch();
             StopServer();
             _ui.ShowMatch(false);

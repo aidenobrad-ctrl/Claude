@@ -27,6 +27,9 @@ namespace Pulsebreak.Client.FiringRange
         [Tooltip("Turn off if the scene already has its own directional light.")]
         [SerializeField] bool createSunLight = true;
 
+        /// <summary>The scene with the main menu, if the build has one.</summary>
+        public const string MenuScene = "Duel";
+
         PlayerRig _rig;
         RangeStats _stats;
         HudController _hud;
@@ -74,6 +77,13 @@ namespace Pulsebreak.Client.FiringRange
             _hud.Bind(_rig.Player, _rig.Camera.Camera, _stats, _library);
             _hud.ResetStatsRequested += _stats.Reset;
             _hud.SetPaused(false);
+
+            // Reached from the main menu? Then the pause menu's last button goes back there.
+            if (Application.CanStreamedLevelBeLoaded(MenuScene))
+            {
+                _hud.SetQuitLabel("Main menu");
+                _hud.QuitRequested += () => UnityEngine.SceneManagement.SceneManager.LoadScene(MenuScene);
+            }
         }
     }
 

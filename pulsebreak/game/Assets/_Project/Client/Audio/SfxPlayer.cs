@@ -72,7 +72,8 @@ namespace Pulsebreak.Client.Audio
             PlayClip(_clips[(int)sfx], volume, pitchVariation);
 
         /// <summary>The firing sound of a weapon, built from its audio profile the first time it is needed.</summary>
-        public void PlayShot(WeaponBuild build)
+        /// <param name="volumeScale">Below 1 for someone else's shot heard from a distance.</param>
+        public void PlayShot(WeaponBuild build, float volumeScale = 1f)
         {
             bool suppressed = build.Suppressed;
             string key = build.Weapon.weaponId + (suppressed ? "|s" : "");
@@ -81,7 +82,7 @@ namespace Pulsebreak.Client.Audio
                 clip = SfxSynth.Shot(build.Weapon.audio, suppressed, build.Weapon.weaponId);
                 _shotClips[key] = clip;
             }
-            PlayClip(clip, build.Weapon.audio.volume * (suppressed ? 0.55f : 1f), 0.04f);
+            PlayClip(clip, build.Weapon.audio.volume * (suppressed ? 0.55f : 1f) * volumeScale, 0.04f);
         }
 
         void PlayClip(AudioClip clip, float volume, float pitchVariation)

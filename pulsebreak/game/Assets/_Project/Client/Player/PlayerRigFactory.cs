@@ -1,5 +1,6 @@
 using UnityEngine;
 using Pulsebreak.Client.Audio;
+using Pulsebreak.Client.Net;
 using Pulsebreak.Client.Weapons;
 using Pulsebreak.Shared.Combat;
 using Pulsebreak.Shared.Loadouts;
@@ -30,8 +31,9 @@ namespace Pulsebreak.Client.Player
     {
         /// <param name="loadout">What the player carries: weapons, utility and perk set.</param>
         /// <param name="projectiles">The world's projectile simulation, which this player's weapons fire into.</param>
+        /// <param name="session">The connection to play through, or null to play offline.</param>
         public static PlayerRig Create(Vector3 position, float yaw, MovementConfig movement,
-            Loadout loadout, ProjectileSystem projectiles)
+            Loadout loadout, ProjectileSystem projectiles, ClientSession session = null)
         {
             var body = new GameObject("Player") { layer = GameLayers.Character };
             body.transform.position = position;
@@ -51,7 +53,7 @@ namespace Pulsebreak.Client.Player
             viewModelObject.transform.SetParent(cameraObject.transform, false);
             var viewModel = viewModelObject.AddComponent<WeaponViewModel>();
 
-            player.Initialize(movement, loadout, projectiles, playerCamera, viewModel, yaw);
+            player.Initialize(movement, loadout, projectiles, playerCamera, viewModel, yaw, session);
 
             var fx = cameraObject.AddComponent<WeaponFx>();
             fx.Initialize(viewModel, player);
@@ -85,14 +87,14 @@ namespace Pulsebreak.Client.Player
                 else if (projectileEvent.Kind == ProjectileEventKind.Bounce) sfx.Play(Sfx.Bounce, 0.5f, 0.1f);
             };
 
-            player.Motor.Jumped += () => sfx.Play(Sfx.Jump, 0.5f, 0.05f);
-            player.Motor.Landed += impact =>
+            player.Jumped += () => sfx.Play(Sfx.Jump, 0.5f, 0.05f);
+            player.Landed += impact =>
             {
                 playerCamera.AddLandingImpulse(impact);
                 sfx.Play(Sfx.Land, Mathf.Lerp(0.25f, 1f, Mathf.Clamp01(impact / 12f)), 0.05f);
             };
-            player.Motor.SlideStarted += () => sfx.Play(Sfx.Slide, 0.7f, 0.05f);
-            player.Motor.MantleStarted += () => sfx.Play(Sfx.Mantle, 0.7f, 0.05f);
+            player.SlideStarted += () => sfx.Play(Sfx.Slide, 0.7f, 0.05f);
+            player.MantleStarted += () => sfx.Play(Sfx.Mantle, 0.7f, 0.05f);
 
             return new PlayerRig
             {

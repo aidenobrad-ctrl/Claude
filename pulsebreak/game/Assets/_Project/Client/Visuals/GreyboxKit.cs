@@ -24,7 +24,8 @@ namespace Pulsebreak.Client.Visuals
         /// A solid, collidable box of level geometry. Its texture coordinates are in metres,
         /// so the grid stays one metre per square on every face whatever the box's size.
         /// </summary>
-        public static GameObject Box(Transform parent, string name, Vector3 center, Vector3 size, Color color)
+        /// <param name="solid">False for a box that is only drawn, where the collision is built elsewhere.</param>
+        public static GameObject Box(Transform parent, string name, Vector3 center, Vector3 size, Color color, bool solid = true)
         {
             var go = new GameObject(name) { layer = GameLayers.Default };
             go.transform.SetParent(parent, false);
@@ -32,7 +33,7 @@ namespace Pulsebreak.Client.Visuals
 
             go.AddComponent<MeshFilter>().sharedMesh = BoxMesh(size);
             go.AddComponent<MeshRenderer>().sharedMaterial = GreyboxMaterials.Grid(color);
-            go.AddComponent<BoxCollider>().size = size;
+            if (solid) go.AddComponent<BoxCollider>().size = size;
             return go;
         }
 

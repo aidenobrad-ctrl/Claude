@@ -116,6 +116,24 @@ namespace Pulsebreak.Shared.Weapons
             return false;
         }
 
+        /// <summary>
+        /// Moves one projectile forward several ticks at once. For a visual-only system that
+        /// heard about a projectile late and needs to draw it where it is by now.
+        /// </summary>
+        public void FastForward(int id, int ticks, float dt)
+        {
+            if (!VisualOnly) return;
+            for (int i = 0; i < _live.Count; i++)
+            {
+                if (_live[i].Id != id) continue;
+                Projectile projectile = _live[i];
+                for (int t = 0; t < ticks; t++) Advance(ref projectile, 0, dt);
+                projectile.PreviousPosition = projectile.Position;
+                _live[i] = projectile;
+                return;
+            }
+        }
+
         /// <summary>Advances every projectile by one tick.</summary>
         public void Step(int tick, float dt)
         {

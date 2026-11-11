@@ -59,6 +59,7 @@ namespace Pulsebreak.Client.Weapons
 
         WeaponViewModel _viewModel;
         LocalPlayerController _player;
+        GameObject _pool;
         GameObject _flash;
         Light _flashLight;
         float _flashTimer;
@@ -69,6 +70,7 @@ namespace Pulsebreak.Client.Weapons
             _player = player;
 
             var pool = new GameObject("WeaponFx Pool").transform;
+            _pool = pool.gameObject;
             Material impactMaterial = GreyboxMaterials.Flat(new Color(0.07f, 0.07f, 0.08f));
 
             for (int i = 0; i < TracerCount; i++)
@@ -129,6 +131,12 @@ namespace Pulsebreak.Client.Weapons
             _flashLight.enabled = false;
         }
 
+        void OnDestroy()
+        {
+            // The pool is not parented to anything, so it has to be taken down by hand.
+            if (_pool != null) Destroy(_pool);
+        }
+
         // ------------------------------------------------------------------ triggers
 
         /// <summary>Muzzle flash, once per shot. Only for weapons that go bang: not suppressed ones, blades, bows or thrown knives.</summary>
@@ -147,10 +155,12 @@ namespace Pulsebreak.Client.Weapons
         }
 
         /// <summary>A tracer and impact mark for one bullet or pellet.</summary>
-        public void PlayTracer(in ShotPresentation shot)
+        public void PlayTracer(in ShotPresentation shot) => PlayTracer(shot, _viewModel.Muzzle.position);
+
+        /// <summary>A tracer drawn from somewhere other than our own muzzle: another player's shot.</summary>
+        public void PlayTracer(in ShotPresentation shot, Vector3 from)
         {
             // The tracer leaves the visible muzzle but ends where the bullet actually went.
-            Vector3 from = _viewModel.Muzzle.position;
             Vector3 toEnd = shot.End - from;
             float distance = toEnd.magnitude;
             if (distance > MinTracerDistance)
@@ -171,7 +181,11 @@ namespace Pulsebreak.Client.Weapons
         }
 
         /// <summary>Starts drawing a projectile the simulation has just launched.</summary>
-        public void TrackProjectile(int id, WeaponStats stats, Color bodyColor, Color accentColor)
+        public void TrackProjectile(int id, WeaponStats stats, Color bodyColor, Color accentColor) =>
+            TrackProjectile(id, stats, bodyColor, accentColor, fromOwnMuzzle: true);
+
+        /// <param name="fromOwnMuzzle">False for a projectile someone else launched: it is drawn on its real path from the start.</param>
+        public void TrackProjectile(int id, WeaponStats stats, Color bodyColor, Color accentColor, bool fromOwnMuzzle)
         {
             for (int i = 0; i < ProjectileCount; i++)
             {
@@ -207,8 +221,8 @@ namespace Pulsebreak.Client.Weapons
                 visual.Renderer.sharedMaterial = material;
                 visual.Transform.localScale = size;
                 // Starts at the muzzle and is updated onto its real path in LateUpdate.
-                visual.MuzzleOffset = _viewModel.Muzzle.position - _player.MotorState.EyePosition;
-                visual.Transform.position = _viewModel.Muzzle.position;
+                visual.MuzzleOffset = fromOwnMuzzle ? _viewModel.Muzzle.position - _player.MotorState.EyePosition : Vector3.zero;
+                visual.Transform.position = fromOwnMuzzle ? _viewModel.Muzzle.position : new Vector3(0f, -1000f, 0f);
                 visual.Transform.gameObject.SetActive(true);
                 return;
             }

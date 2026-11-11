@@ -6,6 +6,9 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
+    path: Assets/_Project/Scenes/Duel.unity
+    guid: 90d394eeda6bed4bae21f612dcbe301c
+  - enabled: 1
     path: Assets/_Project/Scenes/FiringRange.unity
     guid: 775f33740b61f01f98394b2c9f306ced
   m_configObjects: {}

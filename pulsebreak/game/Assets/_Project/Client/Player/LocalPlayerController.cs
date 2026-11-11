@@ -2,11 +2,13 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using Pulsebreak.Client.Controls;
+using Pulsebreak.Client.Net;
 using Pulsebreak.Client.Settings;
 using Pulsebreak.Client.Weapons;
 using Pulsebreak.Shared.Combat;
 using Pulsebreak.Shared.Loadouts;
 using Pulsebreak.Shared.Movement;
+using Pulsebreak.Shared.Net;
 using Pulsebreak.Shared.Simulation;
 using Pulsebreak.Shared.Weapons;
 
@@ -19,30 +21,31 @@ namespace Pulsebreak.Client.Player
     ///      in hand, its shots, then projectiles in flight),
     ///   3. presents the result, blending between the last two ticks so motion is smooth at any frame rate.
     ///
-    /// Offline this object is also the authority: it applies damage itself. Once the game is
-    /// networked, step 2 is what moves into the netcode's tick callback, and damage is applied
-    /// by the server instead.
+    /// It runs in one of two ways.
+    ///
+    /// Offline (the firing range) this object is the authority: it applies damage itself.
+    ///
+    /// Online it predicts. The same simulation runs here immediately, so the player never
+    /// waits for the server to see themselves move or fire, but nothing it works out counts:
+    /// each command also goes to the server, shots are drawn but deal no damage, and hits,
+    /// projectiles and health all come back from the server through the <see cref="ClientSession"/>.
     /// </summary>
     [DisallowMultipleComponent]
     [RequireComponent(typeof(CharacterController))]
     public sealed class LocalPlayerController : MonoBehaviour
     {
         const float KillPlaneY = -30f;
+        /// <summary>A correction bigger than this is shown at once; smaller ones are eased in.</summary>
+        const float SnapDistance = 1.5f;
+        /// <summary>How quickly an eased correction is absorbed. Higher is quicker.</summary>
+        const float CorrectionEase = 14f;
 
         PlayerInputReader _input;
-        PlayerMotor _motor;
+        PlayerSimulation _sim;
         ProjectileSystem _projectiles;
         FirstPersonCamera _camera;
         WeaponViewModel _viewModel;
-
-        // The loadout, and the running state of everything in it.
-        Loadout _loadout;
-        WeaponBuild[] _builds;
-        WeaponSimulator[] _weapons;
-        WeaponInventory _inventory;
-        UtilityBelt _belt;
-        bool _infiniteReserve;
-        bool _rechargeUtilities;
+        ClientSession _session;
 
         readonly List<HitReport> _reports = new List<HitReport>(8);
 
@@ -54,18 +57,29 @@ namespace Pulsebreak.Client.Player
         // The last two simulated states, blended for presentation.
         MotorState _previousMotor, _currentMotor;
         Vector2 _previousRecoil, _currentRecoil;
+        // Where the player is drawn, minus where the simulation has them. Not zero just after
+        // the server corrects a prediction: the view then slides to the truth instead of jumping.
+        Vector3 _viewError;
 
-        public PlayerMotor Motor => _motor;
+        public PlayerSimulation Simulation => _sim;
+        public PlayerMotor Motor => _sim.Motor;
         public MotorState MotorState => _currentMotor;
-        public WeaponInventory Inventory => _inventory;
+        public WeaponInventory Inventory => _sim != null ? _sim.Inventory : null;
         public ProjectileSystem Projectiles => _projectiles;
-        public Loadout Loadout => _loadout;
-        public UtilityBelt Utilities => _belt;
+        public Loadout Loadout => _sim.Loadout;
+        public UtilityBelt Utilities => _sim.Belt;
+        public ClientSession Session => _session;
 
         /// <summary>The weapon in hand.</summary>
-        public WeaponSimulator ActiveWeapon => _inventory.Active;
-        public WeaponBuild ActiveBuild => _builds[_inventory.ActiveIndex];
-        public int SlotCount => _builds.Length;
+        public WeaponSimulator ActiveWeapon => _sim.ActiveWeapon;
+        public WeaponBuild ActiveBuild => _sim.ActiveBuild;
+        public int SlotCount => _sim.SlotCount;
+
+        /// <summary>Playing on a server, as opposed to the firing range.</summary>
+        public bool Online => _session != null;
+
+        /// <summary>In the world and able to act. Always true offline.</summary>
+        public bool Alive => _session == null || _session.LocalAlive;
 
         /// <summary>How far the current frame sits between the last two ticks, 0..1.</summary>
         public float TickAlpha { get; private set; }
@@ -76,27 +90,15 @@ namespace Pulsebreak.Client.Player
         /// <summary>Reloads never drain the reserve. Used by the firing range.</summary>
         public bool InfiniteReserve
         {
-            get => _infiniteReserve;
-            set
-            {
-                _infiniteReserve = value;
-                if (_weapons == null) return;
-                foreach (WeaponSimulator weapon in _weapons)
-                {
-                    if (weapon != null) weapon.InfiniteReserve = value;
-                }
-            }
+            get => _sim.InfiniteReserve;
+            set => _sim.InfiniteReserve = value;
         }
 
         /// <summary>Used utility items come back over time. On in the firing range.</summary>
         public bool RechargeUtilities
         {
-            get => _rechargeUtilities;
-            set
-            {
-                _rechargeUtilities = value;
-                if (_belt != null) _belt.Recharges = value;
-            }
+            get => _sim.RechargeUtilities;
+            set => _sim.RechargeUtilities = value;
         }
 
         // Presentation events. They keep working when the loadout changes, so listeners
@@ -120,21 +122,59 @@ namespace Pulsebreak.Client.Player
         public event Action RoundInserted;
         public event Action ReloadFinished;
         public event Action DryFired;
+        public event Action Jumped;
+        /// <summary>Argument: how fast the player was falling.</summary>
+        public event Action<float> Landed;
+        public event Action SlideStarted;
+        public event Action MantleStarted;
 
+        /// <param name="session">The connection to play through, or null to play offline.</param>
         public void Initialize(MovementConfig movement, Loadout loadout, ProjectileSystem projectiles,
-            FirstPersonCamera playerCamera, WeaponViewModel viewModel, float yaw)
+            FirstPersonCamera playerCamera, WeaponViewModel viewModel, float yaw, ClientSession session = null)
         {
             _camera = playerCamera;
             _viewModel = viewModel;
             _projectiles = projectiles;
+            _session = session;
             _spawnPosition = transform.position;
             _spawnYaw = yaw;
 
             _input = new PlayerInputReader();
-            _motor = new PlayerMotor(GetComponent<CharacterController>(), movement);
+            _sim = new PlayerSimulation(GetComponent<CharacterController>(), movement, seed: 0x5EED0000u);
 
-            _projectiles.HitConfirmed += report => HitConfirmed?.Invoke(report);
-            _projectiles.Happened += OnProjectileEvent;
+            // The simulation's events carry slot numbers; listeners want the things in those slots.
+            _sim.WeaponFired += slot => WeaponFired?.Invoke(_sim.Loadout.Weapons[slot]);
+            _sim.ReloadStarted += () => ReloadStarted?.Invoke();
+            _sim.RoundInserted += () => RoundInserted?.Invoke();
+            _sim.ReloadFinished += () => ReloadFinished?.Invoke();
+            _sim.DryFired += () => DryFired?.Invoke();
+            _sim.ThrowStarted += slot => UtilityThrowStarted?.Invoke(_sim.Loadout.Utilities[slot]);
+            _sim.ActiveChanged += _ => OnActiveWeaponChanged();
+            _sim.Jumped += () => Jumped?.Invoke();
+            _sim.Landed += impact => Landed?.Invoke(impact);
+            _sim.SlideStarted += () => SlideStarted?.Invoke();
+            _sim.MantleStarted += () => MantleStarted?.Invoke();
+            _sim.LoadoutApplied += () =>
+            {
+                _previousRecoil = _currentRecoil = Vector2.zero;
+                LoadoutChanged?.Invoke();
+                OnActiveWeaponChanged();
+            };
+
+            if (_session == null)
+            {
+                _projectiles.HitConfirmed += report => HitConfirmed?.Invoke(report);
+                _projectiles.Happened += OnProjectileEvent;
+            }
+            else
+            {
+                // Online, projectiles here are pictures of the ones the server is flying.
+                _projectiles.VisualOnly = true;
+                _session.Attach(_sim);
+                _session.PlayerSpawned += OnPlayerSpawned;
+                _session.Corrected += OnCorrected;
+                _session.HitConfirmed += OnServerHit;
+            }
 
             SetLoadout(loadout, 0);
             Respawn();
@@ -142,47 +182,13 @@ namespace Pulsebreak.Client.Player
 
         // ------------------------------------------------------------------ loadout
 
-        public WeaponBuild GetBuild(int slot) => _builds[slot];
+        public WeaponBuild GetBuild(int slot) => _sim.Loadout.Weapons[slot];
 
-        /// <summary>Replaces everything the player carries. Weapons and utility start full.</summary>
-        public void SetLoadout(Loadout loadout, int activeSlot)
-        {
-            _loadout = loadout;
-            _builds = loadout.Weapons;
-            _weapons = new WeaponSimulator[_builds.Length];
-            for (int i = 0; i < _builds.Length; i++)
-            {
-                if (_builds[i] == null) continue;
-
-                var weapon = new WeaponSimulator(loadout.ResolveStats(i), seed: 0x5EED0000u + (uint)i)
-                {
-                    InfiniteReserve = _infiniteReserve,
-                };
-                int slot = i;
-                weapon.Fired += () => WeaponFired?.Invoke(_builds[slot]);
-                weapon.ReloadStarted += () => ReloadStarted?.Invoke();
-                weapon.RoundInserted += () => RoundInserted?.Invoke();
-                weapon.ReloadFinished += () => ReloadFinished?.Invoke();
-                weapon.DryFired += () => DryFired?.Invoke();
-                _weapons[i] = weapon;
-            }
-
-            _inventory = new WeaponInventory(_weapons, activeSlot);
-            _inventory.ActiveChanged += _ => OnActiveWeaponChanged();
-            _previousRecoil = _currentRecoil = Vector2.zero;
-
-            var charges = new int[loadout.Utilities.Length];
-            for (int i = 0; i < charges.Length; i++) charges[i] = loadout.UtilityCharges(i);
-            _belt = new UtilityBelt(loadout.Utilities, charges)
-            {
-                Recharges = _rechargeUtilities,
-                RechargeMultiplier = loadout.UtilityRechargeMultiplier,
-            };
-            _belt.ThrowStarted += slot => UtilityThrowStarted?.Invoke(_loadout.Utilities[slot]);
-
-            LoadoutChanged?.Invoke();
-            OnActiveWeaponChanged();
-        }
+        /// <summary>
+        /// Replaces everything the player carries. Weapons and utility start full.
+        /// Online the server does this when it places the player; do not call it directly.
+        /// </summary>
+        public void SetLoadout(Loadout loadout, int activeSlot) => _sim.SetLoadout(loadout, activeSlot);
 
         void OnActiveWeaponChanged()
         {
@@ -193,25 +199,79 @@ namespace Pulsebreak.Client.Player
         public void Respawn()
         {
             _input.SetView(_spawnYaw, 0f);
-            _motor.Teleport(_spawnPosition, _spawnYaw, 0f);
-            _previousMotor = _currentMotor = _motor.State;
+            _sim.Motor.Teleport(_spawnPosition, _spawnYaw, 0f);
+            _previousMotor = _currentMotor = _sim.Motor.State;
+            _viewError = Vector3.zero;
             _accumulator = 0f;
         }
 
         void OnDestroy()
         {
             _input?.Dispose();
+            if (_session == null) return;
+            _session.PlayerSpawned -= OnPlayerSpawned;
+            _session.Corrected -= OnCorrected;
+            _session.HitConfirmed -= OnServerHit;
+        }
+
+        // ------------------------------------------------------------------ online
+
+        /// <summary>The server placed someone. If it was us, start looking the way it faced us.</summary>
+        void OnPlayerSpawned(ClientPlayer player, SpawnMessage spawn)
+        {
+            if (player.Id != _session.PlayerId) return;
+            _input.SetView(spawn.Yaw, 0f);
+            _previousMotor = _currentMotor = _sim.Motor.State;
+            _previousRecoil = _currentRecoil = Vector2.zero;
+            _viewError = Vector3.zero;
+        }
+
+        /// <summary>The server disagreed with the prediction and the simulation has been put right.</summary>
+        void OnCorrected(Vector3 moved)
+        {
+            _currentMotor = _sim.Motor.State;
+            _currentRecoil = _sim.ActiveWeapon.State.RecoilCurrent;
+            _previousMotor.Position -= moved;
+
+            // Keep drawing the player where they were and let the difference drain away, unless
+            // it is so large that sliding there would look worse than arriving.
+            _viewError += moved;
+            if (_viewError.sqrMagnitude > SnapDistance * SnapDistance)
+            {
+                _viewError = Vector3.zero;
+                _previousMotor = _currentMotor;
+            }
+        }
+
+        void OnServerHit(HitMessage hit)
+        {
+            HitConfirmed?.Invoke(new HitReport
+            {
+                Tick = _tick,
+                Point = hit.Point,
+                Damage = hit.Damage,
+                Zone = hit.Zone,
+                Killed = hit.Killed,
+                Distance = Vector3.Distance(_currentMotor.EyePosition, hit.Point),
+            });
+            ShotLanded?.Invoke();
         }
 
         // ------------------------------------------------------------------ simulation
 
         void Update()
         {
-            if (_motor == null) return;
+            if (_sim == null) return;
 
-            if (InputEnabled) _input.SampleFrame(LookScale());
+            // Everything the server sent since last frame: corrections, spawns, hits.
+            double now = Time.realtimeSinceStartupAsDouble;
+            if (_session != null) _session.Update(now);
 
-            _accumulator += Mathf.Min(Time.deltaTime, 0.25f);
+            if (InputEnabled && Alive) _input.SampleFrame(LookScale());
+
+            // Online the clock must not stop for anything: the server is not waiting for us.
+            float frame = _session != null ? Time.unscaledDeltaTime : Time.deltaTime;
+            _accumulator += Mathf.Min(frame, 0.25f);
             int steps = 0;
             while (_accumulator >= SimConstants.TickDelta)
             {
@@ -226,8 +286,10 @@ namespace Pulsebreak.Client.Player
                 steps++;
             }
 
-            if (_currentMotor.Position.y < KillPlaneY) Respawn();
+            if (_session != null) _session.Flush(now);
+            else if (_currentMotor.Position.y < KillPlaneY) Respawn();
 
+            _viewError *= Mathf.Exp(-CorrectionEase * frame);
             TickAlpha = Mathf.Clamp01(_accumulator / SimConstants.TickDelta);
             Present(TickAlpha);
         }
@@ -236,50 +298,83 @@ namespace Pulsebreak.Client.Player
         void Step()
         {
             const float dt = SimConstants.TickDelta;
-            PlayerInputCmd cmd = InputEnabled
-                ? _input.BuildCmd(_tick, _inventory.TargetIndex, _inventory.SlotCount)
+            WeaponInventory inventory = _sim.Inventory;
+            PlayerInputCmd cmd = InputEnabled && Alive
+                ? _input.BuildCmd(_tick, inventory.TargetIndex, inventory.SlotCount)
                 : _input.BuildIdleCmd(_tick);
+
+            if (_session != null)
+            {
+                if (!_session.LocalAlive)
+                {
+                    // Out of the round. Nothing of ours to simulate, but the world carries on.
+                    _projectiles.Step(_tick++, dt);
+                    return;
+                }
+                cmd = _session.Prepare(cmd);
+            }
 
             _previousMotor = _currentMotor;
             _previousRecoil = _currentRecoil;
 
-            WeaponSimulator inHand = _inventory.Active;
-            var modifiers = new MoveModifiers
-            {
-                SpeedMultiplier = _loadout.MoveSpeedMultiplier * Mathf.Lerp(
-                    inHand.Stats.hipMoveMultiplier, inHand.Stats.adsMoveMultiplier, inHand.State.AdsAmount),
-            };
-            _motor.Simulate(cmd, modifiers, dt);
-            _currentMotor = _motor.State;
-
-            // A throw winding up keeps the hands off the weapon.
-            _belt.Simulate(cmd, !_currentMotor.Mantling, dt);
-
-            var context = new WeaponContext
-            {
-                CanUseWeapon = !_currentMotor.Mantling && !_belt.IsThrowing,
-                Sprinting = _currentMotor.Sprinting,
-                TimeSinceSprint = _currentMotor.TimeSinceSprint,
-                HorizontalSpeed = _currentMotor.HorizontalSpeed,
-                Grounded = _currentMotor.Grounded,
-                Crouched = _currentMotor.Stance != Stance.Standing,
-            };
-            _inventory.Simulate(cmd, context, dt);
-            _currentRecoil = _inventory.Active.State.RecoilCurrent;
+            _sim.Step(cmd, dt);
+            _currentMotor = _sim.Motor.State;
+            _currentRecoil = _sim.ActiveWeapon.State.RecoilCurrent;
 
             // Shots belong to the weapon that was simulated, which is not necessarily the one
             // now in hand if a switch completed this tick.
-            WeaponSimulator fired = _inventory.Simulated;
-            bool anythingToHit = fired.Shots.Count > 0 || _projectiles.Live.Count > 0 || _belt.ReleasedSlot >= 0;
+            WeaponSimulator fired = _sim.SteppedWeapon;
+            int thrown = _sim.Belt.ReleasedSlot;
 
-            // Targets move in Update; make sure the physics scene has their latest poses.
-            if (anythingToHit) Physics.SyncTransforms();
+            if (_session != null)
+            {
+                if (fired.Shots.Count > 0) DrawPredictedShots(cmd, fired, _sim.SteppedBuild);
+                if (thrown >= 0) UtilityThrown?.Invoke(_sim.Loadout.Utilities[thrown]);
+                _session.Commit(cmd);
+            }
+            else
+            {
+                // Targets move in Update; make sure the physics scene has their latest poses.
+                if (fired.Shots.Count > 0 || _projectiles.Live.Count > 0 || thrown >= 0) Physics.SyncTransforms();
+                if (fired.Shots.Count > 0) ResolveShots(cmd, fired, _sim.SteppedBuild);
+                if (thrown >= 0) ThrowUtility(cmd, _sim.Loadout.Utilities[thrown]);
+            }
 
-            if (fired.Shots.Count > 0) ResolveShots(cmd, fired, _builds[Array.IndexOf(_weapons, fired)]);
-            if (_belt.ReleasedSlot >= 0) ThrowUtility(cmd, _loadout.Utilities[_belt.ReleasedSlot]);
             _projectiles.Step(_tick, dt);
-
             _tick++;
+        }
+
+        /// <summary>
+        /// Online: draws where our bullets went, straight away. Whether they hurt anyone is
+        /// for the server to say; projectiles appear when the server launches them.
+        /// </summary>
+        void DrawPredictedShots(in PlayerInputCmd cmd, WeaponSimulator weapon, WeaponBuild build)
+        {
+            Vector3 origin = _currentMotor.EyePosition;
+            bool synced = false;
+
+            for (int i = 0; i < weapon.Shots.Count; i++)
+            {
+                ShotEvent shot = weapon.Shots[i];
+                if (shot.Kind != ShotKind.Bullet) continue;
+
+                if (!synced)
+                {
+                    Physics.SyncTransforms();
+                    synced = true;
+                }
+                Vector3 direction = AimMath.Direction(cmd.Yaw + shot.AimOffset.x, cmd.Pitch - shot.AimOffset.y);
+                HitscanHit end = Hitscan.Trace(origin, direction, weapon.Stats.maxRange);
+                ShotFired?.Invoke(new ShotPresentation
+                {
+                    Origin = origin,
+                    End = end.Point,
+                    Normal = end.Normal,
+                    HitWorld = end.HasHit && end.Hitbox == null,
+                    HitTarget = false,
+                    Build = build,
+                });
+            }
         }
 
         void ResolveShots(in PlayerInputCmd cmd, WeaponSimulator weapon, WeaponBuild build)
@@ -358,7 +453,7 @@ namespace Pulsebreak.Client.Player
         void Present(float alpha)
         {
             MotorState a = _previousMotor, b = _currentMotor;
-            WeaponSimulator inHand = _inventory.Active;
+            WeaponSimulator inHand = _sim.ActiveWeapon;
             WeaponState weapon = inHand.State;
             WeaponStats stats = inHand.Stats;
 
@@ -366,7 +461,7 @@ namespace Pulsebreak.Client.Player
             // from this frame's mouse input so aiming has no added latency.
             float yaw = _input.Yaw, pitch = _input.Pitch;
             Vector2 recoil = Vector2.Lerp(_previousRecoil, _currentRecoil, alpha);
-            Vector3 feet = Vector3.Lerp(a.Position, b.Position, alpha);
+            Vector3 feet = Vector3.Lerp(a.Position, b.Position, alpha) + _viewError;
             Vector3 eye = feet
                           + Vector3.up * Mathf.Lerp(a.EyeHeight, b.EyeHeight, alpha)
                           + AimMath.YawRight(yaw) * Mathf.Lerp(a.LeanOffset, b.LeanOffset, alpha);
@@ -380,7 +475,7 @@ namespace Pulsebreak.Client.Player
                 Yaw = viewYaw,
                 Pitch = viewPitch,
                 Lean = Mathf.Lerp(a.Lean, b.Lean, alpha),
-                LeanAngle = _motor.Config.leanAngle,
+                LeanAngle = _sim.Motor.Config.leanAngle,
                 AdsAmount = weapon.AdsAmount,
                 AdsZoom = stats.adsZoom,
                 Sprinting = b.Sprinting,
@@ -392,13 +487,14 @@ namespace Pulsebreak.Client.Player
             {
                 AdsAmount = weapon.AdsAmount,
                 Sprinting = b.Sprinting,
-                Lowered = b.Mantling || _belt.IsThrowing || weapon.Phase == WeaponPhase.Holstering,
+                Lowered = b.Mantling || _sim.Belt.IsThrowing || weapon.Phase == WeaponPhase.Holstering,
                 Reloading = weapon.Phase == WeaponPhase.Reloading,
                 ReloadProgress = weapon.ReloadProgress,
                 Charge = weapon.ChargeAmount,
                 // A full scope view replaces the weapon model while it is up.
-                Hidden = !swapping && ActiveBuild.Reticle == ReticleStyle.Scope && weapon.AdsAmount > 0.9f,
-                MoveAmount = b.Grounded ? Mathf.Clamp01(b.HorizontalSpeed / _motor.Config.sprintSpeed) : 0f,
+                // And there is nothing to hold while out of the round.
+                Hidden = !Alive || (!swapping && ActiveBuild.Reticle == ReticleStyle.Scope && weapon.AdsAmount > 0.9f),
+                MoveAmount = b.Grounded ? Mathf.Clamp01(b.HorizontalSpeed / _sim.Motor.Config.sprintSpeed) : 0f,
                 Yaw = viewYaw,
                 Pitch = viewPitch,
             }, Time.deltaTime);
@@ -410,7 +506,7 @@ namespace Pulsebreak.Client.Player
         /// </summary>
         float LookScale()
         {
-            WeaponSimulator inHand = _inventory.Active;
+            WeaponSimulator inHand = _sim.ActiveWeapon;
             float adsScale = GameSettings.AdsSensitivityMultiplier / Mathf.Max(inHand.Stats.adsZoom, 1f);
             return GameSettings.Sensitivity * Mathf.Lerp(1f, adsScale, inHand.State.AdsAmount);
         }

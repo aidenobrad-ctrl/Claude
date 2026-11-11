@@ -105,7 +105,8 @@ namespace Pulsebreak.Client.UI
             return hud;
         }
 
-        static PanelSettings LoadPanel()
+        /// <summary>The panel every screen of the game draws on.</summary>
+        public static PanelSettings LoadPanel()
         {
             // Prefer the saved asset: it is what makes a built player include UI Toolkit's shaders.
             var asset = Resources.Load<PanelSettings>(PanelResource);
@@ -358,8 +359,35 @@ namespace Pulsebreak.Client.UI
             }
         }
 
-        static void Quit()
+        /// <summary>If anything listens, the pause menu's last button asks it instead of closing the game.</summary>
+        public event Action QuitRequested;
+
+        /// <summary>
+        /// Switches the HUD between its firing range and match forms: in a match the range's
+        /// key hints, stats panel and "Reset stats" button are hidden, and the last button
+        /// of the pause menu reads as given.
+        /// </summary>
+        public void SetMatchMode(string quitLabel)
         {
+            if (!_ready) return;
+            _hints.style.display = DisplayStyle.None;
+            _root.Q<VisualElement>("range-stats").style.display = DisplayStyle.None;
+            _root.Q<Button>("btn-reset").style.display = DisplayStyle.None;
+            SetQuitLabel(quitLabel);
+        }
+
+        public void SetQuitLabel(string label)
+        {
+            if (_ready) _root.Q<Button>("btn-quit").text = label;
+        }
+
+        void Quit()
+        {
+            if (QuitRequested != null)
+            {
+                QuitRequested();
+                return;
+            }
 #if UNITY_EDITOR
             UnityEditor.EditorApplication.isPlaying = false;
 #else

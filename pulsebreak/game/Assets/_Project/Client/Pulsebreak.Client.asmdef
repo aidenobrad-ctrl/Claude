@@ -3,6 +3,7 @@
     "rootNamespace": "Pulsebreak.Client",
     "references": [
         "Pulsebreak.Shared",
+        "Pulsebreak.Server",
         "Unity.InputSystem"
     ],
     "includePlatforms": [],

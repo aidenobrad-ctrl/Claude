@@ -6,6 +6,7 @@ using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
 using UnityEngine.UIElements;
+using Pulsebreak.Client.Duel;
 using Pulsebreak.Client.FiringRange;
 using Pulsebreak.Client.UI;
 using Pulsebreak.Shared.Loadouts;
@@ -17,15 +18,16 @@ namespace Pulsebreak.EditorTools
 {
     /// <summary>
     /// Checks that the project is set up the way the game expects and quietly fixes what it
-    /// can: render pipeline assigned, linear colour space, layer names, the firing range
-    /// scene present and wired. It runs once each time the Editor opens the project, and on
-    /// demand from the Pulsebreak menu.
+    /// can: render pipeline assigned, linear colour space, layer names, the two scenes (the
+    /// duel with its main menu, and the firing range) present, wired and in the build. It
+    /// runs once each time the Editor opens the project, and on demand from the Pulsebreak menu.
     ///
     /// It only ever fills in things that are missing. It never overwrites a choice you made.
     /// </summary>
     public static class ProjectDoctor
     {
         const string ScenePath = "Assets/_Project/Scenes/FiringRange.unity";
+        const string DuelScenePath = "Assets/_Project/Scenes/Duel.unity";
         const string PipelinePath = "Assets/_Project/Rendering/PB_URP_Asset.asset";
         const string MovementPath = "Assets/_Project/Content/Movement/DefaultMovement.asset";
         const string CatalogPath = "Assets/_Project/Content/Loadouts/LoadoutCatalog.asset";
@@ -80,6 +82,25 @@ namespace Pulsebreak.EditorTools
         [MenuItem("Pulsebreak/Open Saved Loadouts Folder")]
         static void OpenSaveFolder() => EditorUtility.RevealInFinder(Application.persistentDataPath);
 
+        [MenuItem("Pulsebreak/Open Duel (Main Menu)")]
+        static void OpenDuel()
+        {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
+            if (!File.Exists(DuelScenePath)) CreateDuelScene();
+            else EditorSceneManager.OpenScene(DuelScenePath);
+        }
+
+        [MenuItem("Pulsebreak/Rebuild Duel Scene")]
+        static void RebuildDuel()
+        {
+            if (File.Exists(DuelScenePath) && !EditorUtility.DisplayDialog("Rebuild duel scene",
+                    "This replaces " + DuelScenePath + " with a fresh one. Anything you added to that scene is lost.",
+                    "Rebuild", "Cancel"))
+                return;
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
+            CreateDuelScene();
+        }
+
         [MenuItem("Pulsebreak/Open Firing Range")]
         static void OpenFiringRange()
         {
@@ -108,6 +129,7 @@ namespace Pulsebreak.EditorTools
             EnsureLayerNames(report);
             EnsureHudPanel(report);
             EnsureScene(report, firstOpen);
+            EnsureDuelScene(report);
             EnsureSceneInBuild(report);
             ValidateContent(showAllClear: false);
 
@@ -151,10 +173,12 @@ namespace Pulsebreak.EditorTools
 
             bool changed = NameLayer(layers, GameLayers.Character, "Character");
             changed |= NameLayer(layers, GameLayers.Hitbox, "Hitbox");
+            changed |= NameLayer(layers, GameLayers.ServerCharacter, "ServerCharacter");
+            changed |= NameLayer(layers, GameLayers.ServerHitbox, "ServerHitbox");
             if (!changed) return;
 
             tagManager.ApplyModifiedPropertiesWithoutUndo();
-            report.Add("named physics layers 8 (Character) and 9 (Hitbox).");
+            report.Add("named physics layers 8 to 11 (Character, Hitbox, ServerCharacter, ServerHitbox).");
         }
 
         /// <summary>
@@ -231,6 +255,39 @@ namespace Pulsebreak.EditorTools
             }
         }
 
+        /// <summary>The duel scene is only repaired while it is the one open; it is never opened uninvited.</summary>
+        static void EnsureDuelScene(List<string> report)
+        {
+            if (!File.Exists(DuelScenePath))
+            {
+                Debug.LogWarning("Pulsebreak Project Doctor: " + DuelScenePath + " is missing. Use Pulsebreak > Rebuild Duel Scene to create it.");
+                return;
+            }
+
+            Scene scene = SceneManager.GetSceneByPath(DuelScenePath);
+            if (!scene.IsValid() || !scene.isLoaded) return;
+
+            DuelBootstrap bootstrap = null;
+            foreach (GameObject root in scene.GetRootGameObjects())
+            {
+                bootstrap = root.GetComponentInChildren<DuelBootstrap>(true);
+                if (bootstrap != null) break;
+            }
+            if (bootstrap == null)
+            {
+                Debug.LogWarning("Pulsebreak Project Doctor: the duel scene has no DuelBootstrap, so pressing Play " +
+                                 "will show an empty scene. Use Pulsebreak > Rebuild Duel Scene to fix it.");
+                return;
+            }
+
+            if (AssignDefaults(bootstrap))
+            {
+                EditorSceneManager.MarkSceneDirty(scene);
+                EditorSceneManager.SaveScene(scene);
+                report.Add("filled in the duel scene's missing movement config or loadout catalog.");
+            }
+        }
+
         static FiringRangeBootstrap FindBootstrap(Scene scene)
         {
             foreach (GameObject root in scene.GetRootGameObjects())
@@ -242,7 +299,7 @@ namespace Pulsebreak.EditorTools
         }
 
         /// <summary>Points empty asset slots at the default assets. Returns true if anything changed.</summary>
-        static bool AssignDefaults(FiringRangeBootstrap bootstrap)
+        static bool AssignDefaults(MonoBehaviour bootstrap)
         {
             var serialized = new SerializedObject(bootstrap);
             bool changed = AssignIfEmpty(serialized.FindProperty("movement"), AssetDatabase.LoadAssetAtPath<MovementConfig>(MovementPath));
@@ -268,19 +325,39 @@ namespace Pulsebreak.EditorTools
             EditorSceneManager.SaveScene(scene, ScenePath);
         }
 
+        static void CreateDuelScene()
+        {
+            Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+            var bootstrap = new GameObject("Duel").AddComponent<DuelBootstrap>();
+            AssignDefaults(bootstrap);
+
+            Directory.CreateDirectory(Path.GetDirectoryName(DuelScenePath));
+            EditorSceneManager.SaveScene(scene, DuelScenePath);
+        }
+
+        /// <summary>
+        /// Both scenes belong in a build: the duel first, because it holds the main menu and
+        /// a build starts in its first scene.
+        /// </summary>
         static void EnsureSceneInBuild(List<string> report)
         {
-            if (!File.Exists(ScenePath)) return;
+            var scenes = new List<EditorBuildSettingsScene>(EditorBuildSettings.scenes);
+            bool changed = false;
 
-            EditorBuildSettingsScene[] scenes = EditorBuildSettings.scenes;
-            foreach (EditorBuildSettingsScene entry in scenes)
+            if (File.Exists(DuelScenePath) && !scenes.Exists(entry => entry.path == DuelScenePath))
             {
-                if (entry.path == ScenePath) return;
+                scenes.Insert(0, new EditorBuildSettingsScene(DuelScenePath, true));
+                report.Add("added the duel scene to the build, as the scene a build starts in.");
+                changed = true;
+            }
+            if (File.Exists(ScenePath) && !scenes.Exists(entry => entry.path == ScenePath))
+            {
+                scenes.Add(new EditorBuildSettingsScene(ScenePath, true));
+                report.Add("added the firing range scene to the build.");
+                changed = true;
             }
 
-            var updated = new List<EditorBuildSettingsScene>(scenes) { new EditorBuildSettingsScene(ScenePath, true) };
-            EditorBuildSettings.scenes = updated.ToArray();
-            report.Add("added the firing range scene to the build.");
+            if (changed) EditorBuildSettings.scenes = scenes.ToArray();
         }
     }
 }

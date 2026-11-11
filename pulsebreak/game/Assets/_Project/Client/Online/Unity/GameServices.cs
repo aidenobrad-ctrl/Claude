@@ -36,6 +36,8 @@ namespace Pulsebreak.Client.Online
 
         /// <summary>A line about the account worth showing once, for example why the player was signed out.</summary>
         public event Action<string> Notice;
+        /// <summary>The attempt to resume a saved session has finished, whether or not it worked.</summary>
+        public event Action ResumeFinished;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         static void ResetStatics() => _instance = null;
@@ -82,15 +84,24 @@ namespace Pulsebreak.Client.Online
         async Task ResumeAsync()
         {
             Resuming = true;
+            AccountResult<AccountData> result;
             try
             {
-                AccountResult<AccountData> result = await Account.ResumeAsync();
-                if (!result.Ok && result.Offline) Notice?.Invoke("Could not reach the account server, so you are playing without your account for now.");
+                result = await Account.ResumeAsync();
+            }
+            catch (Exception error)
+            {
+                Debug.LogException(error);
+                result = new AccountResult<AccountData>();
             }
             finally
             {
                 Resuming = false;
             }
+
+            ResumeFinished?.Invoke();
+            if (!result.Ok && result.Offline) Notice?.Invoke("Could not reach the account server, so you are playing without your account for now.");
+            else if (!result.Ok) Notice?.Invoke("Your saved sign-in has ended. Sign in again.");
         }
 
         void Update()

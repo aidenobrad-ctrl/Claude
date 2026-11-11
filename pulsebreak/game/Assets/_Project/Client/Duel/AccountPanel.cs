@@ -140,20 +140,28 @@ namespace Pulsebreak.Client.Duel
             _formCard.Add(actions);
 
             Account.Changed += Refresh;
-            services.Notice += message =>
-            {
-                Refresh();
-                _summaryDetail.text = message;
-                _summaryDetail.style.color = Bad;
-            };
+            services.ResumeFinished += Refresh;
+            services.LoadoutSync.StatusChanged += Refresh;
+            services.Notice += ShowNotice;
             Refresh();
+        }
+
+        void ShowNotice(string message)
+        {
+            Refresh();
+            _summaryDetail.text = message;
+            _summaryDetail.style.color = Bad;
         }
 
         public bool FormOpen => _form != Form.None;
 
+        /// <summary>Lets go of the services, which outlive the menu.</summary>
         public void Dispose()
         {
             Account.Changed -= Refresh;
+            _services.ResumeFinished -= Refresh;
+            _services.LoadoutSync.StatusChanged -= Refresh;
+            _services.Notice -= ShowNotice;
         }
 
         // ------------------------------------------------------------------ the summary

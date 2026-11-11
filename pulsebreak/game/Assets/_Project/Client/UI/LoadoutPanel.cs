@@ -99,6 +99,9 @@ namespace Pulsebreak.Client.UI
             _library.Changed += Refresh;
         }
 
+        /// <summary>Stops listening to the library. Call when the screen this belongs to goes away.</summary>
+        public void Dispose() => _library.Changed -= Refresh;
+
         /// <summary>Redraws everything from the library.</summary>
         public void Refresh()
         {

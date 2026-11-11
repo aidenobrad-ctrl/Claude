@@ -277,6 +277,7 @@ namespace Pulsebreak.Client.UI
         void OnDestroy()
         {
             if (_library != null) _library.Changed -= OnLibraryChanged;
+            if (_loadoutPanel != null) _loadoutPanel.Dispose();
             if (_player == null) return;
             _player.HitConfirmed -= OnHitConfirmed;
             _player.LoadoutChanged -= OnLoadoutChanged;

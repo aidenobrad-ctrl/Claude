@@ -72,10 +72,16 @@ namespace Pulsebreak.Client.Duel
                 return;
             }
 
+            // The look comes from the HUD's stylesheet. The layout that matters is also set
+            // here in code, so a missing stylesheet costs polish, not a usable menu.
             var styles = Resources.Load<StyleSheet>("UI/HudStyles");
             if (styles != null) root.styleSheets.Add(styles);
+            else Debug.LogWarning("Pulsebreak: Resources/UI/HudStyles.uss did not load; the duel menu will look plain.");
             root.AddToClassList("hud");
             root.pickingMode = PickingMode.Ignore;
+            Fill(root);
+            root.style.color = Text;
+            root.style.fontSize = 16;
 
             BuildMatch(root);
             BuildMenu(root);
@@ -87,11 +93,18 @@ namespace Pulsebreak.Client.Duel
         {
             _menu = new VisualElement();
             _menu.AddToClassList("pause");
+            Fill(_menu);
+            _menu.style.alignItems = Align.Center;
+            _menu.style.justifyContent = Justify.Center;
+            _menu.style.backgroundColor = new Color(0.024f, 0.035f, 0.055f, 0.78f);
             root.Add(_menu);
 
             var card = new VisualElement();
             card.AddToClassList("pause-card");
             card.style.width = 520;
+            card.style.paddingLeft = card.style.paddingRight = 32;
+            card.style.paddingTop = card.style.paddingBottom = 28;
+            card.style.backgroundColor = new Color(0.07f, 0.09f, 0.125f, 1f);
             _menu.Add(card);
 
             card.Add(Text_("PULSEBREAK", 30, Text, bold: true, spacing: 6, className: "pause-title"));
@@ -126,10 +139,12 @@ namespace Pulsebreak.Client.Duel
             _joinButton.style.marginLeft = 10;
             joinRow.Add(_joinButton);
             card.Add(joinRow);
+            // Enter in the address box joins. Which of these two events carries the key depends on the Unity version.
             _addressField.RegisterCallback<KeyDownEvent>(e =>
             {
                 if (e.keyCode == KeyCode.Return || e.keyCode == KeyCode.KeypadEnter) RequestJoin();
-            });
+            }, TrickleDown.TrickleDown);
+            _addressField.RegisterCallback<NavigationSubmitEvent>(e => RequestJoin(), TrickleDown.TrickleDown);
 
             _menuStatus = Text_("", 14, Bad);
             _menuStatus.style.whiteSpace = WhiteSpace.Normal;
@@ -139,6 +154,9 @@ namespace Pulsebreak.Client.Duel
 
             var bottom = new VisualElement();
             bottom.AddToClassList("pause-buttons");
+            bottom.style.flexDirection = FlexDirection.Row;
+            bottom.style.justifyContent = Justify.FlexEnd;
+            bottom.style.marginTop = 22;
             _cancelButton = MenuButton("Cancel", false, () => CancelRequested?.Invoke());
             _rangeButton = MenuButton("Firing range", false, () => RangeRequested?.Invoke());
             _quitButton = MenuButton("Quit", false, () => QuitRequested?.Invoke());
@@ -161,6 +179,7 @@ namespace Pulsebreak.Client.Duel
             _match = new VisualElement();
             _match.AddToClassList("layer");
             _match.pickingMode = PickingMode.Ignore;
+            Fill(_match);
             root.Add(_match);
 
             // Score, round and clock across the top.
@@ -307,6 +326,12 @@ namespace Pulsebreak.Client.Duel
 
         // ------------------------------------------------------------------ match
 
+        /// <summary>Takes the match overlay off screen without forgetting what it shows, while a menu is up.</summary>
+        public void SetMatchHidden(bool hidden)
+        {
+            if (_match != null) _match.style.visibility = hidden ? Visibility.Hidden : Visibility.Visible;
+        }
+
         public void ShowMatch(bool visible)
         {
             if (_match == null) return;
@@ -425,6 +450,16 @@ namespace Pulsebreak.Client.Duel
             row.style.flexDirection = FlexDirection.Row;
             parent.Add(row);
             return row;
+        }
+
+        /// <summary>Stretches an element over the whole of its parent.</summary>
+        static void Fill(VisualElement element)
+        {
+            element.style.position = Position.Absolute;
+            element.style.left = 0;
+            element.style.top = 0;
+            element.style.right = 0;
+            element.style.bottom = 0;
         }
 
         static void Round(VisualElement element, float radius)

@@ -7,7 +7,7 @@ The game is built in phases. Each one ends with something you can run and judge,
 | 1 | Movement, one weapon, firing range | Built, awaiting your playtest |
 | 2 | Weapon system, 30 weapons, attachments | Built, awaiting your playtest |
 | 3 | Loadouts, saved locally | Built, awaiting your playtest |
-| 4 | Netcode foundation and 1v1 duels | Needs the netcode decision |
+| 4 | Netcode and online 1v1 duels | Built, awaiting your playtest |
 | 5 | Accounts, backend and synced loadouts | Planned |
 | 6 | Matchmaking and team modes | Planned |
 | 7 | Progression and unlocks | Planned |
@@ -60,21 +60,34 @@ The game is built in phases. Each one ends with something you can run and judge,
 
 **Deliberately left for later:** syncing across devices (Phase 5; the save format is ready for it), unlock levels gating what can be equipped (Phase 7), choosing a loadout between rounds and on respawn (Phase 4, when there are rounds; quick swap stands in for it).
 
-## Phase 4: Netcode foundation and 1v1 duels
+## Phase 4: Netcode and online 1v1 duels
 
-The first online build: two players, one dedicated server, one small arena.
+**Built.** The first online build: two players, one server, one small arena. You chose to have the netcode written for the game rather than bought, so there is no library and no third-party account.
 
-- Integrate the netcode library and a headless dedicated server build.
-- Networked motor with client-side prediction and server reconciliation; remote players interpolated.
-- Server-authoritative shooting with lag-compensated hitboxes; projectiles and utility simulated on the server. Server-side enforcement of fire rate, ammo and movement speed.
-- Loadouts sent as ids and checked by the server with the same rules the client uses.
-- Player health, death and respawn; a third-person placeholder body so players can see each other; kill feed.
-- Duel rules: best of five rounds, spawn points, round and match flow, loadout choice between rounds, a minimal scoreboard.
-- One duel arena built from prototype geometry.
+- A server that owns the match. It can run on its own (a dedicated server) or inside the game of a player who hosts.
+- Client-side prediction: your own movement and shooting happen at once, and are checked against the server and corrected if they differ.
+- Lag compensation: instant shots are judged against where the target was on the shooter's screen.
+- The other player drawn smoothly from snapshots, as a placeholder body holding a block for a weapon, with tracers and shot sounds.
+- Projectiles and utility items simulated on the server and drawn on both clients.
+- The server runs movement, fire rate and ammunition itself, limits how fast a client can send commands, and checks every loadout with the same rules the client uses.
+- Health, elimination and a kill feed.
+- Duel rules: best of five, a countdown, a 90 second round clock, swapping ends each round, loadout changes applied at the next round, forfeit on leaving, a fresh match after the result.
+- One arena, Relay Yard, built from prototype geometry.
+- A main menu: host a match, join one by address, or go to the firing range.
+- A way to make your own connection worse on purpose, to feel the game at a given ping.
 
-**You can test:** a full 1v1 match between two clients against a local server, including with simulated latency and packet loss.
+**You can test:** a full 1v1 between two copies of the game, on one computer or two on the same network, with and without simulated lag. The README has the steps.
 
-**Needs from you:** the netcode choice (Fusion 2 recommended), and a Photon account if you take it.
+**Checked before you see it:** a real server and two real clients play whole matches inside the test suite, on connections as bad as a 325 ms round trip with a quarter of packets lost. What that cannot check is anything that only exists in Unity: the menu, the HUD, how the other player looks, and whether Unity's physics gives the client and the server the same answer as often as the test world does.
+
+**Deliberately left for later:**
+
+- Killcam (Phase 8).
+- Predicting your own projectiles. They appear when the server launches them, one round trip after the trigger.
+- Encryption, and tying a connection to a logged-in account (Phase 5, with accounts).
+- Hosting across the internet without port forwarding. Dedicated servers on public addresses arrive with matchmaking (Phase 6).
+- Sending less data per player, which team modes will need (Phase 6).
+- Players colliding with each other, and sound that has a position.
 
 ## Phase 5: Accounts, backend and synced loadouts
 
@@ -82,13 +95,15 @@ The first online build: two players, one dedicated server, one small arena.
 - Sign-up, email verification, login with access and refresh tokens, password reset.
 - Argon2id password hashing, rate limiting, login lockout, input validation.
 - Profile storage; game client login and registration screens; dedicated servers authenticate to the API.
+- Joining a game server requires a ticket from the API, and game traffic is encrypted.
 - Loadouts stored on the account: a backend loadout store replaces the local file, with the newest change winning when two devices disagree.
 
 **You can test:** create an account, verify it by email, log in from the game, reset the password, watch brute-force attempts get blocked, and find your loadouts on a second machine.
 
 ## Phase 6: Matchmaking and team modes
 
-- Redis-backed queues, a matchmaker service, and game server allocation.
+- Redis-backed queues, a matchmaker service, and game server allocation. Dedicated servers packaged in containers.
+- The server and the wire format grow from two players to teams: more than two connections, snapshots that only send what changed.
 - Casual playlist; parties queue together.
 - 2v2 and 3v3 Elimination (no respawns in a round), Team Deathmatch.
 - Results reported by the server; stats and match history saved; post-match scoreboard.
@@ -144,13 +159,14 @@ The first online build: two players, one dedicated server, one small arena.
 
 - Full settings: keybinds, graphics, audio, crosshair editor, colourblind modes.
 - Proper audio and visual effects, real weapon models, performance work.
-- Server-side anomaly detection on top of the built-in validation.
+- Server-side anomaly detection on top of the built-in validation, and a decision on client-side anti-cheat for what a server cannot see (wallhacks, aim assistance).
 - Build pipeline, server deployment, monitoring.
 
 **You can test:** a complete session from sign-up to ranked match on a deployed environment.
 
 ## Decisions waiting on you
 
-1. **Netcode library.** Fusion 2 (recommended) or Fish-Networking. Needed before Phase 4.
-2. **Backend stack.** ASP.NET Core (recommended) or Node.js. Needed before Phase 5.
-3. **The name.** "Pulsebreak" is a working title and I have not checked it against trademarks. It appears in namespaces and asset names, so it is cheapest to change early.
+1. **Backend stack.** ASP.NET Core (recommended) or Node.js. Needed before Phase 5.
+2. **The name.** "Pulsebreak" is a working title and I have not checked it against trademarks. It appears in namespaces and asset names, so it is cheapest to change early.
+
+Decided so far: netcode is written for the game, over UDP (Phase 4).

@@ -291,7 +291,7 @@ namespace Pulsebreak.Client.Net
             // The server holds everyone still until the countdown ends. This command will not
             // reach it for a while, so what matters is the time it gets there, not the time now:
             // that way a round starts at the same moment for both players whatever their ping.
-            if (Match.Phase == MatchPhase.Countdown && ArrivalTick + RttMs / 1000f / Dt <= Match.PhaseEndTick)
+            if (Match.Phase == MatchPhase.Countdown && CommandArrivalTick <= Match.PhaseEndTick)
                 MatchRules.Freeze(ref cmd);
             return cmd;
         }
@@ -310,6 +310,12 @@ namespace Pulsebreak.Client.Net
 
         /// <summary>The server tick whose snapshot is arriving about now: the server's clock, minus the trip here.</summary>
         public double ArrivalTick => _clockValid ? (_now + _clockOffset) / Dt : 0.0;
+
+        /// <summary>
+        /// The server tick at which a command sent now will be run: what has arrived, plus a
+        /// full round trip. "When does the round start for me" is measured against this.
+        /// </summary>
+        public double CommandArrivalTick => ArrivalTick + (_connection != null ? _connection.Rtt : 0f) / Dt;
 
         /// <summary>
         /// The server tick other players are drawn at. It trails what has arrived by enough

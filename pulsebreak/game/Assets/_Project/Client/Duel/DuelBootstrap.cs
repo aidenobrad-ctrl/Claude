@@ -321,6 +321,8 @@ namespace Pulsebreak.Client.Duel
             Keyboard keyboard = Keyboard.current;
             if (keyboard != null && keyboard.f3Key.wasPressedThisFrame) _showNetStats = !_showNetStats;
 
+            // The pause menu and the loadout swap belong to the HUD underneath; get out of their way.
+            _ui.SetMatchHidden(_hud != null && (_hud.IsPaused || _hud.IsQuickSwapOpen));
             _ui.SetHealth(_session.Local != null ? _session.Local.Health : 0f, _session.Rules.maxHealth);
             UpdateBanner();
 
@@ -372,8 +374,11 @@ namespace Pulsebreak.Client.Duel
 
                 case MatchPhase.Countdown:
                 {
-                    int seconds = Mathf.Clamp(Mathf.CeilToInt(TicksLeft(match) * SimConstants.TickDelta), 1, 9);
-                    _ui.SetBanner(seconds.ToString(), "ROUND " + match.Round + "   ·   first to " + _session.Rules.roundsToWin);
+                    // Counted against when our commands reach the server, the same clock that
+                    // decides when we can move: the number hits zero as our controls come alive.
+                    float left = (float)(match.PhaseEndTick - _session.CommandArrivalTick) * SimConstants.TickDelta;
+                    if (left <= 0f) _ui.SetBanner("FIGHT", "");
+                    else _ui.SetBanner(Mathf.Clamp(Mathf.CeilToInt(left), 1, 9).ToString(), "ROUND " + match.Round + "   ·   first to " + _session.Rules.roundsToWin);
                     break;
                 }
 

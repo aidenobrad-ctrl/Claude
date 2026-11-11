@@ -16,7 +16,6 @@ namespace Pulsebreak.Server
     /// build (a dedicated server), or alongside a client in the same process when a player
     /// hosts a match from the menu.
     /// </summary>
-    [DisallowMultipleComponent]
     public sealed class ServerHost : MonoBehaviour
     {
         GameServer _server;

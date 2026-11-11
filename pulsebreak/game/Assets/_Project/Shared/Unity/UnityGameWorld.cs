@@ -54,6 +54,12 @@ namespace Pulsebreak.Shared.Match
             _root = new GameObject(name + " Body").transform;
             int layer = server ? GameLayers.ServerHitbox : GameLayers.Hitbox;
 
+            // Kinematic: the parts are moved every tick, and the physics engine handles that
+            // far better for a body it knows can move than for colliders it took to be scenery.
+            var rigidbody = _root.gameObject.AddComponent<Rigidbody>();
+            rigidbody.isKinematic = true;
+            rigidbody.useGravity = false;
+
             // The same proportions as the firing range's target dummy.
             AddPart("Head", HitZone.Head, true, new Vector3(0f, 1.63f, 0f), new Vector3(0.25f, 0.27f, 0.25f), 1f, layer);
             AddPart("Torso", HitZone.Body, false, new Vector3(0f, 1.17f, 0f), new Vector3(0.44f, 0.62f, 0.26f), 0.5f, layer);

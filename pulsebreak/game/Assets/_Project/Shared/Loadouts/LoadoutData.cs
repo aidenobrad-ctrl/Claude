@@ -1,5 +1,9 @@
 using System;
 
+// This file is also compiled into the backend (backend/src/Pulsebreak.Api), so the game and
+// the server agree on the stored format by construction. Keep it free of UnityEngine.
+#nullable disable
+
 namespace Pulsebreak.Shared.Loadouts
 {
     /// <summary>A weapon and its attachments, by id. The saved form of a WeaponBuild.</summary>
@@ -62,16 +66,29 @@ namespace Pulsebreak.Shared.Loadouts
         }
     }
 
+    /// <summary>A record that a loadout was deleted, kept so the deletion can reach the player's other devices.</summary>
+    [Serializable]
+    public sealed class DeletedLoadout
+    {
+        public string id = "";
+        /// <summary>Seconds since 1970 (UTC).</summary>
+        public long deletedAt;
+    }
+
     /// <summary>Everything one player has saved. The unit a loadout store reads and writes.</summary>
     [Serializable]
     public sealed class LoadoutCollection
     {
-        public const int CurrentVersion = 1;
+        public const int CurrentVersion = 2;
 
         /// <summary>Format version, so a later change to the layout can migrate old saves.</summary>
         public int version = CurrentVersion;
         /// <summary>Id of the loadout in use. May be a preset id.</summary>
         public string equippedId = "";
+        /// <summary>When the equipped loadout was last chosen. Seconds since 1970 (UTC). Added in version 2.</summary>
+        public long equippedUpdatedAt;
         public LoadoutData[] loadouts = new LoadoutData[0];
+        /// <summary>Loadouts that were deleted, newest first. Added in version 2.</summary>
+        public DeletedLoadout[] deleted = new DeletedLoadout[0];
     }
 }

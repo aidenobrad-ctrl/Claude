@@ -2,7 +2,7 @@
 
 Pulsebreak (working title) is a fast, competitive multiplayer FPS for PC: tight gunplay and loadouts from modern military shooters, short rounds and snappy movement from arena shooters. This document covers the technology choices, how the repository is laid out, and how the systems connect. The phased plan is in [ROADMAP.md](ROADMAP.md).
 
-Phases 1 to 4 exist as code today: movement, the weapon system, loadouts saved locally, a firing range to try them in, and online 1v1 duels on a server that owns the match. Sections that describe later phases say so.
+Phases 1 to 5 exist as code today: movement, the weapon system, loadouts, a firing range to try them in, online 1v1 duels on a server that owns the match, and accounts on a backend that the loadouts and settings follow. Sections that describe later phases say so.
 
 ## Technology choices
 
@@ -12,9 +12,10 @@ Phases 1 to 4 exist as code today: movement, the weapon system, loadouts saved l
 | Input | Unity Input System | In use |
 | UI | UI Toolkit (UXML + USS) | In use |
 | Netcode | Written for this game: server-authoritative, over UDP | In use |
-| Backend API | ASP.NET Core | Recommended, starts in Phase 5 |
-| Database | PostgreSQL | Phase 5 |
-| Sessions and queues | Redis | Phase 5 and 6 |
+| Backend API | ASP.NET Core on .NET 10 | In use |
+| Database | PostgreSQL 16, through Entity Framework Core | In use |
+| Sessions, codes, counters | Redis 7 | In use; queues come with matchmaking |
+| Password hashing | Argon2id | In use |
 | Game servers | The game itself, started with `-batchmode -nographics -server` | Runs today; containers and a fleet come with matchmaking |
 
 ### Netcode: written for this game
@@ -39,11 +40,13 @@ The cost is owning it. What a library would have brought and this does not yet h
 
 ASP.NET Core over Node.js, for three reasons:
 
-- **One language.** The game is C#. Request and response types, validation rules and the weapon stat tables the server uses to check hits can be shared with the backend instead of written twice and kept in sync by hand.
+- **One language.** The game is C#, so code can be shared instead of written twice and kept in sync by hand. Three of the game's own files are compiled into the backend today: the stored loadout format, the rule for merging two copies of it, and the join ticket ([Shared with the game](#shared-with-the-game)).
 - **What accounts need is built in.** JWT authentication, rate limiting middleware, data validation and password hashing libraries are first-party or standard.
 - **Performance headroom.** Matchmaking and leaderboards are CPU-bound work where it does well.
 
-PostgreSQL holds everything durable (accounts, inventories, loadouts, stats, match history, ratings). Redis holds everything short-lived (refresh-token sessions, rate-limit counters, matchmaking queues, party and lobby state).
+PostgreSQL holds everything durable (accounts, profiles, loadouts, settings; later inventories, stats, match history). Redis holds everything short-lived (sessions, emailed codes, failed-login counts; later matchmaking queues and parties).
+
+It targets .NET 10, the current long-term-support release: .NET 8 reached the end of its support in November 2026.
 
 ## Repository layout
 
@@ -54,7 +57,17 @@ pulsebreak/
 │   ├── ARCHITECTURE.md     This file
 │   └── ROADMAP.md          The phased plan
 ├── game/                   The Unity 6 project (client and dedicated server builds)
-└── backend/                ASP.NET Core API (arrives in Phase 5)
+└── backend/                The accounts API
+    ├── README.md             How to run it, configure it and call it
+    ├── docker-compose.yml    PostgreSQL and Redis for local development
+    ├── src/Pulsebreak.Api/
+    │   ├── Auth/               Password hashing, input rules, tokens, sessions, lockout, emailed codes
+    │   ├── Data/               Database model and migrations
+    │   ├── Email/              Sending email, and its wording
+    │   ├── Endpoints/          The HTTP routes
+    │   ├── Loadouts/           Storing and merging loadouts
+    │   └── Program.cs          Wiring, rate limits, token checking
+    └── tests/Pulsebreak.Api.Tests/   The whole API against a real PostgreSQL and Redis
 ```
 
 ### Inside the Unity project
@@ -83,7 +96,9 @@ game/
     │   ├── Player/           Local player loop (offline and online), camera, rig assembly
     │   ├── Net/              The client's side of a match: connection, prediction,
     │   │                     interpolation; and how the other player is drawn
-    │   ├── Duel/             The duel scene: main menu, hosting and joining, match HUD
+    │   ├── Duel/             The duel scene: main menu and account forms, hosting and joining, match HUD
+    │   ├── Online/           The account client, keeping loadouts and settings in step with
+    │   │                     the backend, and the services that outlive a scene
     │   ├── Weapons/          First-person weapon models, tracers, projectiles, explosions
     │   ├── Audio/            Sound playback and placeholder synthesis
     │   ├── Loadouts/         The loadout library and where it is saved
@@ -108,6 +123,7 @@ flowchart LR
     Client[Pulsebreak.Client] --> Shared[Pulsebreak.Shared]
     Server[Pulsebreak.Server] --> Shared
     Client -. "to host a match" .-> Server
+    Api[backend: Pulsebreak.Api] -. "three source files" .-> Shared
     Editor[Pulsebreak.Editor] --> Client
     Editor --> Shared
     Tests[Pulsebreak.Tests.EditMode] --> Shared
@@ -186,9 +202,10 @@ A loadout is a primary, a secondary, a melee weapon, two utility items and a per
 
 ```mermaid
 flowchart LR
-    File[(loadouts.json<br/>today)] <--> Store[ILoadoutStore]
-    Backend[(Backend<br/>later)] -.-> Store
+    Guest[(loadouts.json<br/>no account)] <--> Store[SwitchableLoadoutStore]
+    Cache[(this computer's copy<br/>of an account's loadouts)] <--> Store
     Store <--> Library[LoadoutLibrary<br/>presets, custom loadouts,<br/>which one is equipped]
+    Library <--> Sync[LoadoutAccountSync] <-- "POST /v1/loadouts/sync" --> API[(Backend)]
     Presets[LoadoutPreset assets] --> Library
     Library -- LoadoutData --> Rules[LoadoutRules.Resolve]
     Catalog[LoadoutCatalog] --> Rules
@@ -196,20 +213,24 @@ flowchart LR
     Panel[LoadoutPanel and quick swap] --> Library
 ```
 
-- **`LoadoutData`** is the stored form: a name and nothing but ids. It holds no asset references, so it can be written to a file, sent to a server or kept in a database, and still be read after content has changed. A `LoadoutCollection` wraps a player's loadouts with a format version and the id of the equipped one.
+- **`LoadoutData`** is the stored form: a name and nothing but ids. It holds no asset references, so it can be written to a file, sent to a server or kept in a database, and still be read after content has changed. A `LoadoutCollection` wraps a player's loadouts with a format version, the id of the equipped one, and a record of recent deletions.
 - **`Loadout`** is the playable form: real `WeaponBuild`s, `UtilityDefinition`s and a `PerkSetDefinition`.
 - **`LoadoutRules`** is the only way from one to the other. `Resolve` never fails: an unknown weapon, a weapon in the wrong slot, an attachment that does not fit, the same utility item twice or a missing perk set is replaced with a default and noted. The game server runs the same function on every loadout a client sends, so a client cannot equip something illegal by editing its save or its packets.
-- **`LoadoutLibrary`** is what the UI talks to: create, rename, replace, delete, equip. It keeps presets read-only, limits custom loadouts to ten, sanitises every edit, and saves after every change.
+- **`LoadoutLibrary`** is what the UI talks to: create, rename, replace, delete, equip. It keeps presets read-only, limits custom loadouts to ten, sanitises every edit, and saves after every change. It lives for as long as the game runs (`GameServices`), not per scene.
 - **`ILoadoutStore`** is where saving happens. `LocalFileLoadoutStore` writes JSON to the save folder, swapping the file in whole so a crash cannot leave half of one, and sets an unreadable file aside instead of overwriting it.
 
-### Why this is "local first" and not "local only"
+### Following the account
 
-Moving loadouts to the backend means writing one more `ILoadoutStore`. Nothing else changes, because the pieces sync needs are already in the format:
+Phase 3 made loadouts local first, with sync in mind. Phase 5 added the sync, and the format needed only two additions:
 
-- every loadout has a permanent unique id, so two devices can tell "the same loadout" from "two loadouts with the same name";
-- every loadout carries the time it was last changed, which is what decides the winner when two devices disagree;
-- the collection has a version number, so the layout can change without breaking old saves;
-- a server runs `LoadoutRules` on whatever it receives, so it never has to trust the client. The game server already does.
+- every loadout already had a permanent id and the time it was last changed;
+- the collection gained the time the equipped choice was made, and a list of recent deletions. Without the deletions, a loadout deleted on one computer would come straight back from another that still had it.
+
+**One merge rule, in both places.** `LoadoutSync.Merge` decides, for each loadout and for the equipped choice, which copy wins: the newest change. A deletion counts as a change. It is the same source file in the game and in the backend, so the two cannot disagree. Merging is safe to repeat, which makes a retried request harmless. Each change is stamped later than the one it replaces even if the clock stands still, and the backend treats a time from the future as "now", so a computer with a wrong clock cannot win every argument.
+
+**What happens on signing in.** `LoadoutAccountSync` points the library at this computer's copy of that account's loadouts, so they are there at once even offline. Loadouts made without an account move onto the first account to sign in. Then everything goes to the backend and the merged result comes back. After that, every change is sent a moment later. If the backend cannot be reached, changes stay on this computer and go next time. Signing out goes back to the no-account file.
+
+**The backend checks shape, the game server checks legality.** The backend refuses malformed or oversized loadouts but does not know what a weapon is. The game server runs `LoadoutRules` on whatever a player brings to a match, against the game's own content, as it did before accounts existed.
 
 ### Utility items and perk sets
 
@@ -230,8 +251,8 @@ Moving loadouts to the backend means writing one more `ILoadoutStore`. Nothing e
 | Premade default loadouts | `LoadoutPreset`, `LoadoutCatalog` | Six ship with the game |
 | Create, edit, rename, save custom loadouts | `LoadoutLibrary`, `LoadoutPanel` | Saved through `ILoadoutStore` |
 | Two utility items, one perk set | `UtilityBelt`, `UtilityDefinition`, `PerkSetDefinition` | |
+| Loadouts saved to the account and synced | `LoadoutAccountSync`, `LoadoutSync`, backend `LoadoutService` | Newest change wins, deletions included |
 | Quick-swap loadouts between rounds | `HudController` quick swap, `ClientSession.SetLoadout` | In a match the server applies it at the next round |
-| Loadouts synced across devices | `ILoadoutStore` | Backend store arrives with accounts |
 | Hit markers, damage numbers, crosshair, optics | `HudController` | Damage numbers toggle in the pause menu |
 | New content without code | Definition assets and catalogs | `LoadoutValidator` checks all of it |
 | Server-authoritative play | `GameServer` | Clients send inputs and nothing else that counts |
@@ -331,7 +352,7 @@ The tests that need the stand-in physics world are not in the Unity project, bec
 
 ### Known limits
 
-- **No encryption.** Packets are not encrypted or authenticated beyond the connection token. Fine on a LAN and for testing; before public play the token should come from the backend's login and the traffic should be encrypted.
+- **No encryption.** Game traffic is not encrypted. A server given the backend's ticket key knows who each player is, but the packets after that are protected only by the connection token. Fine on a LAN and for testing; before public play the traffic should be encrypted, with a key handed out alongside the ticket.
 - **No NAT traversal or relay.** To host over the internet the host forwards a UDP port. Dedicated servers on public addresses, which matchmaking will use, do not have this problem.
 - **IPv4 only.**
 - **Snapshots are sent whole**, about 0.5 KB sixty times a second per player. Fine for a duel; team modes will want delta compression and a lower rate.
@@ -339,26 +360,54 @@ The tests that need the stand-in physics world are not in the Unity project, bec
 - **Players pass through each other.** It keeps prediction independent of where the opponent is.
 - **Sound has no position yet.** Other players' shots are only quieter with distance.
 
-## Backend and services (Phases 5 onward)
+## Accounts and the backend
 
 ```mermaid
 flowchart LR
-    Client[Game client] -- HTTPS, JWT --> API[ASP.NET Core API]
-    API --> PG[(PostgreSQL)]
-    API --> Redis[(Redis)]
-    API -- allocate --> Fleet[Game server fleet]
-    Client -- "UDP gameplay (built)" --> GS[Dedicated game server]
-    Fleet --- GS
-    GS -- "match results, server key" --> API
-    API -- email --> Mail[Email provider]
+    Game[Game client] -- "HTTPS, JSON<br/>access token" --> API[ASP.NET Core API]
+    API --> PG[(PostgreSQL<br/>accounts, profiles,<br/>loadouts, settings)]
+    API --> Redis[(Redis<br/>sessions, codes,<br/>failed sign-ins)]
+    API -- email --> Mail[Mail provider]
+    Game -- "join ticket" --> GS[Game server]
+    GS -. "checks the signature<br/>with a shared key,<br/>no call to the API" .-> GS
+    Game -- "UDP gameplay" --> GS
 ```
 
-- **Accounts.** Sign-up with email, username and password. Passwords are hashed with Argon2id. A verification link or code is emailed, and ranked play is refused until it is used. Login returns a short-lived JWT access token and a rotating refresh token stored in Redis. Password reset is by emailed single-use token.
-- **Abuse protection.** Per-IP and per-account rate limits, lockout with backoff after repeated failed logins, server-side validation of every request body.
-- **Player data.** Profile, level and XP, currency, unlocked weapons and cosmetics, saved loadouts, lifetime stats, match history and ranked rating, all in PostgreSQL and loaded on login so they follow the account across devices. Loadouts arrive through a backend `ILoadoutStore`, in the `LoadoutCollection` format they already use on disk.
-- **Matchmaking.** Players or parties join a Redis queue per playlist. A matchmaker groups them by rating and latency, asks the fleet for a server, and hands each client a connection ticket.
-- **Trust boundary.** Clients never report results. The dedicated server reports the match outcome to the API using its own credential, and the API awards XP, updates stats and adjusts ratings.
-- **Social.** Friends, parties and invites, block and report.
+The backend's [README](../backend/README.md) lists every route, setting and safeguard. In outline:
+
+- **Accounts.** Sign-up with email, username and password. Signing in takes either the email or the username. A six-digit code and a link are emailed to verify the address. Forgotten passwords are reset with an emailed code; changing or resetting a password signs every other device out at once.
+- **Passwords** are stored only as Argon2id hashes, with the cost recorded in each hash so it can be raised later without breaking anyone's sign-in.
+- **Sessions.** A 15-minute access token, and a 30-day refresh token that works once and is replaced on every use. A refresh token used twice means it was copied, and ends the session. The game shares one refresh between requests that need it at the same moment, so it never trips this itself.
+- **Guessing.** Per-account lockout that doubles, codes that die after five wrong guesses, per-address request limits, and the same answer (in about the same time) for a wrong password as for an account that does not exist.
+- **Player data.** A profile (level, XP, currency, rating: all at their starting values until progression and ranked arrive), loadouts and settings. Settings follow the same newest-wins rule as loadouts.
+- **Join tickets.** A signed note from the backend saying "this connection is this account". A game server given the same key checks it by itself and uses the account's name; without a valid ticket it turns the player away with a reason. A ticket for ranked play is only issued to an account with a verified email, and a server started with `-ranked` admits no other kind. That is how "verify your email before ranked" is enforced end to end. Servers without the key (a match hosted from the menu) still admit anyone.
+
+### In the game
+
+`AccountClient` is the game's side of all of this, with no Unity in it beyond JSON, so the tests run it against the real API. `GameServices` owns it, the loadout library and their sync for as long as the game runs, whichever scene is open. Sign-ins are kept per profile: the Editor has its own, so the Editor and a build on the same computer can be two different players.
+
+The refresh token is kept in a file in the user's application data folder, as a browser keeps its cookies. Anyone who copies that file can be that player until the session is ended.
+
+### Shared with the game
+
+| File | In the game | In the backend |
+| --- | --- | --- |
+| `Shared/Loadouts/LoadoutData.cs` | The save format | The format of `/v1/loadouts` |
+| `Shared/Loadouts/LoadoutSync.cs` | Merging what comes back | Merging what arrives |
+| `Shared/Net/GameTicket.cs` | Game servers check tickets | The API writes them |
+
+These files may use nothing but `System`, so they compile in both.
+
+### How it is tested
+
+- The backend's own tests (61) start the whole API in memory against a real PostgreSQL and Redis, each class in a fresh database built by the migrations: sign-up rules, races for one username, lockout timings, refresh-token reuse, tokens cut off after a password reset, codes that stop working, loadout merges between two devices, settings, tickets, rate limits, and requests that are malformed or too large.
+- The game's tests run the game's own `AccountClient` and `LoadoutAccountSync` against the real API as a separate process, then take the ticket it issues to a real `GameServer`: sign up, verify by the emailed code, stay signed in across a restart, share one token refresh between five requests, be signed out when the password is reset elsewhere, carry loadouts (and a deletion) from one computer to another, and join a match under the account's name.
+
+### Still to come
+
+- **Matchmaking** (Phase 6): queues in Redis, a matchmaker that groups players by rating and ping, and game servers allocated on demand, which will issue tickets bound to a specific server.
+- **Results** (Phases 6 and 7): game servers report match outcomes to the API with their own credential, and the API awards XP and updates stats. Clients never report results.
+- **Social** (Phase 10): friends, parties, invites, block and report.
 
 ## Project conventions
 

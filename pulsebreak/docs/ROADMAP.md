@@ -8,7 +8,7 @@ The game is built in phases. Each one ends with something you can run and judge,
 | 2 | Weapon system, 30 weapons, attachments | Built, awaiting your playtest |
 | 3 | Loadouts, saved locally | Built, awaiting your playtest |
 | 4 | Netcode and online 1v1 duels | Built, awaiting your playtest |
-| 5 | Accounts, backend and synced loadouts | Planned |
+| 5 | Accounts, backend and synced loadouts | Built, awaiting your playtest |
 | 6 | Matchmaking and team modes | Planned |
 | 7 | Progression and unlocks | Planned |
 | 8 | Abilities, streaks and more utility | Planned |
@@ -91,18 +91,31 @@ The game is built in phases. Each one ends with something you can run and judge,
 
 ## Phase 5: Accounts, backend and synced loadouts
 
-- ASP.NET Core API with PostgreSQL and Redis.
-- Sign-up, email verification, login with access and refresh tokens, password reset.
-- Argon2id password hashing, rate limiting, login lockout, input validation.
-- Profile storage; game client login and registration screens; dedicated servers authenticate to the API.
-- Joining a game server requires a ticket from the API, and game traffic is encrypted.
-- Loadouts stored on the account: a backend loadout store replaces the local file, with the newest change winning when two devices disagree.
+**Built.** You said "Continue", which I took as approval for this phase on the recommended stack (ASP.NET Core).
 
-**You can test:** create an account, verify it by email, log in from the game, reset the password, watch brute-force attempts get blocked, and find your loadouts on a second machine.
+- An ASP.NET Core API (on .NET 10) with PostgreSQL and Redis, in `backend/`, with a Docker Compose file to run both locally.
+- Sign up with email, username and password; sign in with either; verify the email by code or link; reset a forgotten password by emailed code; change a password.
+- Passwords stored only as Argon2id hashes. Short-lived access tokens and single-use refresh tokens; a copied refresh token ends the session; a password reset signs every device out at once.
+- Brute-force protection: per-account lockout that doubles, codes that die after five wrong guesses, per-address request limits, no hint whether an account exists.
+- A profile per account (level, XP, currency, rating), at starting values until progression and ranked use them.
+- Loadouts and settings on the account: change them on one computer and they are on the next, deletions included. Without an account the game works as before; loadouts made that way move onto your account when you first sign in.
+- Sign-in, create-account, verify and reset screens in the main menu. The game stays signed in between launches.
+- Join tickets: a game server given the backend's key admits only signed-in players, under their account names; started with `-ranked`, only those with a verified email. Hosting from the menu stays open to anyone.
+
+**You can test:** start the backend, create an account from the game, verify it with the code (printed in the backend's console during development), sign in on a second copy of the game and find your loadouts there. The README has the steps.
+
+**Checked before you see it:** 61 backend tests against a real PostgreSQL and Redis, and end-to-end tests that run the game's own account code against the real API and take its ticket into a real game server. What could not be checked here: the menu screens in Unity, and the Docker Compose file (no Docker daemon was available; PostgreSQL and Redis were run directly instead).
+
+**Left for later:**
+
+- Real email delivery needs an SMTP account from you; until then emails are printed or written to files.
+- HTTPS and a hosted deployment (Phase 12). The game talks to a local backend over plain HTTP, which is allowed in the project settings for now and must be switched off before release.
+- Encrypting game traffic, with a key handed out alongside the ticket (before public play).
+- A breached-password check, an account deletion and data export flow, and a moderation tool to disable accounts (the flag exists).
 
 ## Phase 6: Matchmaking and team modes
 
-- Redis-backed queues, a matchmaker service, and game server allocation. Dedicated servers packaged in containers.
+- Redis-backed queues, a matchmaker service, and game server allocation. Dedicated servers packaged in containers, with tickets bound to the server they were issued for.
 - The server and the wire format grow from two players to teams: more than two connections, snapshots that only send what changed.
 - Casual playlist; parties queue together.
 - 2v2 and 3v3 Elimination (no respawns in a round), Team Deathmatch.
@@ -166,7 +179,7 @@ The game is built in phases. Each one ends with something you can run and judge,
 
 ## Decisions waiting on you
 
-1. **Backend stack.** ASP.NET Core (recommended) or Node.js. Needed before Phase 5.
-2. **The name.** "Pulsebreak" is a working title and I have not checked it against trademarks. It appears in namespaces and asset names, so it is cheapest to change early.
+1. **The name.** "Pulsebreak" is a working title and I have not checked it against trademarks. It appears in namespaces, asset names and now the backend, so it is cheapest to change early.
+2. **An email provider**, when you want real email sent: any provider with SMTP works. Nothing else needs it until then.
 
-Decided so far: netcode is written for the game, over UDP (Phase 4).
+Decided so far: netcode is written for the game, over UDP (Phase 4); the backend is ASP.NET Core (Phase 5).

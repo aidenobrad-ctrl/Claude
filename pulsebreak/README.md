@@ -2,9 +2,9 @@
 
 A fast, competitive multiplayer FPS for PC, built in Unity 6. "Pulsebreak" is a working title.
 
-Four phases are built so far: **movement and a firing range**, **the weapon system with 30 weapons and 21 attachments**, **loadouts saved on your machine**, and **online 1v1 duels** on a server that owns the match. The plan for everything after is in [docs/ROADMAP.md](docs/ROADMAP.md), and how the code is organised is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Five phases are built so far: **movement and a firing range**, **the weapon system with 30 weapons and 21 attachments**, **loadouts**, **online 1v1 duels** on a server that owns the match, and **accounts**, with a backend your loadouts and settings follow from one computer to the next. The plan for everything after is in [docs/ROADMAP.md](docs/ROADMAP.md), and how the code is organised is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-> **Not yet run in Unity.** This was written without access to a Unity Editor. The C# was compiled against Unity's reference assemblies. The simulation, the weapon data and the netcode were tested outside the engine, including whole matches between a real server and two real clients on a simulated bad connection. But nothing has been opened or played in Unity itself, so the menus, the HUD and everything else you look at are unverified. Expect to report a few first-run issues; [Troubleshooting](#troubleshooting) covers the likely ones.
+> **Not yet run in Unity.** This was written without access to a Unity Editor. The C# was compiled against Unity's reference assemblies. The simulation, the weapon data and the netcode were tested outside the engine, including whole matches between a real server and two real clients on a simulated bad connection, and the game's account code was tested against the real backend. But nothing has been opened or played in Unity itself, so the menus, the HUD and everything else you look at are unverified. Expect to report a few first-run issues; [Troubleshooting](#troubleshooting) covers the likely ones.
 
 ## Open and play
 
@@ -16,6 +16,49 @@ Four phases are built so far: **movement and a firing range**, **the weapon syst
 That is the offline range. The main menu and online play are in a second scene: **Pulsebreak ▸ Open Duel (Main Menu)**. See [Play online](#play-online).
 
 On first open Unity creates several settings files and one asset (`Resources/UI/HudPanel.asset`). Commit them; they are part of the project.
+
+## Accounts
+
+Playing without an account works exactly as before. An account keeps your loadouts and settings for you, so they are there on any computer you sign in on, and lets you join servers that only admit signed-in players.
+
+### Start the backend
+
+The game talks to a small server of its own for accounts. To run it on your computer you need the [.NET 10 SDK](https://dotnet.microsoft.com/download) and Docker (or PostgreSQL and Redis installed yourself):
+
+```
+cd pulsebreak/backend
+docker compose up -d
+dotnet run --project src/Pulsebreak.Api
+```
+
+Leave that window open. The game looks for the backend at `http://localhost:5080`. To use one elsewhere, set **Backend Url** on the **Duel** object in the duel scene, or start a build with `-backend URL`. [backend/README.md](backend/README.md) has everything else: settings, every route, and how it keeps accounts safe.
+
+### Sign up and sign in
+
+In the main menu, under the title:
+
+- **Create account**: an email address, a username (3 to 20 letters, numbers or underscores) and a password (at least 10 characters; a few words strung together is a good one). You are signed in at once.
+- **Verify email**: type the 6-digit code from the email. While the backend runs on your computer it does not send email; it **prints each email in its window**, code and link included.
+- **Sign in** with your email or your username. **Forgot your password?** emails a code to set a new one.
+- **Sign out** is in the same place.
+
+The game remembers your sign-in until you sign out. The Editor keeps its own sign-in, separate from builds, so the Editor and a build on the same computer can be two different players. Give a build `-profile NAME` to have more.
+
+### What follows your account
+
+- **Loadouts.** Make or change one on one computer and it is on the next one you sign in on. The newest change wins; deleting counts as a change. Loadouts you made before having an account move onto it the first time you sign in. If the backend cannot be reached, changes are kept on your computer and sent later. The account line in the menu says which.
+- **Settings**: sensitivity, aim sensitivity, field of view, damage numbers and volume.
+- **Your name.** Signed in, you play under your username.
+
+### Servers that need an account
+
+A dedicated server given the backend's ticket key admits only signed-in players, and shows each one under their account name:
+
+```
+PULSEBREAK_TICKET_KEY=<the backend's Game:TicketSigningKey> Pulsebreak.exe -batchmode -nographics -server
+```
+
+During development the key is `development-only-ticket-key-do-not-use-anywhere-real` (in `appsettings.Development.json`). Add `-ranked` and the server admits only players whose email is verified. A match hosted from the menu admits anyone, signed in or not.
 
 ## Play online
 
@@ -76,7 +119,10 @@ To feel the game at a given ping, make your own connection worse on purpose. Eac
 | `-port N` | Port to host on. Default 7777 |
 | `-host` | Go straight to hosting a match |
 | `-connect ADDRESS` | Go straight to joining, for example `-connect 192.168.1.20` |
-| `-name NAME` | Player name, instead of the one in the menu |
+| `-name NAME` | Player name, instead of the one in the menu (ignored when signed in) |
+| `-backend URL` | Where the accounts backend is. Default `http://localhost:5080` |
+| `-profile NAME` | Keep a separate sign-in, for running several copies on one computer |
+| `-ranked` | With `-server`: admit only players with a verified email. Needs the ticket key |
 | `-lag MS`, `-jitter MS`, `-loss PERCENT` | Make this copy's connection worse on purpose |
 
 ### What I would most like to hear about
@@ -123,7 +169,7 @@ Press **B** in play for the quick swap list: every loadout with a number beside 
 
 Loadouts are kept in a file called `loadouts.json` in the game's save folder; **Pulsebreak ▸ Open Saved Loadouts Folder** in the Editor takes you to it. Delete the file to start over. If it ever becomes unreadable, the game keeps it under another name and starts from the defaults.
 
-Loadouts are saved locally, as asked. They do not follow you to another machine until accounts and the backend exist. In a match the server checks the loadout you bring against its own content and replaces anything you could not have.
+Without an account, loadouts are saved on your computer only. Signed in, they follow your account ([Accounts](#accounts)). In a match the server checks the loadout you bring against its own content and replaces anything you could not have.
 
 ## What to try
 
@@ -198,6 +244,8 @@ Open **Window ▸ General ▸ Test Runner**, select **EditMode** and run all. Th
 
 The tests that play whole matches between a server and two clients need a stand-in for Unity's physics, so they live outside the project and were run before each commit. [ARCHITECTURE.md](docs/ARCHITECTURE.md#how-it-is-tested) says what they cover.
 
+The backend has its own tests; see [backend/README.md](backend/README.md#tests).
+
 ## Troubleshooting
 
 **Everything is pink, or the scene looks flat and unlit.** The render pipeline did not get assigned. Run **Pulsebreak ▸ Run Project Doctor** and read the Console. If it reports that the URP asset could not be loaded, create one with **Assets ▸ Create ▸ Rendering ▸ URP Asset (with Universal Renderer)** and assign it under **Project Settings ▸ Graphics**. The game is built to run without it too, on the Built-in pipeline.
@@ -213,6 +261,14 @@ The tests that play whole matches between a server and two clients need a stand-
 **"This copy of the game is a different version from the server's."** The two copies were built from different code. Rebuild so both match; the Editor counts as a copy.
 
 **The other player stutters, or you keep being pulled back.** Look at the readout at the top left. High ping or loss means the connection (or a simulated one left switched on). A corrections count that keeps climbing on a good connection is a bug I want to hear about.
+
+**"Could not reach the account server."** The backend is not running, or not where the game looks. Start it ([Start the backend](#start-the-backend)) and check http://localhost:5080/health/ready in a browser.
+
+**"Insecure connection not allowed" in the Console.** Unity is refusing plain HTTP. Under **Project Settings ▸ Player ▸ Other Settings**, set **Allow downloads over HTTP** to **Always allowed**. (Use HTTPS, and set it back, before releasing anything.)
+
+**"That server only admits signed-in players."** Sign in from the menu, then join again. If you are signed in, the server and the backend were given different ticket keys.
+
+**Signed out by itself.** Your password was changed or reset, or the session was used from somewhere else. Sign in again.
 
 **There is only one loadout, called "Fallback".** The scene lost its link to the loadout catalog. Run **Pulsebreak ▸ Run Project Doctor**, which reconnects it.
 
@@ -231,13 +287,14 @@ The tests that play whole matches between a server and two clients need a stand-
 ```
 pulsebreak/
 ├── docs/        Architecture and roadmap
+├── backend/     The accounts API (ASP.NET Core, PostgreSQL, Redis)
 └── game/        The Unity project
     └── Assets/_Project/
         ├── Shared/    Gameplay rules: movement, weapons, projectiles, damage, loadouts, duel rules, and the
         │              network layer. Runs on client and server.
         ├── Server/    The authority for a match: runs every player's inputs, judges every shot, runs the duel.
         ├── Client/    Input, camera, weapon models, effects, audio, HUD, loadout screen and saves, the firing
-        │              range, and the online duel: menu, prediction, the other player.
+        │              range, the online duel (menu, prediction, the other player), and the account client.
         ├── Editor/    Project Doctor.
         ├── Content/   Weapons, attachments, utility items, perk sets, default loadouts, movement.
         └── Tests/     Unit tests.

@@ -35,6 +35,7 @@
     <Compile Include="../../../game/Assets/_Project/Shared/Loadouts/LoadoutSync.cs" Link="Shared/LoadoutSync.cs" />
     <Compile Include="../../../game/Assets/_Project/Shared/Net/GameTicket.cs" Link="Shared/GameTicket.cs" />
     <Compile Include="../../../game/Assets/_Project/Shared/Match/Playlists.cs" Link="Shared/Playlists.cs" />
+    <Compile Include="../../../game/Assets/_Project/Shared/Progression/Progression.cs" Link="Shared/Progression.cs" />
   </ItemGroup>
 
   <ItemGroup>

@@ -13,6 +13,7 @@ using Pulsebreak.Api.Email;
 using Pulsebreak.Api.Endpoints;
 using Pulsebreak.Api.Loadouts;
 using Pulsebreak.Api.Matchmaking;
+using Pulsebreak.Api.Progression;
 using Pulsebreak.Shared.Net;
 using StackExchange.Redis;
 
@@ -73,6 +74,7 @@ builder.Services.AddSingleton<EmailQueue>();
 builder.Services.AddSingleton<SessionIssuer>();
 builder.Services.AddSingleton<AccountMailer>();
 builder.Services.AddScoped<LoadoutService>();
+builder.Services.AddScoped<ProgressionService>();
 builder.Services.AddHostedService<EmailWorker>();
 builder.Services.AddSingleton<GuestPasses>();
 builder.Services.AddSingleton<MatchmakingService>();

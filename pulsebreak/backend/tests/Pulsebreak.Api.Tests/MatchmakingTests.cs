@@ -148,7 +148,7 @@ public class MatchmakingTests
 
         JsonElement playlists = await (await anonymous.GetAsync("/v1/matchmaking/playlists")).JsonAsync();
         Assert.That(playlists.EnumerateArray().Select(p => p.GetProperty("id").GetString()),
-            Is.EquivalentTo(new[] { "duel", "tdm", "ffa", "elimination", "domination", "hardpoint", "gungame" }));
+            Is.EquivalentTo(new[] { "duel", "tdm", "ffa", "elimination", "domination", "hardpoint", "gungame", "duel_ranked", "elimination_ranked" }));
     }
 
     [Test]

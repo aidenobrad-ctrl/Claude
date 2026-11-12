@@ -41,9 +41,14 @@ namespace Pulsebreak.Shared.Match
         /// enough. Bots take the empty places, so for most modes one person is enough.
         /// </summary>
         public int MinPlayers;
+        /// <summary>
+        /// Rated: only signed-in players with a verified email, matched by rating, in full
+        /// matches with no bots. Results move each player's rating for this playlist.
+        /// </summary>
+        public bool Ranked;
     }
 
-    /// <summary>Every mode matchmaking offers. Ranked play is for later, once accounts are switched on.</summary>
+    /// <summary>Every mode matchmaking offers, casual and ranked.</summary>
     public static class Playlists
     {
         public static readonly Playlist[] All =
@@ -55,6 +60,8 @@ namespace Pulsebreak.Shared.Match
             new Playlist { Id = "domination", Mode = GameModeKind.Domination, Title = "Domination", Players = 10, TeamSize = 5, MinPlayers = 1 },
             new Playlist { Id = "hardpoint", Mode = GameModeKind.Hardpoint, Title = "Hardpoint", Players = 10, TeamSize = 5, MinPlayers = 1 },
             new Playlist { Id = "gungame", Mode = GameModeKind.GunGame, Title = "Gun Game", Players = 8, TeamSize = 0, MinPlayers = 1 },
+            new Playlist { Id = "duel_ranked", Mode = GameModeKind.Duel, Title = "Ranked Duel", Players = 2, TeamSize = 1, MinPlayers = 2, Ranked = true },
+            new Playlist { Id = "elimination_ranked", Mode = GameModeKind.Elimination, Title = "Ranked Elimination", Players = 6, TeamSize = 3, MinPlayers = 6, Ranked = true },
         };
 
         /// <summary>The playlist with this id, or null.</summary>
@@ -67,14 +74,20 @@ namespace Pulsebreak.Shared.Match
             return null;
         }
 
-        /// <summary>The playlist for a mode. Every mode has one.</summary>
-        public static Playlist For(GameModeKind mode)
+        /// <summary>The casual playlist for a mode. Every mode has one.</summary>
+        public static Playlist For(GameModeKind mode) => For(mode, false) ?? All[0];
+
+        /// <summary>The casual or ranked playlist for a mode, or null if that mode has no ranked playlist.</summary>
+        public static Playlist For(GameModeKind mode, bool ranked)
         {
             foreach (Playlist playlist in All)
             {
-                if (playlist.Mode == mode) return playlist;
+                if (playlist.Mode == mode && playlist.Ranked == ranked) return playlist;
             }
-            return All[0];
+            return null;
         }
+
+        /// <summary>True if a mode can be played ranked.</summary>
+        public static bool HasRanked(GameModeKind mode) => For(mode, true) != null;
     }
 }

@@ -66,3 +66,72 @@ public sealed class SettingsRow
     public string Data { get; set; } = "{}";
     public long UpdatedAt { get; set; }
 }
+
+/// <summary>How far a player has come with one weapon.</summary>
+public sealed class WeaponProgressRow
+{
+    public Guid AccountId { get; set; }
+    public string WeaponId { get; set; } = "";
+    public int Xp { get; set; }
+    public int Kills { get; set; }
+}
+
+/// <summary>A player's rating in one ranked playlist.</summary>
+public sealed class RatingRow
+{
+    public Guid AccountId { get; set; }
+    public string Playlist { get; set; } = "";
+    public int Rating { get; set; } = 1000;
+    public int Matches { get; set; }
+    public int Wins { get; set; }
+    public int Losses { get; set; }
+    public int Draws { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+}
+
+/// <summary>Progress on one challenge in one day or week.</summary>
+public sealed class ChallengeRow
+{
+    public Guid AccountId { get; set; }
+    /// <summary>"d2026-11-12" for a day, "w2026-W46" for a week.</summary>
+    public string Period { get; set; } = "";
+    public string ChallengeId { get; set; } = "";
+    public int Progress { get; set; }
+    public bool Completed { get; set; }
+}
+
+/// <summary>A finished matchmade match. Recorded once: a second report of the same match changes nothing.</summary>
+public sealed class MatchRow
+{
+    public string MatchId { get; set; } = "";
+    public string Playlist { get; set; } = "";
+    public bool Ranked { get; set; }
+    public string ServerId { get; set; } = "";
+    public DateTimeOffset EndedAt { get; set; }
+    public int DurationSeconds { get; set; }
+}
+
+/// <summary>One signed-in player's part in a match, and what it earned them.</summary>
+public sealed class MatchPlayerRow
+{
+    public string MatchId { get; set; } = "";
+    public Guid AccountId { get; set; }
+    public int Team { get; set; }
+    /// <summary>0 lost, 1 draw, 2 won.</summary>
+    public int Outcome { get; set; }
+    public bool Completed { get; set; }
+    public int Kills { get; set; }
+    public int Deaths { get; set; }
+    public int Headshots { get; set; }
+    public int Objective { get; set; }
+    public int RoundsWon { get; set; }
+    public int Score { get; set; }
+    public int XpGained { get; set; }
+    public int LevelBefore { get; set; }
+    public int LevelAfter { get; set; }
+    public int? RatingBefore { get; set; }
+    public int? RatingAfter { get; set; }
+    /// <summary>The challenges this match finished, by id, comma separated.</summary>
+    public string ChallengesCompleted { get; set; } = "";
+    public DateTimeOffset EndedAt { get; set; }
+}

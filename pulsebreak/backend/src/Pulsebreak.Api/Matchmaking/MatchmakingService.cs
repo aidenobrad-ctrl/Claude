@@ -1,8 +1,11 @@
 using System.Globalization;
 using System.Text;
+using System.Text.Json;
 using Microsoft.Extensions.Options;
+using Pulsebreak.Api.Progression;
 using Pulsebreak.Shared.Match;
 using Pulsebreak.Shared.Net;
+using Pulsebreak.Shared.Progression;
 using StackExchange.Redis;
 
 namespace Pulsebreak.Api.Matchmaking;
@@ -10,10 +13,13 @@ namespace Pulsebreak.Api.Matchmaking;
 /// <summary>One player's place in a queue, and once matched, where to go.</summary>
 public sealed record MatchTicket(
     string Id, string Player, string Name, string Playlist, uint Version, long CreatedMs, long SeenMs,
-    string Status, string Address, string JoinTicket, string MatchId)
+    string Status, string Address, string JoinTicket, string MatchId, int Rating = Ranks.StartRating)
 {
     public const string Searching = "searching", Matched = "matched", Cancelled = "cancelled", Expired = "expired";
 }
+
+/// <summary>A match the matchmaker set up: which server it went to, and what that server was told.</summary>
+public sealed record StoredMatch(string ServerId, MatchAssignment Assignment);
 
 /// <summary>A game server offering itself for matches, as it last described itself.</summary>
 public sealed record FleetServer(
@@ -36,11 +42,19 @@ public sealed record FleetServer(
 /// server's address and a join ticket good for that match only.
 ///
 /// Players whose game version differs from a server's are never sent to it.
+///
+/// Ranked playlists are for signed-in players with a verified email. They only ever start
+/// full, with players close in rating (the range widens the longer the oldest has waited),
+/// split into teams as even as their ratings allow. Every match's assignment carries what each
+/// player has unlocked, so the server holds loadouts to it.
 /// </summary>
 public sealed class MatchmakingService(
     IConnectionMultiplexer redis, IOptions<MatchmakingOptions> options, IOptions<GameOptions> game, TimeProvider clock,
-    ILogger<MatchmakingService> log)
+    IServiceScopeFactory scopes, ILogger<MatchmakingService> log)
 {
+    static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { IncludeFields = true };
+    static readonly TimeSpan MatchLife = TimeSpan.FromHours(6);
+
     const string Prefix = "mm:";
     const string ServersKey = Prefix + "servers";
     const string LockKey = Prefix + "lock";
@@ -54,6 +68,7 @@ public sealed class MatchmakingService(
     static string QueueKey(string playlist) => Prefix + "q:" + playlist;
     static string PlayerKey(string player) => Prefix + "p:" + player;
     static string ServerKey(string id) => Prefix + "s:" + id;
+    static string MatchKey(string id) => Prefix + "m:" + id;
 
     long NowMs => clock.GetUtcNow().ToUnixTimeMilliseconds();
     TimeSpan ServerLife => TimeSpan.FromSeconds(Math.Max(_options.ServerTimeoutSeconds, _options.HeartbeatSeconds * 2));
@@ -63,7 +78,8 @@ public sealed class MatchmakingService(
     // ------------------------------------------------------------------ players
 
     /// <summary>Puts a player in a playlist's queue. Any place they already had, in any queue, is given up.</summary>
-    public async Task<MatchTicket> EnqueueAsync(Caller caller, Playlist playlist, uint version)
+    /// <param name="rating">The player's rating in this playlist, for ranked; ignored otherwise.</param>
+    public async Task<MatchTicket> EnqueueAsync(Caller caller, Playlist playlist, uint version, int rating = Ranks.StartRating)
     {
         IDatabase db = Db;
         RedisValue previous = await db.StringGetAsync(PlayerKey(caller.Key));
@@ -71,7 +87,7 @@ public sealed class MatchmakingService(
 
         long now = NowMs;
         var ticket = new MatchTicket(Guid.NewGuid().ToString("N"), caller.Key, caller.Name, playlist.Id, version, now, now,
-            MatchTicket.Searching, "", "", "");
+            MatchTicket.Searching, "", "", "", rating);
         ITransaction tran = db.CreateTransaction();
         _ = tran.HashSetAsync(TicketKey(ticket.Id), Fields(ticket));
         _ = tran.KeyExpireAsync(TicketKey(ticket.Id), TicketLife);
@@ -145,6 +161,14 @@ public sealed class MatchmakingService(
         return await ReadServerAsync(id);
     }
 
+    /// <summary>A match the matchmaker set up, or null if it never did (or it was long ago).</summary>
+    public async Task<StoredMatch?> GetMatchAsync(string matchId)
+    {
+        if (string.IsNullOrEmpty(matchId) || matchId.Length > 32) return null;
+        RedisValue stored = await Db.StringGetAsync(MatchKey(matchId));
+        return stored.HasValue ? JsonSerializer.Deserialize<StoredMatch>(stored.ToString(), Json) : null;
+    }
+
     public async Task RemoveServerAsync(string id)
     {
         await Db.KeyDeleteAsync(ServerKey(id));
@@ -212,6 +236,11 @@ public sealed class MatchmakingService(
         foreach (IGrouping<uint, MatchTicket> sameVersion in waiting.GroupBy(t => t.Version))
         {
             List<MatchTicket> line = sameVersion.OrderBy(t => t.CreatedMs).ToList();
+            if (playlist.Ranked)
+            {
+                await MatchRankedAsync(playlist, line, servers, sameVersion.Key, now);
+                continue;
+            }
             while (line.Count > 0)
             {
                 bool full = line.Count >= playlist.Players;
@@ -228,10 +257,57 @@ public sealed class MatchmakingService(
         }
     }
 
+    /// <summary>
+    /// Ranked: for each player in turn, oldest first, the closest-rated others within a range
+    /// that starts at 150 and widens by 10 for every second the oldest has waited. A match only
+    /// ever starts full.
+    /// </summary>
+    async Task MatchRankedAsync(Playlist playlist, List<MatchTicket> line, List<FleetServer> servers, uint version, long now)
+    {
+        int anchor = 0;
+        while (anchor < line.Count && line.Count >= playlist.Players)
+        {
+            MatchTicket first = line[anchor];
+            int window = 150 + (int)Math.Min(1500, (now - first.CreatedMs) / 100);
+            List<MatchTicket> group = line.Where(t => t != first && Math.Abs(t.Rating - first.Rating) <= window)
+                .OrderBy(t => Math.Abs(t.Rating - first.Rating)).ThenBy(t => t.CreatedMs).Take(playlist.Players - 1).Prepend(first).ToList();
+            if (group.Count < playlist.Players)
+            {
+                anchor++;
+                continue;
+            }
+
+            FleetServer? server = servers.FirstOrDefault(s => s.Free && s.Version == version);
+            if (server == null) return;
+            foreach (MatchTicket taken in group) line.Remove(taken);
+            if (await StartMatchAsync(server, playlist, group)) servers.Remove(server);
+        }
+    }
+
+    /// <summary>Splits players into two sides as even as their ratings allow: best, then a snake down the list.</summary>
+    static Dictionary<string, int> BalanceTeams(List<MatchTicket> players)
+    {
+        var teams = new Dictionary<string, int>();
+        var ordered = players.OrderByDescending(p => p.Rating).ToList();
+        for (int i = 0; i < ordered.Count; i++) teams[ordered[i].Player] = (i % 4 == 0 || i % 4 == 3) ? 0 : 1;
+        return teams;
+    }
+
     async Task<bool> StartMatchAsync(FleetServer server, Playlist playlist, List<MatchTicket> players)
     {
         IDatabase db = Db;
         string matchId = Guid.NewGuid().ToString("N")[..16];
+
+        // What the server will be told: the rules, who is coming, their sides and their unlocks.
+        Dictionary<string, int>? teams = playlist.Ranked && playlist.TeamSize > 0 ? BalanceTeams(players) : null;
+        AssignedPlayer[] assigned;
+        using (IServiceScope scope = scopes.CreateScope())
+        {
+            assigned = await scope.ServiceProvider.GetRequiredService<ProgressionService>()
+                .UnlocksAsync(players.Select(p => (p.Player, teams != null ? teams[p.Player] : -1)));
+        }
+        var assignment = new MatchAssignment { matchId = matchId, playlist = playlist.Id, ranked = playlist.Ranked, players = assigned };
+        await db.StringSetAsync(MatchKey(matchId), JsonSerializer.Serialize(new StoredMatch(server.Id, assignment), Json), MatchLife);
 
         // The server first, so nobody is matched to a server someone else just took.
         ITransaction claim = db.CreateTransaction();
@@ -249,7 +325,7 @@ public sealed class MatchmakingService(
             _ = take.HashSetAsync(TicketKey(ticket.Id),
             [
                 new("status", MatchTicket.Matched), new("address", address), new("match", matchId),
-                new("join", JoinTicket(ticket, matchId)),
+                new("join", JoinTicket(ticket, matchId, playlist.Ranked)),
             ]);
             _ = take.SortedSetRemoveAsync(QueueKey(playlist.Id), ticket.Id);
             _ = take.KeyDeleteAsync(PlayerKey(ticket.Player));
@@ -262,7 +338,7 @@ public sealed class MatchmakingService(
     }
 
     /// <summary>The ticket a player shows the game server: who they are, and that they belong in this match.</summary>
-    string JoinTicket(MatchTicket ticket, string matchId)
+    string JoinTicket(MatchTicket ticket, string matchId, bool ranked)
     {
         byte[] key = Encoding.UTF8.GetBytes(_game.TicketSigningKey);
         if (key.Length < GameTicket.MinKeyBytes) return "";      // servers without a key let anyone in
@@ -271,7 +347,8 @@ public sealed class MatchmakingService(
         {
             AccountId = ticket.Player,
             Name = ticket.Name,
-            Mode = GameTicket.Casual,
+            Mode = ranked ? GameTicket.Ranked : GameTicket.Casual,
+            EmailVerified = ranked,
             ExpiresAt = now + Math.Max(_game.TicketSeconds, 60),
             MatchId = matchId,
         }, key, now);
@@ -293,7 +370,7 @@ public sealed class MatchmakingService(
     [
         new("player", t.Player), new("name", t.Name), new("playlist", t.Playlist), new("version", (long)t.Version),
         new("created", t.CreatedMs), new("seen", t.SeenMs), new("status", t.Status), new("address", t.Address),
-        new("join", t.JoinTicket), new("match", t.MatchId),
+        new("join", t.JoinTicket), new("match", t.MatchId), new("rating", t.Rating),
     ];
 
     async Task<MatchTicket?> ReadTicketAsync(string id)
@@ -303,7 +380,8 @@ public sealed class MatchmakingService(
         if (entries.Length == 0) return null;
         Dictionary<string, RedisValue> f = entries.ToDictionary(e => e.Name.ToString(), e => e.Value);
         return new MatchTicket(id, Text(f, "player"), Text(f, "name"), Text(f, "playlist"), (uint)Number(f, "version"),
-            Number(f, "created"), Number(f, "seen"), Text(f, "status"), Text(f, "address"), Text(f, "join"), Text(f, "match"));
+            Number(f, "created"), Number(f, "seen"), Text(f, "status"), Text(f, "address"), Text(f, "join"), Text(f, "match"),
+            (int)Number(f, "rating"));
     }
 
     async Task<FleetServer?> ReadServerAsync(string id)

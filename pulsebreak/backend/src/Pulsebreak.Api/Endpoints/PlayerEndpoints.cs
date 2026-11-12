@@ -4,6 +4,8 @@ using Microsoft.EntityFrameworkCore;
 using Pulsebreak.Api.Auth;
 using Pulsebreak.Api.Data;
 using Pulsebreak.Api.Loadouts;
+using Pulsebreak.Api.Progression;
+using Pulsebreak.Shared.Match;
 using Pulsebreak.Shared.Loadouts;
 using Pulsebreak.Shared.Net;
 
@@ -40,6 +42,34 @@ public static class PlayerEndpoints
         player.MapGet("/settings", GetSettings);
         player.MapPut("/settings", PutSettings);
         player.MapPost("/game/tickets", CreateTicket);
+        player.MapGet("/progression", GetProgression);
+        player.MapGet("/matches", GetHistory);
+
+        // Anyone may look at a leaderboard.
+        routes.MapGet("/v1/ranked/{playlist}/leaderboard", GetLeaderboard);
+    }
+
+    // ------------------------------------------------------------------ progression
+
+    static async Task<IResult> GetProgression(ClaimsPrincipal user, AppDbContext db, ProgressionService progression)
+    {
+        Account? account = await db.CurrentAccountAsync(user);
+        if (account == null) return Api.Unauthorized();
+        ProgressionDto? dto = await progression.GetAsync(account.Id);
+        return dto != null ? Results.Ok(dto) : Api.Unauthorized();
+    }
+
+    static async Task<IResult> GetHistory(ClaimsPrincipal user, AppDbContext db, ProgressionService progression, int? limit)
+    {
+        Account? account = await db.CurrentAccountAsync(user);
+        return account != null ? Results.Ok(await progression.HistoryAsync(account.Id, limit ?? 10)) : Api.Unauthorized();
+    }
+
+    static async Task<IResult> GetLeaderboard(string playlist, ProgressionService progression, int? limit)
+    {
+        Playlist? found = Playlists.Find(playlist);
+        if (found is not { Ranked: true }) return Api.Error(StatusCodes.Status404NotFound, "unknown_playlist", "There is no ranked playlist called that.");
+        return Results.Ok(await progression.LeaderboardAsync(found.Id, limit ?? 50));
     }
 
     static async Task<IResult> Me(ClaimsPrincipal user, AppDbContext db)

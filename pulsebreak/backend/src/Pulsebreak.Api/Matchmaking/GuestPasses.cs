@@ -8,7 +8,8 @@ using Pulsebreak.Api.Auth;
 namespace Pulsebreak.Api.Matchmaking;
 
 /// <summary>Who is asking for a match: an account, or a guest. <see cref="Key"/> is what a game server knows them by.</summary>
-public sealed record Caller(string Key, string Name, bool Guest);
+/// <param name="Verified">An account with a verified email: allowed into ranked. Never true for a guest.</param>
+public sealed record Caller(string Key, string Name, bool Guest, bool Verified = false);
 
 /// <summary>
 /// Passes for playing without an account. Accounts are switched off in the game for now, so

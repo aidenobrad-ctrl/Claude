@@ -4,6 +4,8 @@ using Microsoft.Extensions.Options;
 using Pulsebreak.Api.Auth;
 using Pulsebreak.Api.Data;
 using Pulsebreak.Api.Matchmaking;
+using Pulsebreak.Api.Progression;
+using Pulsebreak.Shared.Progression;
 using Pulsebreak.Shared.Match;
 
 namespace Pulsebreak.Api.Endpoints;
@@ -21,8 +23,7 @@ public sealed record PlaylistInfo(string Id, string Title, int Players, int Sear
 public sealed record RegisterServerRequest(string? Address, int Port, uint Version);
 public sealed record RegisterServerResponse(string Id, float HeartbeatSeconds);
 public sealed record HeartbeatRequest(string? State, string? MatchId, int Players);
-/// <summary>Empty strings when there is nothing new to play.</summary>
-public sealed record HeartbeatResponse(string MatchId, string Playlist);
+public sealed record ResultResponse(string Outcome);
 
 /// <summary>
 /// Finding a match, for players (signed in, or with a guest pass), and offering servers to
@@ -45,6 +46,7 @@ public static class MatchmakingEndpoints
         fleet.MapPost("/servers", Register);
         fleet.MapPost("/servers/{id}/heartbeat", Heartbeat);
         fleet.MapDelete("/servers/{id}", Deregister);
+        fleet.MapPost("/servers/{id}/results", ReportResult);
     }
 
     // ------------------------------------------------------------------ players
@@ -64,7 +66,7 @@ public static class MatchmakingEndpoints
     }
 
     static async Task<IResult> Enqueue(QueueRequest? request, HttpContext http, GuestPasses guests, AppDbContext db,
-        MatchmakingService matchmaking, TimeProvider clock)
+        MatchmakingService matchmaking, ProgressionService progression, TimeProvider clock)
     {
         Caller? caller = await WhoAsync(http, guests, db);
         if (caller == null) return Api.Unauthorized();
@@ -75,7 +77,18 @@ public static class MatchmakingEndpoints
         if (request!.Version == 0)
             return Api.Invalid([new FieldError("version", "Send the game's network version, so you are only matched with servers that can talk to you.")]);
 
-        MatchTicket ticket = await matchmaking.EnqueueAsync(caller, playlist, request.Version);
+        int rating = Ranks.StartRating;
+        if (playlist.Ranked)
+        {
+            // Ranked is for accounts that have shown who they are.
+            if (caller.Guest)
+                return Api.Error(StatusCodes.Status403Forbidden, "sign_in_required", "Sign in to play ranked.");
+            if (!caller.Verified)
+                return Api.Error(StatusCodes.Status403Forbidden, "email_not_verified", "Verify your email address to play ranked.");
+            rating = await progression.RatingAsync(Guid.Parse(caller.Key), playlist.Id);
+        }
+
+        MatchTicket ticket = await matchmaking.EnqueueAsync(caller, playlist, request.Version, rating);
         return Results.Created("/v1/matchmaking/tickets/" + ticket.Id, await StatusOf(ticket, matchmaking, clock));
     }
 
@@ -112,7 +125,7 @@ public static class MatchmakingEndpoints
         if (http.User.TryGetAccountId(out _))
         {
             Account? account = await db.CurrentAccountAsync(http.User);
-            return account != null ? new Caller(account.Id.ToString(), account.Username, false) : null;
+            return account != null ? new Caller(account.Id.ToString(), account.Username, false, account.EmailVerifiedAt != null) : null;
         }
         string header = http.Request.Headers.Authorization.ToString();
         return header.StartsWith("Bearer ", StringComparison.Ordinal) ? await guests.ReadAsync(header["Bearer ".Length..].Trim()) : null;
@@ -147,13 +160,35 @@ public static class MatchmakingEndpoints
         return Results.Ok(new RegisterServerResponse(server.Id, options.Value.HeartbeatSeconds));
     }
 
+    /// <summary>
+    /// A server checking in. The reply is the match to start, if there is a new one: its rules,
+    /// who is coming, their sides and what they have unlocked. Otherwise an empty match id.
+    /// </summary>
     static async Task<IResult> Heartbeat(string id, HeartbeatRequest? request, MatchmakingService matchmaking)
     {
         FleetServer? server = await matchmaking.HeartbeatAsync(id, request?.State ?? "busy", request?.MatchId ?? "", request?.Players ?? 0);
         if (server == null) return Api.Error(StatusCodes.Status404NotFound, "unknown_server", "This server is not registered. Register again.");
 
         bool newMatch = server.AssignedMatch.Length > 0 && server.AssignedMatch != server.ReportedMatch;
-        return Results.Ok(newMatch ? new HeartbeatResponse(server.AssignedMatch, server.AssignedPlaylist) : new HeartbeatResponse("", ""));
+        StoredMatch? match = newMatch ? await matchmaking.GetMatchAsync(server.AssignedMatch) : null;
+        return Results.Ok(match?.Assignment ?? new MatchAssignment());
+    }
+
+    /// <summary>A server reporting how a match it was given went. Counts once; a repeat is acknowledged and ignored.</summary>
+    static async Task<IResult> ReportResult(string id, MatchReport? report, MatchmakingService matchmaking, ProgressionService progression)
+    {
+        if (report == null || string.IsNullOrEmpty(report.matchId))
+            return Api.Invalid([new FieldError("matchId", "Say which match this is.")]);
+        if ((report.players?.Length ?? 0) > 64)
+            return Api.Invalid([new FieldError("players", "Too many players for one match.")]);
+
+        RecordOutcome outcome = await progression.RecordAsync(id, report, await matchmaking.GetMatchAsync(report.matchId));
+        return outcome switch
+        {
+            RecordOutcome.UnknownMatch => Api.Error(StatusCodes.Status404NotFound, "unknown_match", "No such match was set up by matchmaking."),
+            RecordOutcome.WrongServer => Api.Error(StatusCodes.Status403Forbidden, "wrong_server", "That match was given to a different server."),
+            _ => Results.Ok(new ResultResponse(outcome == RecordOutcome.Recorded ? "recorded" : "already_recorded")),
+        };
     }
 
     static async Task<IResult> Deregister(string id, MatchmakingService matchmaking)

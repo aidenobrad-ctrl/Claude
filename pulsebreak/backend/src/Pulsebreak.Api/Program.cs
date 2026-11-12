@@ -12,6 +12,7 @@ using Pulsebreak.Api.Data;
 using Pulsebreak.Api.Email;
 using Pulsebreak.Api.Endpoints;
 using Pulsebreak.Api.Loadouts;
+using Pulsebreak.Api.Matchmaking;
 using Pulsebreak.Shared.Net;
 using StackExchange.Redis;
 
@@ -38,6 +39,13 @@ builder.Services.AddOptions<GameOptions>().Bind(config.GetSection("Game"))
 builder.Services.AddOptions<EmailOptions>().Bind(config.GetSection("Email"))
     .Validate(o => o.Mode is "Log" or "File" or "Smtp", "Email:Mode must be Log, File or Smtp.")
     .Validate(o => o.Mode != "Smtp" || o.SmtpHost.Length > 0, "Email:SmtpHost is required when Email:Mode is Smtp.")
+    .ValidateOnStart();
+builder.Services.AddOptions<MatchmakingOptions>().Bind(config.GetSection("Matchmaking"))
+    .Validate(o => o.FleetKey.Length == 0 || Encoding.UTF8.GetByteCount(o.FleetKey) >= 32,
+        "Matchmaking:FleetKey must be empty (no game servers) or a secret of at least 32 characters.")
+    .Validate(o => o.FillAfterSeconds is >= 0 and <= 600 && o.TicketIdleSeconds is >= 5 and <= 600 &&
+                   o.HeartbeatSeconds is >= 1 and <= 60 && o.ServerTimeoutSeconds >= o.HeartbeatSeconds && o.GuestPassHours is >= 1 and <= 720,
+        "Matchmaking timings are out of range.")
     .ValidateOnStart();
 builder.Services.AddOptions<RateLimitOptions>().Bind(config.GetSection("RateLimits"));
 builder.Services.AddOptions<DatabaseOptions>().Bind(config.GetSection("Database"));
@@ -66,6 +74,9 @@ builder.Services.AddSingleton<SessionIssuer>();
 builder.Services.AddSingleton<AccountMailer>();
 builder.Services.AddScoped<LoadoutService>();
 builder.Services.AddHostedService<EmailWorker>();
+builder.Services.AddSingleton<GuestPasses>();
+builder.Services.AddSingleton<MatchmakingService>();
+builder.Services.AddHostedService<MatchmakerWorker>();
 builder.Services.AddSingleton<IEmailSender>(services => services.GetRequiredService<IOptions<EmailOptions>>().Value.Mode switch
 {
     "Smtp" => ActivatorUtilities.CreateInstance<SmtpEmailSender>(services),
@@ -190,6 +201,7 @@ app.MapGet("/health/ready", async (AppDbContext db, IConnectionMultiplexer redis
 });
 AuthEndpoints.Map(app);
 PlayerEndpoints.Map(app);
+MatchmakingEndpoints.Map(app);
 
 if (app.Services.GetRequiredService<IOptions<DatabaseOptions>>().Value.MigrateOnStartup)
 {

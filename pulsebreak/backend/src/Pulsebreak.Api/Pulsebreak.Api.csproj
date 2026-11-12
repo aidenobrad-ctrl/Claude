@@ -24,8 +24,9 @@
   </ItemGroup>
 
   <!--
-    The stored loadout format, the rule for merging two copies of it, and the join ticket a
-    game server checks are the game's own source files, compiled in here as well. The game
+    The stored loadout format, the rule for merging two copies of it, the join ticket a game
+    server checks and the playlists matchmaking fills are the game's own source files,
+    compiled in here as well. The game
     and the backend cannot drift apart on any of them, because there is only one of each.
     Those files may use nothing but System.
   -->
@@ -33,6 +34,7 @@
     <Compile Include="../../../game/Assets/_Project/Shared/Loadouts/LoadoutData.cs" Link="Shared/LoadoutData.cs" />
     <Compile Include="../../../game/Assets/_Project/Shared/Loadouts/LoadoutSync.cs" Link="Shared/LoadoutSync.cs" />
     <Compile Include="../../../game/Assets/_Project/Shared/Net/GameTicket.cs" Link="Shared/GameTicket.cs" />
+    <Compile Include="../../../game/Assets/_Project/Shared/Match/Playlists.cs" Link="Shared/Playlists.cs" />
   </ItemGroup>
 
   <ItemGroup>

@@ -80,3 +80,29 @@ public sealed class DatabaseOptions
     /// <summary>Bring the schema up to date when the API starts. Convenient for development and single-server setups.</summary>
     public bool MigrateOnStartup { get; set; }
 }
+
+/// <summary>Finding matches and the game servers they are played on. Bound from "Matchmaking".</summary>
+public sealed class MatchmakingOptions
+{
+    /// <summary>
+    /// The secret dedicated game servers show (in the X-Fleet-Key header) to offer themselves
+    /// for matches. At least 32 characters. Empty switches the fleet endpoints off, and with
+    /// no servers nobody gets matched.
+    /// </summary>
+    public string FleetKey { get; set; } = "";
+    /// <summary>
+    /// How long the oldest player in a queue waits for it to fill before a match starts with
+    /// whoever is there (bots take the other places).
+    /// </summary>
+    public int FillAfterSeconds { get; set; } = 20;
+    /// <summary>A place in the queue that has not been asked about for this long is given up: the player has gone.</summary>
+    public int TicketIdleSeconds { get; set; } = 20;
+    /// <summary>How often game servers check in.</summary>
+    public int HeartbeatSeconds { get; set; } = 3;
+    /// <summary>A server that has not checked in for this long is forgotten.</summary>
+    public int ServerTimeoutSeconds { get; set; } = 15;
+    /// <summary>How long a guest pass lasts.</summary>
+    public int GuestPassHours { get; set; } = 12;
+    /// <summary>How often the matchmaker looks at the queues.</summary>
+    public int IntervalMilliseconds { get; set; } = 1000;
+}

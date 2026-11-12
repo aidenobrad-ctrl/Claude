@@ -1,6 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using Pulsebreak.Shared.Match;
+using Pulsebreak.Shared.Net;
 
 namespace Pulsebreak.Client.Online
 {
@@ -36,7 +37,7 @@ namespace Pulsebreak.Client.Online
     }
 
     [Serializable] sealed class GuestBody { public string name; }
-    [Serializable] sealed class QueueBody { public string playlist; }
+    [Serializable] sealed class QueueBody { public string playlist; public uint version; }
 
     /// <summary>
     /// Finding a match through the backend: join a playlist's queue, ask now and then how it
@@ -74,7 +75,7 @@ namespace Pulsebreak.Client.Online
         {
             AccountResult<string> pass = await PassAsync(name);
             if (!pass.Ok) return Copy<MatchTicketData>(pass);
-            return await SendAsync<MatchTicketData>("POST", "/v1/matchmaking/tickets", new QueueBody { playlist = Playlists.For(mode).Id }, pass.Value);
+            return await SendAsync<MatchTicketData>("POST", "/v1/matchmaking/tickets", new QueueBody { playlist = Playlists.For(mode).Id, version = NetProtocol.Version }, pass.Value);
         }
 
         /// <summary>How a place in the queue is doing.</summary>

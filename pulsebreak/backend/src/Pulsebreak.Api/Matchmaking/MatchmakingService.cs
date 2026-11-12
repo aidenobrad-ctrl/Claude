@@ -1,0 +1,351 @@
+using System.Globalization;
+using System.Text;
+using Microsoft.Extensions.Options;
+using Pulsebreak.Shared.Match;
+using Pulsebreak.Shared.Net;
+using StackExchange.Redis;
+
+namespace Pulsebreak.Api.Matchmaking;
+
+/// <summary>One player's place in a queue, and once matched, where to go.</summary>
+public sealed record MatchTicket(
+    string Id, string Player, string Name, string Playlist, uint Version, long CreatedMs, long SeenMs,
+    string Status, string Address, string JoinTicket, string MatchId)
+{
+    public const string Searching = "searching", Matched = "matched", Cancelled = "cancelled", Expired = "expired";
+}
+
+/// <summary>A game server offering itself for matches, as it last described itself.</summary>
+public sealed record FleetServer(
+    string Id, string Address, int Port, uint Version, string State, string ReportedMatch, int Players,
+    string AssignedMatch, string AssignedPlaylist)
+{
+    /// <summary>Free for a new match: nobody on it, and whatever it was last given is finished (or never arrived).</summary>
+    public bool Free => State == "idle" && (AssignedMatch.Length == 0 || ReportedMatch == AssignedMatch);
+}
+
+/// <summary>
+/// Matchmaking, kept in Redis so any number of API processes can share it.
+///
+/// A player joins a playlist's queue and is handed a ticket id; they ask about it every
+/// second or so. Game servers register with a fleet key and check in every few seconds,
+/// saying whether anyone is playing on them. Every second the matchmaker (one process at a
+/// time, under a lock) takes the oldest players in each queue and, when there are enough of
+/// them or the oldest has waited long enough, gives them a free server: the server is told
+/// the match's id and playlist on its next check-in, and each player's ticket gets the
+/// server's address and a join ticket good for that match only.
+///
+/// Players whose game version differs from a server's are never sent to it.
+/// </summary>
+public sealed class MatchmakingService(
+    IConnectionMultiplexer redis, IOptions<MatchmakingOptions> options, IOptions<GameOptions> game, TimeProvider clock,
+    ILogger<MatchmakingService> log)
+{
+    const string Prefix = "mm:";
+    const string ServersKey = Prefix + "servers";
+    const string LockKey = Prefix + "lock";
+    static readonly TimeSpan TicketLife = TimeSpan.FromMinutes(10);
+
+    readonly MatchmakingOptions _options = options.Value;
+    readonly GameOptions _game = game.Value;
+    IDatabase Db => redis.GetDatabase();
+
+    static string TicketKey(string id) => Prefix + "t:" + id;
+    static string QueueKey(string playlist) => Prefix + "q:" + playlist;
+    static string PlayerKey(string player) => Prefix + "p:" + player;
+    static string ServerKey(string id) => Prefix + "s:" + id;
+
+    long NowMs => clock.GetUtcNow().ToUnixTimeMilliseconds();
+    TimeSpan ServerLife => TimeSpan.FromSeconds(Math.Max(_options.ServerTimeoutSeconds, _options.HeartbeatSeconds * 2));
+
+    public bool FleetEnabled => Encoding.UTF8.GetByteCount(_options.FleetKey) >= 32;
+
+    // ------------------------------------------------------------------ players
+
+    /// <summary>Puts a player in a playlist's queue. Any place they already had, in any queue, is given up.</summary>
+    public async Task<MatchTicket> EnqueueAsync(Caller caller, Playlist playlist, uint version)
+    {
+        IDatabase db = Db;
+        RedisValue previous = await db.StringGetAsync(PlayerKey(caller.Key));
+        if (previous.HasValue) await CancelAsync(previous.ToString(), caller.Key);
+
+        long now = NowMs;
+        var ticket = new MatchTicket(Guid.NewGuid().ToString("N"), caller.Key, caller.Name, playlist.Id, version, now, now,
+            MatchTicket.Searching, "", "", "");
+        ITransaction tran = db.CreateTransaction();
+        _ = tran.HashSetAsync(TicketKey(ticket.Id), Fields(ticket));
+        _ = tran.KeyExpireAsync(TicketKey(ticket.Id), TicketLife);
+        _ = tran.StringSetAsync(PlayerKey(caller.Key), ticket.Id, TicketLife);
+        _ = tran.SortedSetAddAsync(QueueKey(playlist.Id), ticket.Id, now);
+        await tran.ExecuteAsync();
+        return ticket;
+    }
+
+    /// <summary>A ticket, if it exists and belongs to this player. Asking about it keeps it alive.</summary>
+    public async Task<MatchTicket?> CheckAsync(string id, string player)
+    {
+        MatchTicket? ticket = await ReadTicketAsync(id);
+        if (ticket == null || ticket.Player != player) return null;
+        if (ticket.Status == MatchTicket.Searching)
+        {
+            await Db.HashSetAsync(TicketKey(id), "seen", NowMs);
+            await Db.KeyExpireAsync(TicketKey(id), TicketLife);
+        }
+        return ticket;
+    }
+
+    /// <summary>Gives up a place in a queue. False if there was no such place, or it was not this player's.</summary>
+    public async Task<bool> CancelAsync(string id, string player)
+    {
+        MatchTicket? ticket = await ReadTicketAsync(id);
+        if (ticket == null || ticket.Player != player) return false;
+
+        ITransaction tran = Db.CreateTransaction();
+        tran.AddCondition(Condition.HashEqual(TicketKey(id), "status", MatchTicket.Searching));
+        _ = tran.HashSetAsync(TicketKey(id), "status", MatchTicket.Cancelled);
+        _ = tran.SortedSetRemoveAsync(QueueKey(ticket.Playlist), id);
+        _ = tran.KeyDeleteAsync(PlayerKey(player));
+        await tran.ExecuteAsync();
+        return true;
+    }
+
+    public async Task<int> SearchingAsync(string playlist) => (int)await Db.SortedSetLengthAsync(QueueKey(playlist));
+
+    // ------------------------------------------------------------------ game servers
+
+    public async Task<FleetServer> RegisterAsync(string address, int port, uint version)
+    {
+        string id = Guid.NewGuid().ToString("N")[..12];
+        IDatabase db = Db;
+        await db.HashSetAsync(ServerKey(id),
+        [
+            new("address", address), new("port", port), new("version", (long)version), new("state", "idle"), new("match", ""),
+            new("players", 0), new("assigned", ""), new("assignedPlaylist", ""),
+        ]);
+        await db.KeyExpireAsync(ServerKey(id), ServerLife);
+        await db.SetAddAsync(ServersKey, id);
+        log.LogInformation("Game server {Id} at {Address}:{Port} joined the fleet.", id, address, port);
+        return (await ReadServerAsync(id))!;
+    }
+
+    /// <summary>
+    /// A server checking in. Returns what it is now: if its assigned match differs from the
+    /// one it reports, that is a match for it to start. Null if the server is not known (it
+    /// timed out, or this backend restarted), in which case it should register again.
+    /// </summary>
+    public async Task<FleetServer?> HeartbeatAsync(string id, string state, string reportedMatch, int players)
+    {
+        IDatabase db = Db;
+        if (!await db.KeyExistsAsync(ServerKey(id))) return null;
+        await db.HashSetAsync(ServerKey(id),
+        [
+            new("state", state == "idle" ? "idle" : "busy"), new("match", reportedMatch ?? ""), new("players", Math.Max(0, players)),
+        ]);
+        await db.KeyExpireAsync(ServerKey(id), ServerLife);
+        return await ReadServerAsync(id);
+    }
+
+    public async Task RemoveServerAsync(string id)
+    {
+        await Db.KeyDeleteAsync(ServerKey(id));
+        await Db.SetRemoveAsync(ServersKey, id);
+    }
+
+    public async Task<List<FleetServer>> ServersAsync()
+    {
+        var servers = new List<FleetServer>();
+        foreach (RedisValue id in await Db.SetMembersAsync(ServersKey))
+        {
+            FleetServer? server = await ReadServerAsync(id.ToString());
+            if (server != null) servers.Add(server);
+            else await Db.SetRemoveAsync(ServersKey, id);       // timed out
+        }
+        return servers;
+    }
+
+    // ------------------------------------------------------------------ the matchmaker
+
+    /// <summary>One pass over every queue. Several API processes may call this; only one at a time does anything.</summary>
+    public async Task MatchAsync()
+    {
+        IDatabase db = Db;
+        string owner = Guid.NewGuid().ToString("N");
+        if (!await db.StringSetAsync(LockKey, owner, TimeSpan.FromSeconds(10), When.NotExists)) return;
+        try
+        {
+            List<FleetServer> servers = await ServersAsync();
+            foreach (Playlist playlist in Playlists.All) await MatchPlaylistAsync(playlist, servers);
+        }
+        finally
+        {
+            ITransaction release = db.CreateTransaction();
+            release.AddCondition(Condition.StringEqual(LockKey, owner));
+            _ = release.KeyDeleteAsync(LockKey);
+            await release.ExecuteAsync();
+        }
+    }
+
+    async Task MatchPlaylistAsync(Playlist playlist, List<FleetServer> servers)
+    {
+        IDatabase db = Db;
+        long now = NowMs;
+        long idleCutoff = now - _options.TicketIdleSeconds * 1000L;
+        var waiting = new List<MatchTicket>();
+        foreach (RedisValue id in await db.SortedSetRangeByRankAsync(QueueKey(playlist.Id)))
+        {
+            MatchTicket? ticket = await ReadTicketAsync(id.ToString());
+            if (ticket == null || ticket.Status != MatchTicket.Searching)
+            {
+                await db.SortedSetRemoveAsync(QueueKey(playlist.Id), id);
+                continue;
+            }
+            if (ticket.SeenMs < idleCutoff)
+            {
+                // Stopped asking: they closed the game or lost their connection.
+                await ExpireAsync(ticket);
+                continue;
+            }
+            waiting.Add(ticket);
+        }
+
+        // Only players on the same version as a server can play on it, so each version is its own queue.
+        foreach (IGrouping<uint, MatchTicket> sameVersion in waiting.GroupBy(t => t.Version))
+        {
+            List<MatchTicket> line = sameVersion.OrderBy(t => t.CreatedMs).ToList();
+            while (line.Count > 0)
+            {
+                bool full = line.Count >= playlist.Players;
+                bool waitedEnough = line.Count >= playlist.MinPlayers && now - line[0].CreatedMs >= _options.FillAfterSeconds * 1000L;
+                if (!full && !waitedEnough) break;
+
+                FleetServer? server = servers.FirstOrDefault(s => s.Free && s.Version == sameVersion.Key);
+                if (server == null) break;       // everyone waits for a server to come free
+
+                List<MatchTicket> players = line.Take(playlist.Players).ToList();
+                line.RemoveRange(0, players.Count);
+                if (await StartMatchAsync(server, playlist, players)) servers.Remove(server);
+            }
+        }
+    }
+
+    async Task<bool> StartMatchAsync(FleetServer server, Playlist playlist, List<MatchTicket> players)
+    {
+        IDatabase db = Db;
+        string matchId = Guid.NewGuid().ToString("N")[..16];
+
+        // The server first, so nobody is matched to a server someone else just took.
+        ITransaction claim = db.CreateTransaction();
+        claim.AddCondition(Condition.KeyExists(ServerKey(server.Id)));
+        claim.AddCondition(Condition.HashEqual(ServerKey(server.Id), "assigned", server.AssignedMatch));
+        _ = claim.HashSetAsync(ServerKey(server.Id), [new("assigned", matchId), new("assignedPlaylist", playlist.Id)]);
+        if (!await claim.ExecuteAsync()) return false;
+
+        string address = server.Address + ":" + server.Port.ToString(CultureInfo.InvariantCulture);
+        int matched = 0;
+        foreach (MatchTicket ticket in players)
+        {
+            ITransaction take = db.CreateTransaction();
+            take.AddCondition(Condition.HashEqual(TicketKey(ticket.Id), "status", MatchTicket.Searching));
+            _ = take.HashSetAsync(TicketKey(ticket.Id),
+            [
+                new("status", MatchTicket.Matched), new("address", address), new("match", matchId),
+                new("join", JoinTicket(ticket, matchId)),
+            ]);
+            _ = take.SortedSetRemoveAsync(QueueKey(playlist.Id), ticket.Id);
+            _ = take.KeyDeleteAsync(PlayerKey(ticket.Player));
+            if (await take.ExecuteAsync()) matched++;
+        }
+
+        log.LogInformation("Match {Match} ({Playlist}, {Players} players) goes to server {Server}.", matchId, playlist.Id, matched, server.Id);
+        // If everyone gave up at the last moment, the server sees nobody arrive and frees itself.
+        return true;
+    }
+
+    /// <summary>The ticket a player shows the game server: who they are, and that they belong in this match.</summary>
+    string JoinTicket(MatchTicket ticket, string matchId)
+    {
+        byte[] key = Encoding.UTF8.GetBytes(_game.TicketSigningKey);
+        if (key.Length < GameTicket.MinKeyBytes) return "";      // servers without a key let anyone in
+        long now = clock.GetUtcNow().ToUnixTimeSeconds();
+        return GameTicket.Create(new TicketClaims
+        {
+            AccountId = ticket.Player,
+            Name = ticket.Name,
+            Mode = GameTicket.Casual,
+            ExpiresAt = now + Math.Max(_game.TicketSeconds, 60),
+            MatchId = matchId,
+        }, key, now);
+    }
+
+    async Task ExpireAsync(MatchTicket ticket)
+    {
+        ITransaction tran = Db.CreateTransaction();
+        tran.AddCondition(Condition.HashEqual(TicketKey(ticket.Id), "status", MatchTicket.Searching));
+        _ = tran.HashSetAsync(TicketKey(ticket.Id), "status", MatchTicket.Expired);
+        _ = tran.SortedSetRemoveAsync(QueueKey(ticket.Playlist), ticket.Id);
+        _ = tran.KeyDeleteAsync(PlayerKey(ticket.Player));
+        await tran.ExecuteAsync();
+    }
+
+    // ------------------------------------------------------------------ storage
+
+    static HashEntry[] Fields(MatchTicket t) =>
+    [
+        new("player", t.Player), new("name", t.Name), new("playlist", t.Playlist), new("version", (long)t.Version),
+        new("created", t.CreatedMs), new("seen", t.SeenMs), new("status", t.Status), new("address", t.Address),
+        new("join", t.JoinTicket), new("match", t.MatchId),
+    ];
+
+    async Task<MatchTicket?> ReadTicketAsync(string id)
+    {
+        if (id.Length is 0 or > 64) return null;
+        HashEntry[] entries = await Db.HashGetAllAsync(TicketKey(id));
+        if (entries.Length == 0) return null;
+        Dictionary<string, RedisValue> f = entries.ToDictionary(e => e.Name.ToString(), e => e.Value);
+        return new MatchTicket(id, Text(f, "player"), Text(f, "name"), Text(f, "playlist"), (uint)Number(f, "version"),
+            Number(f, "created"), Number(f, "seen"), Text(f, "status"), Text(f, "address"), Text(f, "join"), Text(f, "match"));
+    }
+
+    async Task<FleetServer?> ReadServerAsync(string id)
+    {
+        HashEntry[] entries = await Db.HashGetAllAsync(ServerKey(id));
+        if (entries.Length == 0) return null;
+        Dictionary<string, RedisValue> f = entries.ToDictionary(e => e.Name.ToString(), e => e.Value);
+        return new FleetServer(id, Text(f, "address"), (int)Number(f, "port"), (uint)Number(f, "version"), Text(f, "state"),
+            Text(f, "match"), (int)Number(f, "players"), Text(f, "assigned"), Text(f, "assignedPlaylist"));
+    }
+
+    static string Text(Dictionary<string, RedisValue> fields, string name) => fields.TryGetValue(name, out RedisValue v) ? v.ToString() : "";
+
+    static long Number(Dictionary<string, RedisValue> fields, string name) =>
+        fields.TryGetValue(name, out RedisValue v) && v.TryParse(out long n) ? n : 0;
+}
+
+/// <summary>Runs the matchmaker every second or so.</summary>
+public sealed class MatchmakerWorker(MatchmakingService matchmaking, IOptions<MatchmakingOptions> options, ILogger<MatchmakerWorker> log)
+    : BackgroundService
+{
+    protected override async Task ExecuteAsync(CancellationToken stopping)
+    {
+        var interval = TimeSpan.FromMilliseconds(Math.Clamp(options.Value.IntervalMilliseconds, 50, 10000));
+        while (!stopping.IsCancellationRequested)
+        {
+            try
+            {
+                await matchmaking.MatchAsync();
+            }
+            catch (Exception error) when (error is RedisException or TimeoutException)
+            {
+                log.LogWarning("Matchmaking could not reach Redis: {Message}", error.Message);
+            }
+            try
+            {
+                await Task.Delay(interval, stopping);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+        }
+    }
+}

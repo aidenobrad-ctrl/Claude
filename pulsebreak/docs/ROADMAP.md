@@ -21,7 +21,7 @@ The game is built in phases. Each one ends with something you can run and judge,
 
 **Built.** Offline, single player.
 
-- Fixed-tick character motor: run, sprint, crouch, slide, jump with coyote time and buffering, mantle, lean.
+- Fixed-tick character motor: run, sprint, crouch, slide, jump with coyote time and buffering, mantle, lean. (Lean was removed later, at your request.)
 - One weapon, the Hadron AR, defined entirely by a ScriptableObject.
 - Hitscan against head, body and limb hitboxes; hit markers, damage numbers, dynamic crosshair, tracers, impacts, placeholder audio.
 - Firing range: static and moving targets from 10 to 75 m, a movement course, a raised perch with stairs, session stats including time to kill.
@@ -123,6 +123,7 @@ You opened the project, liked it, and asked for a round of changes before the ne
 - **More weapons in that style**, with standard names: Bow, Flamethrower, Paintball Gun, Sawed-Off, Flare Gun, Slingshot, Laser Pistol, Scythe, Battle Axe and Fists, for 40 in all, and every existing weapon renamed to what it is (Assault Rifle, SMG, Pump Shotgun, Sniper Rifle...). Two new default loadouts use the new ones.
 - **Stat bars that show the differences**, by comparing each weapon with the others for the same slot.
 - **Sprint** 10% faster (8.6 m/s), and a **toggle sprint** setting.
+- **Lean removed.** Q and E no longer tilt; the movement code, its settings and the camera tilt are gone, and servers ignore the old lean input.
 - **Accounts switched off** until they are made required. The backend stays in the repository, tested.
 
 ## Phase 6: Matchmaking and team modes

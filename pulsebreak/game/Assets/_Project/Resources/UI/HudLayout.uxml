@@ -50,7 +50,7 @@
             <ui:Label class="hint" text="Shift  sprint (hold, or toggle in Esc)      Space  jump" picking-mode="Ignore" />
             <ui:Label class="hint" text="Ctrl / C  crouch      sprint + crouch  slide" picking-mode="Ignore" />
             <ui:Label class="hint" text="hold Space + W at a ledge  mantle" picking-mode="Ignore" />
-            <ui:Label class="hint" text="Q / E  lean      RMB  aim      LMB  fire" picking-mode="Ignore" />
+            <ui:Label class="hint" text="RMB  aim      LMB  fire" picking-mode="Ignore" />
             <ui:Label class="hint" text="1 2 3 / wheel  switch weapon      R  reload" picking-mode="Ignore" />
             <ui:Label class="hint" text="G  throw grenade      B  swap loadout" picking-mode="Ignore" />
             <ui:Label class="hint" text="Esc  loadouts and settings" picking-mode="Ignore" />

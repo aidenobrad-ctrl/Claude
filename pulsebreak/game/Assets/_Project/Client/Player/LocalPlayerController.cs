@@ -462,9 +462,7 @@ namespace Pulsebreak.Client.Player
             float yaw = _input.Yaw, pitch = _input.Pitch;
             Vector2 recoil = Vector2.Lerp(_previousRecoil, _currentRecoil, alpha);
             Vector3 feet = Vector3.Lerp(a.Position, b.Position, alpha) + _viewError;
-            Vector3 eye = feet
-                          + Vector3.up * Mathf.Lerp(a.EyeHeight, b.EyeHeight, alpha)
-                          + AimMath.YawRight(yaw) * Mathf.Lerp(a.LeanOffset, b.LeanOffset, alpha);
+            Vector3 eye = feet + Vector3.up * Mathf.Lerp(a.EyeHeight, b.EyeHeight, alpha);
 
             transform.rotation = Quaternion.Euler(0f, yaw, 0f);
 
@@ -474,8 +472,6 @@ namespace Pulsebreak.Client.Player
                 EyePosition = eye,
                 Yaw = viewYaw,
                 Pitch = viewPitch,
-                Lean = Mathf.Lerp(a.Lean, b.Lean, alpha),
-                LeanAngle = _sim.Motor.Config.leanAngle,
                 AdsAmount = weapon.AdsAmount,
                 AdsZoom = stats.adsZoom,
                 Sprinting = b.Sprinting,

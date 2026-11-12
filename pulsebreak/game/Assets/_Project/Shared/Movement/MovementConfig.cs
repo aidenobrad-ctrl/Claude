@@ -74,15 +74,6 @@ namespace Pulsebreak.Shared.Movement
         public float mantleExitSpeed = 3f;
         public float mantleCooldown = 0.25f;
 
-        [Header("Lean")]
-        [Tooltip("Sideways eye offset at full lean.")]
-        public float leanOffset = 0.38f;
-        [Tooltip("Camera roll at full lean, in degrees.")]
-        public float leanAngle = 13f;
-        [Tooltip("Lean change per second (1 = full lean).")]
-        public float leanSpeed = 7f;
-        public float leanProbeRadius = 0.14f;
-
         public float JumpSpeed => Mathf.Sqrt(2f * gravity * jumpHeight);
 
         public float EyeHeightFor(Stance stance)

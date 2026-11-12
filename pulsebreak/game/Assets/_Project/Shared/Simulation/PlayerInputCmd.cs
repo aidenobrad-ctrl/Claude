@@ -13,7 +13,9 @@ namespace Pulsebreak.Shared.Simulation
         Fire = 1 << 3,
         Ads = 1 << 4,
         Reload = 1 << 5,
+        /// <summary>No longer used: leaning was removed. Kept so the other bits keep their values.</summary>
         LeanLeft = 1 << 6,
+        /// <summary>No longer used: leaning was removed.</summary>
         LeanRight = 1 << 7,
         Utility1 = 1 << 8,
         /// <summary>No longer used: loadouts carry one utility item. Kept so the other bits keep their values.</summary>

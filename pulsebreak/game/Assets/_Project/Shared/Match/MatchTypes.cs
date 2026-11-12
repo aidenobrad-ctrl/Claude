@@ -86,7 +86,7 @@ namespace Pulsebreak.Shared.Match
 
         const InputButtons AllButtons =
             InputButtons.Jump | InputButtons.Sprint | InputButtons.Crouch | InputButtons.Fire | InputButtons.Ads |
-            InputButtons.Reload | InputButtons.LeanLeft | InputButtons.LeanRight | InputButtons.Utility1;
+            InputButtons.Reload | InputButtons.Utility1;
     }
 
     /// <summary>
@@ -135,15 +135,12 @@ namespace Pulsebreak.Shared.Match
         public Vector3 Position;
         public float Yaw;
         public float EyeHeight;
-        /// <summary>Signed sideways shift of the head, in metres.</summary>
-        public float LeanOffset;
 
         public static BodyPose From(in MotorState state) => new BodyPose
         {
             Position = state.Position,
             Yaw = state.Yaw,
             EyeHeight = state.EyeHeight,
-            LeanOffset = state.LeanOffset,
         };
 
         public static BodyPose Lerp(in BodyPose a, in BodyPose b, float t) => new BodyPose
@@ -151,7 +148,6 @@ namespace Pulsebreak.Shared.Match
             Position = Vector3.Lerp(a.Position, b.Position, t),
             Yaw = LerpAngle(a.Yaw, b.Yaw, t),
             EyeHeight = Mathf.Lerp(a.EyeHeight, b.EyeHeight, t),
-            LeanOffset = Mathf.Lerp(a.LeanOffset, b.LeanOffset, t),
         };
 
         /// <summary>Blends two angles in degrees the short way round.</summary>

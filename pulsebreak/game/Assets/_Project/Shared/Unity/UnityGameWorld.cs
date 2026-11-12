@@ -27,8 +27,6 @@ namespace Pulsebreak.Shared.Match
             public bool Round;
             /// <summary>Local position and size when standing upright.</summary>
             public Vector3 Offset, Size;
-            /// <summary>How much of the lean this part follows: 1 for the head, 0 for the legs.</summary>
-            public float Lean;
         }
 
         readonly GameObject _capsule;
@@ -61,17 +59,17 @@ namespace Pulsebreak.Shared.Match
             rigidbody.useGravity = false;
 
             // The same proportions as the firing range's target dummy.
-            AddPart("Head", HitZone.Head, true, new Vector3(0f, 1.63f, 0f), new Vector3(0.25f, 0.27f, 0.25f), 1f, layer);
-            AddPart("Torso", HitZone.Body, false, new Vector3(0f, 1.17f, 0f), new Vector3(0.44f, 0.62f, 0.26f), 0.5f, layer);
-            AddPart("ArmL", HitZone.Limb, false, new Vector3(-0.3f, 1.17f, 0f), new Vector3(0.12f, 0.6f, 0.14f), 0.5f, layer);
-            AddPart("ArmR", HitZone.Limb, false, new Vector3(0.3f, 1.17f, 0f), new Vector3(0.12f, 0.6f, 0.14f), 0.5f, layer);
-            AddPart("LegL", HitZone.Limb, false, new Vector3(-0.115f, 0.43f, 0f), new Vector3(0.17f, 0.86f, 0.19f), 0f, layer);
-            AddPart("LegR", HitZone.Limb, false, new Vector3(0.115f, 0.43f, 0f), new Vector3(0.17f, 0.86f, 0.19f), 0f, layer);
+            AddPart("Head", HitZone.Head, true, new Vector3(0f, 1.63f, 0f), new Vector3(0.25f, 0.27f, 0.25f), layer);
+            AddPart("Torso", HitZone.Body, false, new Vector3(0f, 1.17f, 0f), new Vector3(0.44f, 0.62f, 0.26f), layer);
+            AddPart("ArmL", HitZone.Limb, false, new Vector3(-0.3f, 1.17f, 0f), new Vector3(0.12f, 0.6f, 0.14f), layer);
+            AddPart("ArmR", HitZone.Limb, false, new Vector3(0.3f, 1.17f, 0f), new Vector3(0.12f, 0.6f, 0.14f), layer);
+            AddPart("LegL", HitZone.Limb, false, new Vector3(-0.115f, 0.43f, 0f), new Vector3(0.17f, 0.86f, 0.19f), layer);
+            AddPart("LegR", HitZone.Limb, false, new Vector3(0.115f, 0.43f, 0f), new Vector3(0.17f, 0.86f, 0.19f), layer);
 
             SetPose(new BodyPose { EyeHeight = _standEyeHeight });
         }
 
-        void AddPart(string name, HitZone zone, bool round, Vector3 offset, Vector3 size, float lean, int layer)
+        void AddPart(string name, HitZone zone, bool round, Vector3 offset, Vector3 size, int layer)
         {
             var go = new GameObject(name) { layer = layer };
             go.transform.SetParent(_root, false);
@@ -102,7 +100,6 @@ namespace Pulsebreak.Shared.Match
                 Round = round,
                 Offset = offset,
                 Size = size,
-                Lean = lean,
             });
         }
 
@@ -119,7 +116,7 @@ namespace Pulsebreak.Shared.Match
             foreach (Part part in _parts)
             {
                 part.Transform.localPosition = new Vector3(
-                    part.Offset.x + pose.LeanOffset * part.Lean, part.Offset.y * squash, part.Offset.z);
+                    part.Offset.x, part.Offset.y * squash, part.Offset.z);
                 part.Transform.localScale = part.Round
                     ? part.Size
                     : new Vector3(part.Size.x, part.Size.y * squash, part.Size.z);

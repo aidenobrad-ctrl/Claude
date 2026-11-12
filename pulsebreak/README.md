@@ -108,7 +108,6 @@ To feel the game at a given ping, make your own connection worse on purpose. Eac
 | Ctrl or C | Crouch |
 | Crouch while sprinting | Slide |
 | Hold Space + W at a ledge | Mantle |
-| Q / E | Lean left / right |
 | Right mouse button | Aim down sights |
 | Left mouse button | Fire (hold to charge on charge weapons) |
 | R | Reload |
@@ -204,7 +203,7 @@ Everything is data. Select an asset in the Project window and edit it in the Ins
 
 | Folder | Assets | What they are |
 | --- | --- | --- |
-| `Movement/` | `DefaultMovement` | Speeds, jump, slide, mantle, lean |
+| `Movement/` | `DefaultMovement` | Speeds, jump, slide, mantle |
 | `Weapons/` | `WPN_*`, `WeaponCatalog` | One per weapon; the catalog lists weapons and attachments |
 | `Attachments/` | `ATT_*` | A slot and a list of stat changes |
 | `Utilities/` | `UTL_*` | A throwable: how many, how it is thrown, what the thrown object does |

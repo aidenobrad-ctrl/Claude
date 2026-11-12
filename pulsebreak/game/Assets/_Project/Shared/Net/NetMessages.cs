@@ -130,7 +130,6 @@ namespace Pulsebreak.Shared.Net
         public Vector3 Velocity;
         public float Yaw, Pitch;
         public float EyeHeight;
-        public float LeanOffset;
         public Stance Stance;
         public bool Grounded, Sprinting;
         public int ActiveSlot;
@@ -487,7 +486,6 @@ namespace Pulsebreak.Shared.Net
             writer.WriteFloat(motor.Yaw);
             writer.WriteFloat(motor.Pitch);
             writer.WriteFloat(motor.EyeHeight);
-            writer.WriteFloat(motor.LeanOffset);
             writer.WriteByte((byte)motor.Stance);
             writer.WriteByte((byte)activeSlot);
 
@@ -512,7 +510,6 @@ namespace Pulsebreak.Shared.Net
             into.Yaw = reader.ReadFloat();
             into.Pitch = reader.ReadFloat();
             into.EyeHeight = reader.ReadFloat();
-            into.LeanOffset = reader.ReadFloat();
             into.Stance = (Stance)reader.ReadByte();
             into.ActiveSlot = reader.ReadByte();
 
@@ -565,8 +562,6 @@ namespace Pulsebreak.Shared.Net
             writer.WriteByte((byte)((s.Grounded ? 1 : 0) | (s.Sprinting ? 2 : 0) | (s.Mantling ? 4 : 0) | (s.JustLanded ? 8 : 0)));
             writer.WriteVector3(s.GroundNormal);
             writer.WriteFloat(s.EyeHeight);
-            writer.WriteFloat(s.Lean);
-            writer.WriteFloat(s.LeanOffset);
             writer.WriteFloat(s.CoyoteTimer);
             writer.WriteFloat(s.JumpBufferTimer);
             writer.WriteFloat(s.SlideTimer);
@@ -597,8 +592,6 @@ namespace Pulsebreak.Shared.Net
             s.JustLanded = (flags & 8) != 0;
             s.GroundNormal = reader.ReadVector3();
             s.EyeHeight = reader.ReadFloat();
-            s.Lean = reader.ReadFloat();
-            s.LeanOffset = reader.ReadFloat();
             s.CoyoteTimer = reader.ReadFloat();
             s.JumpBufferTimer = reader.ReadFloat();
             s.SlideTimer = reader.ReadFloat();

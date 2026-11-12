@@ -43,10 +43,6 @@ namespace Pulsebreak.Shared.Movement
 
         /// <summary>Eye height above the feet, eased between stances.</summary>
         public float EyeHeight;
-        /// <summary>-1 = full left lean, +1 = full right lean.</summary>
-        public float Lean;
-        /// <summary>Signed sideways eye offset in metres after wall checks.</summary>
-        public float LeanOffset;
 
         public float CoyoteTimer;
         public float JumpBufferTimer;
@@ -71,7 +67,6 @@ namespace Pulsebreak.Shared.Movement
             }
         }
 
-        public Vector3 EyePosition =>
-            Position + Vector3.up * EyeHeight + AimMath.YawRight(Yaw) * LeanOffset;
+        public Vector3 EyePosition => Position + Vector3.up * EyeHeight;
     }
 }

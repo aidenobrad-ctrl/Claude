@@ -655,7 +655,6 @@ namespace Pulsebreak.Client.Net
                             Position = _scratch.Position,
                             Yaw = _scratch.Yaw,
                             EyeHeight = _scratch.EyeHeight,
-                            LeanOffset = _scratch.LeanOffset,
                         },
                         Pitch = _scratch.Pitch,
                         Velocity = _scratch.Velocity,

@@ -150,7 +150,7 @@ Those five properties are exactly what server authority and client-side predicti
 flowchart TD
     A[PlayerInputReader<br/>samples mouse look every frame,<br/>latches button taps] --> B{Ticks due?}
     B -- "yes, for each tick" --> C[Build PlayerInputCmd]
-    C --> D[PlayerMotor.Simulate<br/>run, sprint, crouch, slide,<br/>jump, mantle, lean]
+    C --> D[PlayerMotor.Simulate<br/>run, sprint, crouch, slide,<br/>jump, mantle]
     D --> U[UtilityBelt.Simulate<br/>charges, throw wind-up,<br/>cooldown, recharge]
     U --> E[WeaponInventory.Simulate<br/>switching, then the weapon in hand:<br/>trigger, fire rate, ammo, reload,<br/>ADS, spread, recoil]
     E --> F[For each shot or throw: CombatResolver<br/>bullet, melee strike,<br/>or spawn a projectile]
@@ -242,7 +242,7 @@ Phase 3 made loadouts local first, with sync in mind. Phase 5 added the sync, an
 
 | Requirement | Class | Notes |
 | --- | --- | --- |
-| Sprint, slide, crouch, jump, mantle, lean | `PlayerMotor` | Tuned by a `MovementConfig` asset |
+| Sprint, slide, crouch, jump, mantle | `PlayerMotor` | Tuned by a `MovementConfig` asset. Lean was in the brief and was built, then removed at your request |
 | ADS, recoil patterns, spread, fire modes, reload | `WeaponSimulator` | Runs on `WeaponStats` |
 | Hitscan and projectile weapons | `CombatResolver`, `ProjectileSystem` | Chosen per weapon by its `ballistics` stat |
 | Damage falloff, headshot multipliers | `DamageCalculator`, `Hitbox` | One function used for feedback and authority. Dealt damage is rounded to a multiple of five (`DamageCalculator.Standardize`) |

@@ -51,7 +51,3 @@ MonoBehaviour:
   mantleMaxDuration: 0.38
   mantleExitSpeed: 3
   mantleCooldown: 0.25
-  leanOffset: 0.38
-  leanAngle: 13
-  leanSpeed: 7
-  leanProbeRadius: 0.14

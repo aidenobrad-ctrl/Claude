@@ -382,7 +382,7 @@ namespace Pulsebreak.Tests
                 {
                     Position = new Vector3(1.25f, 2.5f, -3.75f), Velocity = new Vector3(4f, -5f, 6f), Yaw = 123f, Pitch = -45f,
                     Stance = Stance.Sliding, Grounded = true, Sprinting = true, Mantling = true, JustLanded = true,
-                    GroundNormal = new Vector3(0f, 1f, 0f), EyeHeight = 0.82f, Lean = -0.5f, LeanOffset = -0.19f,
+                    GroundNormal = new Vector3(0f, 1f, 0f), EyeHeight = 0.82f,
                     CoyoteTimer = 0.01f, JumpBufferTimer = 0.02f, SlideTimer = 0.3f, SlideCooldown = 0.4f, TimeSinceSprint = 0.5f,
                     MantleTimer = 0.1f, MantleDuration = 0.3f, MantleCooldown = 0.2f,
                     MantleFrom = new Vector3(7f, 8f, 9f), MantleTo = new Vector3(10f, 11f, 12f),

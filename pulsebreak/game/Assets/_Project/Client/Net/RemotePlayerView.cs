@@ -81,7 +81,7 @@ namespace Pulsebreak.Client.Net
             _body.SetPose(view.Pose);
 
             // The weapon sits at the right shoulder and tips with where they are looking.
-            _weapon.localPosition = new Vector3(0.2f + view.Pose.LeanOffset, view.Pose.EyeHeight - 0.22f, 0.3f);
+            _weapon.localPosition = new Vector3(0.2f, view.Pose.EyeHeight - 0.22f, 0.3f);
             _weapon.localRotation = Quaternion.Euler(view.Pitch, 0f, 0f);
             ShowWeapon(view.ActiveSlot);
 

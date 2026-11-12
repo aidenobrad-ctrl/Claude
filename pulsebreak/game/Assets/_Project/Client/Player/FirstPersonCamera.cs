@@ -9,9 +9,6 @@ namespace Pulsebreak.Client.Player
         public Vector3 EyePosition;
         public float Yaw;
         public float Pitch;
-        /// <summary>-1 = full left lean, +1 = full right lean.</summary>
-        public float Lean;
-        public float LeanAngle;
         public float AdsAmount;
         public float AdsZoom;
         public bool Sprinting;
@@ -20,7 +17,7 @@ namespace Pulsebreak.Client.Player
 
     /// <summary>
     /// The first-person view. It only presents: position and angles come from the player
-    /// controller each frame, and this adds the cosmetic layer on top (zoom, lean roll,
+    /// controller each frame, and this adds the cosmetic layer on top (zoom,
     /// landing dip, speed-based field of view).
     /// </summary>
     [RequireComponent(typeof(Camera))]
@@ -55,10 +52,9 @@ namespace Pulsebreak.Client.Player
             _dipVelocity += (-stiffness * _dip - damping * _dipVelocity) * dt;
             _dip = Mathf.Clamp(_dip + _dipVelocity * dt, -0.3f, 0.1f);
 
-            float roll = -pose.Lean * pose.LeanAngle;
             transform.SetPositionAndRotation(
                 pose.EyePosition + Vector3.up * _dip,
-                Quaternion.Euler(pose.Pitch, pose.Yaw, roll));
+                Quaternion.Euler(pose.Pitch, pose.Yaw, 0f));
 
             // The setting is a horizontal angle at 16:9. Holding the vertical angle fixed
             // means wider screens see more to the sides, never less.

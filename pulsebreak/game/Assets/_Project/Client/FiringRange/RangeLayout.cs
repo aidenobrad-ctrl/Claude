@@ -70,7 +70,7 @@ namespace Pulsebreak.Client.FiringRange
                     new Vector3(0f, 0.006f, z), new Vector3(26f, 0.01f, 0.2f), line, castShadows: false);
             }
 
-            // Cover at the firing line: a tall wall to lean around and a low one to crouch behind.
+            // Cover at the firing line: a tall wall to peek around and a low one to crouch behind.
             GreyboxKit.Box(parent, "Cover Tall", new Vector3(-6f, 1.3f, 2.5f), new Vector3(2.6f, 2.6f, 0.4f), CoverColor);
             GreyboxKit.Box(parent, "Cover Low", new Vector3(6f, 0.55f, 2.5f), new Vector3(3f, 1.1f, 0.5f), CoverColor);
 

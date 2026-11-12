@@ -98,7 +98,6 @@ namespace Pulsebreak.Shared.Movement
 
             _state.EyeHeight = Mathf.MoveTowards(
                 _state.EyeHeight, _config.EyeHeightFor(_state.Stance), _config.eyeHeightSpeed * dt);
-            UpdateLean(cmd, right, dt);
             _state.Position = _transform.position;
         }
 
@@ -449,32 +448,6 @@ namespace Pulsebreak.Shared.Movement
         }
 
         static float Smooth(float x) => x * x * (3f - 2f * x);
-
-        // ------------------------------------------------------------------ lean
-
-        void UpdateLean(in PlayerInputCmd cmd, Vector3 right, float dt)
-        {
-            float target = 0f;
-            bool canLean = _state.Grounded && !_state.Sprinting && !_state.Mantling && _state.Stance != Stance.Sliding;
-            if (canLean)
-            {
-                if (cmd.Has(InputButtons.LeanLeft)) target -= 1f;
-                if (cmd.Has(InputButtons.LeanRight)) target += 1f;
-            }
-            _state.Lean = Mathf.MoveTowards(_state.Lean, target, _config.leanSpeed * dt);
-
-            float offset = _state.Lean * _config.leanOffset;
-            float reach = Mathf.Abs(offset);
-            if (reach > 0.001f)
-            {
-                // Do not let the eye pass through a wall beside us.
-                Vector3 eye = _transform.position + Vector3.up * _state.EyeHeight;
-                Vector3 direction = right * Mathf.Sign(offset);
-                if (Physics.SphereCast(eye, _config.leanProbeRadius, direction, out RaycastHit hit, reach, _worldMask, QueryTriggerInteraction.Ignore))
-                    offset = Mathf.Sign(offset) * Mathf.Max(0f, hit.distance - 0.02f);
-            }
-            _state.LeanOffset = offset;
-        }
 
         // ------------------------------------------------------------------ helpers
 

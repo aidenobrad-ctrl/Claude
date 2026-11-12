@@ -8,7 +8,7 @@ The game is built in phases. Each one ends with something you can run and judge,
 | 2 | Weapon system, 30 weapons, attachments | Built, awaiting your playtest |
 | 3 | Loadouts, saved locally | Built, awaiting your playtest |
 | 4 | Netcode and online 1v1 duels | Built, awaiting your playtest |
-| 5 | Accounts, backend and synced loadouts | Built, awaiting your playtest |
+| 5 | Accounts, backend and synced loadouts | Built; switched off in the game for now |
 | 6 | Matchmaking and team modes | Planned |
 | 7 | Progression and unlocks | Planned |
 | 8 | Abilities, streaks and more utility | Planned |
@@ -48,7 +48,7 @@ The game is built in phases. Each one ends with something you can run and judge,
 
 **Built.** Offline, single player. You asked for this next, local first.
 
-- A loadout is a primary, a secondary, a melee weapon, two utility items and a perk set.
+- A loadout is a primary, a secondary, a melee weapon, two utility items and a perk set. (Since cut to one utility item: see below.)
 - Six default loadouts to pick from instantly.
 - Custom loadouts: create, edit, rename, delete, up to ten, saved to a file as they change and still there next launch.
 - Loadout rules that repair anything illegal or outdated when a loadout is loaded.
@@ -112,6 +112,18 @@ The game is built in phases. Each one ends with something you can run and judge,
 - HTTPS and a hosted deployment (Phase 12). The game talks to a local backend over plain HTTP, which is allowed in the project settings for now and must be switched off before release.
 - Encrypting game traffic, with a key handed out alongside the ticket (before public play).
 - A breached-password check, an account deletion and data export flow, and a moderation tool to disable accounts (the flag exists).
+
+## After your first playtest
+
+You opened the project, liked it, and asked for a round of changes before the next phase. All of them are in:
+
+- **Damage numbers** that tell body and head apart at a glance: small and white for the body, big, gold and popping for the head, red for the hit that finishes. A shotgun blast shows one total.
+- **Standard damage numbers.** Every hit lands as a multiple of five, and the base numbers are clean: an Assault Rifle is 25 to the body and 35 to the head.
+- **Loadouts like the arena shooters'**: primary, secondary, melee and one utility item (a grenade or similar), plus the perk set from the original brief. A Deploy button and loadout contents in the list make picking one quicker.
+- **More weapons in that style**, with standard names: Bow, Flamethrower, Paintball Gun, Sawed-Off, Flare Gun, Slingshot, Laser Pistol, Scythe, Battle Axe and Fists, for 40 in all, and every existing weapon renamed to what it is (Assault Rifle, SMG, Pump Shotgun, Sniper Rifle...). Two new default loadouts use the new ones.
+- **Stat bars that show the differences**, by comparing each weapon with the others for the same slot.
+- **Sprint** 10% faster (8.6 m/s), and a **toggle sprint** setting.
+- **Accounts switched off** until they are made required. The backend stays in the repository, tested.
 
 ## Phase 6: Matchmaking and team modes
 

@@ -2,7 +2,7 @@
 
 Pulsebreak (working title) is a fast, competitive multiplayer FPS for PC: tight gunplay and loadouts from modern military shooters, short rounds and snappy movement from arena shooters. This document covers the technology choices, how the repository is laid out, and how the systems connect. The phased plan is in [ROADMAP.md](ROADMAP.md).
 
-Phases 1 to 5 exist as code today: movement, the weapon system, loadouts, a firing range to try them in, online 1v1 duels on a server that owns the match, and accounts on a backend that the loadouts and settings follow. Sections that describe later phases say so.
+Phases 1 to 5 exist as code today: movement, the weapon system, loadouts, a firing range to try them in, online 1v1 duels on a server that owns the match, and accounts on a backend that the loadouts and settings follow. Accounts are switched off in the game for now (one flag, `GameServices.AccountsEnabled`); the backend and all the game code for it remain. Sections that describe later phases say so.
 
 ## Technology choices
 
@@ -167,7 +167,7 @@ flowchart TD
 
 ## The weapon system
 
-A weapon is data, and the path from an asset to a hit is the same for all thirty of them:
+A weapon is data, and the path from an asset to a hit is the same for all forty of them:
 
 ```mermaid
 flowchart LR
@@ -198,7 +198,7 @@ Adding a weapon or an attachment is therefore an asset and a catalog entry. Code
 
 ## Loadouts
 
-A loadout is a primary, a secondary, a melee weapon, two utility items and a perk set. It exists in two forms, and one set of rules converts between them.
+A loadout is a primary, a secondary, a melee weapon, one utility item and a perk set. It exists in two forms, and one set of rules converts between them.
 
 ```mermaid
 flowchart LR
@@ -245,12 +245,13 @@ Phase 3 made loadouts local first, with sync in mind. Phase 5 added the sync, an
 | Sprint, slide, crouch, jump, mantle, lean | `PlayerMotor` | Tuned by a `MovementConfig` asset |
 | ADS, recoil patterns, spread, fire modes, reload | `WeaponSimulator` | Runs on `WeaponStats` |
 | Hitscan and projectile weapons | `CombatResolver`, `ProjectileSystem` | Chosen per weapon by its `ballistics` stat |
-| Damage falloff, headshot multipliers | `DamageCalculator`, `Hitbox` | One function used for feedback and authority |
+| Damage falloff, headshot multipliers | `DamageCalculator`, `Hitbox` | One function used for feedback and authority. Dealt damage is rounded to a multiple of five (`DamageCalculator.Standardize`) |
 | Attachments | `AttachmentDefinition`, `WeaponBuild` | Sights, barrels, magazines, grips, stocks, lasers |
 | Weapon switching | `WeaponInventory` | Primary, secondary and melee slots |
 | Premade default loadouts | `LoadoutPreset`, `LoadoutCatalog` | Six ship with the game |
 | Create, edit, rename, save custom loadouts | `LoadoutLibrary`, `LoadoutPanel` | Saved through `ILoadoutStore` |
-| Two utility items, one perk set | `UtilityBelt`, `UtilityDefinition`, `PerkSetDefinition` | |
+| One utility item, one perk set | `UtilityBelt`, `UtilityDefinition`, `PerkSetDefinition` | |
+| Stat bars that compare weapons | `WeaponRatings`, `WeaponRatingScale` | Each bar runs from the weakest to the strongest weapon for the same slot |
 | Loadouts saved to the account and synced | `LoadoutAccountSync`, `LoadoutSync`, backend `LoadoutService` | Newest change wins, deletions included |
 | Quick-swap loadouts between rounds | `HudController` quick swap, `ClientSession.SetLoadout` | In a match the server applies it at the next round |
 | Hit markers, damage numbers, crosshair, optics | `HudController` | Damage numbers toggle in the pause menu |
@@ -361,6 +362,8 @@ The tests that need the stand-in physics world are not in the Unity project, bec
 - **Sound has no position yet.** Other players' shots are only quieter with distance.
 
 ## Accounts and the backend
+
+> **Switched off in the game for now.** `GameServices.AccountsEnabled` is false: the menu has no sign-in, no request goes to the backend, and loadouts and settings stay on the computer. Everything below still exists and is tested; setting the flag to true brings it back. The plan is to make accounts required when they return.
 
 ```mermaid
 flowchart LR

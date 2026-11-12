@@ -2,7 +2,7 @@
 
 A fast, competitive multiplayer FPS for PC, built in Unity 6. "Pulsebreak" is a working title.
 
-Five phases are built so far: **movement and a firing range**, **the weapon system with 30 weapons and 21 attachments**, **loadouts**, **online 1v1 duels** on a server that owns the match, and **accounts**, with a backend your loadouts and settings follow from one computer to the next. The plan for everything after is in [docs/ROADMAP.md](docs/ROADMAP.md), and how the code is organised is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Five phases are built so far: **movement and a firing range**, **the weapon system with 40 weapons and 21 attachments**, **loadouts**, **online 1v1 duels** on a server that owns the match, and **accounts** on a backend of their own. Accounts are switched off in the game for now, at your request; see [Accounts](#accounts). The plan for everything after is in [docs/ROADMAP.md](docs/ROADMAP.md), and how the code is organised is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 > **Not yet run in Unity.** This was written without access to a Unity Editor. The C# was compiled against Unity's reference assemblies. The simulation, the weapon data and the netcode were tested outside the engine, including whole matches between a real server and two real clients on a simulated bad connection, and the game's account code was tested against the real backend. But nothing has been opened or played in Unity itself, so the menus, the HUD and everything else you look at are unverified. Expect to report a few first-run issues; [Troubleshooting](#troubleshooting) covers the likely ones.
 
@@ -19,46 +19,14 @@ On first open Unity creates several settings files and one asset (`Resources/UI/
 
 ## Accounts
 
-Playing without an account works exactly as before. An account keeps your loadouts and settings for you, so they are there on any computer you sign in on, and lets you join servers that only admit signed-in players.
+**Switched off for now.** The menu has no sign-in, nothing in the game talks to the backend, and loadouts and settings are saved on your computer. Nobody needs an account to play, host or join.
 
-### Start the backend
+Everything is still in the project, ready for when accounts become required:
 
-The game talks to a small server of its own for accounts. To run it on your computer you need the [.NET 10 SDK](https://dotnet.microsoft.com/download) and Docker (or PostgreSQL and Redis installed yourself):
+- the backend (sign-up, email verification, sign-in, password reset, loadouts and settings saved to the account) is in `backend/`, with its own [README](backend/README.md) and tests;
+- in the game, one line turns it all back on: `AccountsEnabled` in `Client/Online/Unity/GameServices.cs`.
 
-```
-cd pulsebreak/backend
-docker compose up -d
-dotnet run --project src/Pulsebreak.Api
-```
-
-Leave that window open. The game looks for the backend at `http://localhost:5080`. To use one elsewhere, set **Backend Url** on the **Duel** object in the duel scene, or start a build with `-backend URL`. [backend/README.md](backend/README.md) has everything else: settings, every route, and how it keeps accounts safe.
-
-### Sign up and sign in
-
-In the main menu, under the title:
-
-- **Create account**: an email address, a username (3 to 20 letters, numbers or underscores) and a password (at least 10 characters; a few words strung together is a good one). You are signed in at once.
-- **Verify email**: type the 6-digit code from the email. While the backend runs on your computer it does not send email; it **prints each email in its window**, code and link included.
-- **Sign in** with your email or your username. **Forgot your password?** emails a code to set a new one.
-- **Sign out** is in the same place.
-
-The game remembers your sign-in until you sign out. The Editor keeps its own sign-in, separate from builds, so the Editor and a build on the same computer can be two different players. Give a build `-profile NAME` to have more.
-
-### What follows your account
-
-- **Loadouts.** Make or change one on one computer and it is on the next one you sign in on. The newest change wins; deleting counts as a change. Loadouts you made before having an account move onto it the first time you sign in. If the backend cannot be reached, changes are kept on your computer and sent later. The account line in the menu says which.
-- **Settings**: sensitivity, aim sensitivity, field of view, damage numbers and volume.
-- **Your name.** Signed in, you play under your username.
-
-### Servers that need an account
-
-A dedicated server given the backend's ticket key admits only signed-in players, and shows each one under their account name:
-
-```
-PULSEBREAK_TICKET_KEY=<the backend's Game:TicketSigningKey> Pulsebreak.exe -batchmode -nographics -server
-```
-
-During development the key is `development-only-ticket-key-do-not-use-anywhere-real` (in `appsettings.Development.json`). Add `-ranked` and the server admits only players whose email is verified. A match hosted from the menu admits anyone, signed in or not.
+If you signed in while accounts were on, the loadouts you made then are brought back to this computer the next time the game starts.
 
 ## Play online
 
@@ -119,10 +87,7 @@ To feel the game at a given ping, make your own connection worse on purpose. Eac
 | `-port N` | Port to host on. Default 7777 |
 | `-host` | Go straight to hosting a match |
 | `-connect ADDRESS` | Go straight to joining, for example `-connect 192.168.1.20` |
-| `-name NAME` | Player name, instead of the one in the menu (ignored when signed in) |
-| `-backend URL` | Where the accounts backend is. Default `http://localhost:5080` |
-| `-profile NAME` | Keep a separate sign-in, for running several copies on one computer |
-| `-ranked` | With `-server`: admit only players with a verified email. Needs the ticket key |
+| `-name NAME` | Player name, instead of the one in the menu |
 | `-lag MS`, `-jitter MS`, `-loss PERCENT` | Make this copy's connection worse on purpose |
 
 ### What I would most like to hear about
@@ -138,7 +103,7 @@ To feel the game at a given ping, make your own connection worse on purpose. Eac
 | --- | --- |
 | W A S D | Move |
 | Mouse | Look |
-| Shift | Sprint |
+| Shift | Sprint (hold it, or set **Toggle sprint** in the Esc menu to press once) |
 | Space | Jump |
 | Ctrl or C | Crouch |
 | Crouch while sprinting | Slide |
@@ -148,7 +113,7 @@ To feel the game at a given ping, make your own connection worse on purpose. Eac
 | Left mouse button | Fire (hold to charge on charge weapons) |
 | R | Reload |
 | 1 / 2 / 3 or mouse wheel | Switch to primary / secondary / melee |
-| G / F | Throw utility item 1 / 2 |
+| G | Throw your grenade (or other utility item) |
 | B | Quick swap: pick another loadout by number |
 | Esc | Pause: loadouts and settings; in a match, also where you leave it |
 | F5 | Reset session stats (firing range) |
@@ -157,19 +122,31 @@ To feel the game at a given ping, make your own connection worse on purpose. Eac
 
 ## Loadouts
 
-A loadout is a primary weapon, a secondary, a melee weapon, two utility items and a perk set. Press **Esc** in play to open the loadout screen.
+A loadout is four things to carry and a perk set:
 
-- **Pick one to use it.** The list on the left has six default loadouts (Assault, Rusher, Marksman, Breacher, Sharpshooter, Demolition) and, below them, your own. Clicking a loadout equips it.
+| Slot | What goes there |
+| --- | --- |
+| Primary | Rifles, SMGs, machine guns, shotguns, snipers, marksman rifles and the special weapons (Bow, Crossbow, Flamethrower...) |
+| Secondary | Pistols, the Sawed-Off, launchers, Throwing Knives, Flare Gun, Slingshot |
+| Melee | Knife, Katana, Fists, Scythe, Battle Axe |
+| Utility | One grenade (or similar), thrown with **G** |
+| Perk set | A passive bonus, such as faster reloads or a little more speed |
+
+Press **Esc** in play to open the loadout screen.
+
+- **Pick one.** The list on the left has eight default loadouts and, below them, your own. Each entry shows what it carries. Clicking one selects it.
+- **Deploy** puts you back in the game carrying the selected loadout. On the range you have it at once, with full ammunition; in a match, from the next round.
 - **Make your own.** Press **New** to copy the selected loadout, or just change something in a default: defaults cannot be altered, so the game makes your own copy and edits that. You can keep up to ten.
-- **Edit it.** The tabs across the top are the six slots. Choose a weapon and cycle its attachments, choose each utility item, choose a perk set. The stat bars show what attachments and perks do to the weapon.
+- **Edit it.** The tabs across the top are Primary, Secondary, Melee, Utility and Perks. Each lists what fits that slot, grouped by class. For a weapon you can cycle its attachments.
+- **Compare.** The stat bars put each weapon against the others for the same slot: the weakest primary at something sits at the left of that bar, the strongest at the right. Green and red show what attachments and the perk set add or cost.
 - **Rename it** by typing in the name box and pressing Enter. **Delete** removes it.
 - **Nothing to save.** Every change is written straight away and is there the next time you start the game.
 
-Press **B** in play for the quick swap list: every loadout with a number beside it. On the range, press the number and you are carrying it, with full ammunition. In a match the choice is sent to the server and you carry it from the next round.
+Press **B** in play for the quick swap list: every loadout, numbered, with its primary and secondary. Press the number and you carry it, straight away on the range and from the next round in a match.
 
 Loadouts are kept in a file called `loadouts.json` in the game's save folder; **Pulsebreak ▸ Open Saved Loadouts Folder** in the Editor takes you to it. Delete the file to start over. If it ever becomes unreadable, the game keeps it under another name and starts from the defaults.
 
-Without an account, loadouts are saved on your computer only. Signed in, they follow your account ([Accounts](#accounts)). In a match the server checks the loadout you bring against its own content and replaces anything you could not have.
+Loadouts are saved on your computer. In a match the server checks the loadout you bring against its own content and replaces anything you could not have.
 
 ## What to try
 
@@ -181,35 +158,43 @@ The range has three areas. You spawn at the firing line facing downrange.
 
 Utility and perks:
 
-- **Frag Grenade** bounces and bursts on a fuse; **Impact Grenade** bursts on contact; **Shock Charge** is a wide, weak blast; **Ricochet Disc** skips off surfaces and hits harder each bounce.
+- **Frag Grenade** bounces and bursts on a fuse; **Impact Grenade** bursts on contact; **Sticky Grenade** stops dead where it lands, then bursts; **Shockwave Grenade** is a wide, weak blast; **Ricochet Disc** skips off surfaces and hits harder each bounce.
 - On the range, used utility items come back after a few seconds.
-- Perk sets are passive: try **Skirmisher** and watch the speed readout, or **Demolitionist** and count your grenades.
+- Perk sets are passive: try **Skirmisher** and watch the speed readout, or **Demolitionist** for one more grenade.
 
 Things worth a look among the weapons:
 
-- The **Breaker 12** loads shell by shell; fire mid-reload to cut it short.
-- The **Arc Lance** charges while you hold the trigger and goes through several targets in a line.
-- The **Carom Blaster**'s shots bounce and hit harder each time; try them off the floor or the cover walls.
-- The **Pitcher GL** bounces grenades that burst on a fuse; the **Kiln RL** flies straight and bursts on contact.
-- The **Aphelion** has a full-screen scope. Fit the 3x Optic on the loadout screen to swap it for an open sight.
+- **Damage numbers** show what each hit did. Body hits are small and white, head hits big and gold, and the hit that finishes a target is red. A shotgun blast shows one total. Every number is a multiple of five.
+- The **Pump Shotgun** loads shell by shell; fire mid-reload to cut it short.
+- The **Bow** and the **Energy Rifle** charge while you hold the trigger; let go to fire. The Energy Rifle's beam goes through several targets in a line.
+- The **Ricochet Blaster**'s shots and the **Slingshot**'s stones bounce; try them off the floor or the cover walls.
+- The **Flamethrower** is deadly inside 12 metres and harmless past it.
+- The **Grenade Launcher** bounces grenades that burst on a fuse; the **Rocket Launcher** flies straight and bursts on contact.
+- The **Sniper Rifle** has a full-screen scope. Fit the 3x Optic on the loadout screen to swap it for an open sight.
 - Fit a **Suppressor** and the shot goes quiet and loses its muzzle flash.
 
 ## Weapons
 
+Damage is to the body up close, then to the head. Every target has 100 health.
+
 | Class | Weapons |
 | --- | --- |
-| Assault rifles | Hadron AR, Corvane HR, Quill AR, Triad BR (burst) |
-| Submachine guns | Flit, Sprocket, Whisp SD, Brisk PDW |
-| Light machine guns | Bulwark LMG, Dynamo |
-| Shotguns | Breaker 12 (pump), Hailstorm (automatic), Twinfang (double barrel) |
-| Sniper rifles | Aphelion (bolt), Solstice (semi-automatic) |
-| Marksman rifles | Verdict DMR, Cadence (two-round burst) |
-| Pistols | Notch, Magnate (revolver), Gnat MP (automatic), Trey (burst) |
-| Launchers | Kiln RL (rocket), Pitcher GL (grenades) |
-| Special | Volley Crossbow, Carom Blaster, Arc Lance, Stinger Repeater, Flicker Knives |
-| Melee | Field Knife, Crescent |
+| Assault rifles | Assault Rifle (25 / 35), Battle Rifle (35 / 50), Carbine (20 / 30), Burst Rifle (30 / 45, three-round bursts) |
+| Submachine guns | Micro SMG (15 / 20), SMG (20 / 30), Silenced SMG (20 / 25), PDW (25 / 35) |
+| Machine guns | Light Machine Gun (30 / 45), Minigun (15 / 20, very fast, very heavy) |
+| Shotguns | Pump Shotgun (8 × 15), Auto Shotgun (6 × 10), Double Barrel (10 × 15), Sawed-Off (8 × 10, secondary) |
+| Sniper rifles | Sniper Rifle (100 / 200), Semi-Auto Sniper (70 / 105) |
+| Marksman rifles | Marksman Rifle (50 / 75), Burst DMR (40 / 60, two-round bursts) |
+| Pistols | Handgun (25 / 40), Revolver (55 / 100), Machine Pistol (15 / 20), Burst Pistol (25 / 35), Laser Pistol (20 / 30, no drop-off) |
+| Launchers | Rocket Launcher (140 blast), Grenade Launcher (110 blast) |
+| Special | Bow (up to 100 / 150), Crossbow (45 / 90), Energy Rifle (up to 110 / 165), Plasma Rifle (25 / 35), Ricochet Blaster (35 / 50, more after each bounce), Paintball Gun (20 / 35), Flamethrower (10 a flame), Throwing Knives (60 / 120), Flare Gun (45 / 60), Slingshot (35 / 70) |
+| Melee | Knife (50), Katana (65), Fists (35), Scythe (80, longest reach), Battle Axe (100, slowest) |
+
+Damage drops off with range for most guns (an Assault Rifle hit is 20 beyond about 55 m). Explosions deal less the further from the centre. Whatever reduces it, what lands is always a multiple of five.
 
 Attachments come in six slots: sights (Red Dot, Holo, 3x Optic, 6x Scope, 10x Scope), barrels (Suppressor, Long Barrel, Compensator, Muzzle Brake, Choke), magazines (Extended, Drum, Quick), grips (Vertical, Angled, Stubby), stocks (Light, Heavy, None) and lasers (Laser Sight, Tactical Laser). Each weapon accepts a subset.
+
+Many of these are generic weapon types, the kinds most arena shooters share. None of their names or looks are taken from another game.
 
 The grapple gun from the original brief is not here yet. It is a movement tool more than a weapon, so it is planned alongside abilities.
 
@@ -262,13 +247,7 @@ The backend has its own tests; see [backend/README.md](backend/README.md#tests).
 
 **The other player stutters, or you keep being pulled back.** Look at the readout at the top left. High ping or loss means the connection (or a simulated one left switched on). A corrections count that keeps climbing on a good connection is a bug I want to hear about.
 
-**"Could not reach the account server."** The backend is not running, or not where the game looks. Start it ([Start the backend](#start-the-backend)) and check http://localhost:5080/health/ready in a browser.
-
-**"Insecure connection not allowed" in the Console.** Unity is refusing plain HTTP. Under **Project Settings ▸ Player ▸ Other Settings**, set **Allow downloads over HTTP** to **Always allowed**. (Use HTTPS, and set it back, before releasing anything.)
-
-**"That server only admits signed-in players."** Sign in from the menu, then join again. If you are signed in, the server and the backend were given different ticket keys.
-
-**Signed out by itself.** Your password was changed or reset, or the session was used from somewhere else. Sign in again.
+**My loadouts lost their second grenade.** Loadouts now carry one utility item. Saved loadouts keep working; pick the grenade you want on the Utility tab.
 
 **There is only one loadout, called "Fallback".** The scene lost its link to the loadout catalog. Run **Pulsebreak ▸ Run Project Doctor**, which reconnects it.
 

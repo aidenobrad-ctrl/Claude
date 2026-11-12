@@ -14,6 +14,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<ChallengeRow> Challenges => Set<ChallengeRow>();
     public DbSet<MatchRow> Matches => Set<MatchRow>();
     public DbSet<MatchPlayerRow> MatchPlayers => Set<MatchPlayerRow>();
+    public DbSet<SeasonResultRow> SeasonResults => Set<SeasonResultRow>();
+    public DbSet<FriendshipRow> Friendships => Set<FriendshipRow>();
+    public DbSet<BlockRow> Blocks => Set<BlockRow>();
+    public DbSet<ReportRow> Reports => Set<ReportRow>();
 
     protected override void OnModelCreating(ModelBuilder model)
     {
@@ -77,8 +81,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             rating.ToTable("ratings");
             rating.HasKey(r => new { r.AccountId, r.Playlist });
             rating.Property(r => r.Playlist).HasMaxLength(32);
-            // For leaderboards: the best in a playlist, quickly.
-            rating.HasIndex(r => new { r.Playlist, r.Rating });
+            // For leaderboards: the best in a playlist this season, quickly.
+            rating.HasIndex(r => new { r.Playlist, r.Season, r.Rating });
+            rating.Property(r => r.Season).HasDefaultValue(1);
+            rating.Property(r => r.BestRating).HasDefaultValue(1000);
             rating.HasOne<Account>().WithMany().HasForeignKey(r => r.AccountId).OnDelete(DeleteBehavior.Cascade);
         });
 
@@ -110,6 +116,49 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             player.HasIndex(p => new { p.AccountId, p.EndedAt });
             player.HasOne<MatchRow>().WithMany().HasForeignKey(p => p.MatchId).OnDelete(DeleteBehavior.Cascade);
             player.HasOne<Account>().WithMany().HasForeignKey(p => p.AccountId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        model.Entity<SeasonResultRow>(result =>
+        {
+            result.ToTable("season_results");
+            result.HasKey(r => new { r.AccountId, r.Playlist, r.Season });
+            result.Property(r => r.Playlist).HasMaxLength(32);
+            result.HasOne<Account>().WithMany().HasForeignKey(r => r.AccountId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        model.Entity<FriendshipRow>(friend =>
+        {
+            friend.ToTable("friendships");
+            friend.HasKey(f => new { f.RequesterId, f.AddresseeId });
+            // Requests waiting for a player, and their friends, from either side.
+            friend.HasIndex(f => f.AddresseeId);
+            friend.HasOne<Account>().WithMany().HasForeignKey(f => f.RequesterId).OnDelete(DeleteBehavior.Cascade);
+            friend.HasOne<Account>().WithMany().HasForeignKey(f => f.AddresseeId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        model.Entity<BlockRow>(block =>
+        {
+            block.ToTable("blocks");
+            block.HasKey(b => new { b.OwnerId, b.BlockedId });
+            block.HasIndex(b => b.BlockedId);
+            block.HasOne<Account>().WithMany().HasForeignKey(b => b.OwnerId).OnDelete(DeleteBehavior.Cascade);
+            block.HasOne<Account>().WithMany().HasForeignKey(b => b.BlockedId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        model.Entity<ReportRow>(report =>
+        {
+            report.ToTable("reports");
+            report.HasKey(r => r.Id);
+            report.Property(r => r.Reason).HasMaxLength(32);
+            report.Property(r => r.Details).HasMaxLength(500);
+            report.Property(r => r.MatchId).HasMaxLength(32);
+            report.Property(r => r.Chat).HasMaxLength(2000);
+            report.Property(r => r.Status).HasMaxLength(16);
+            report.HasIndex(r => new { r.Status, r.CreatedAt });
+            report.HasIndex(r => new { r.ReporterId, r.CreatedAt });
+            report.HasIndex(r => r.ReportedId);
+            report.HasOne<Account>().WithMany().HasForeignKey(r => r.ReporterId).OnDelete(DeleteBehavior.Cascade);
+            report.HasOne<Account>().WithMany().HasForeignKey(r => r.ReportedId).OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

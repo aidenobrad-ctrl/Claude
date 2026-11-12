@@ -87,6 +87,61 @@ public sealed class RatingRow
     public int Losses { get; set; }
     public int Draws { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
+    /// <summary>The ranked season these numbers belong to. A row from an earlier season is soft-reset when next used.</summary>
+    public int Season { get; set; } = 1;
+    /// <summary>The highest rating reached this season.</summary>
+    public int BestRating { get; set; } = 1000;
+}
+
+/// <summary>Where a player finished a ranked season in one playlist. Written when their rating rolls over to the next season.</summary>
+public sealed class SeasonResultRow
+{
+    public Guid AccountId { get; set; }
+    public string Playlist { get; set; } = "";
+    public int Season { get; set; }
+    public int FinalRating { get; set; }
+    public int BestRating { get; set; }
+    public int Matches { get; set; }
+    public int Wins { get; set; }
+}
+
+/// <summary>
+/// A friendship, or a request for one. One row per pair: the requester asked, the addressee
+/// has not yet answered unless <see cref="Accepted"/>.
+/// </summary>
+public sealed class FriendshipRow
+{
+    public Guid RequesterId { get; set; }
+    public Guid AddresseeId { get; set; }
+    public bool Accepted { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset? AcceptedAt { get; set; }
+}
+
+/// <summary>Someone a player never wants to hear from: no friend requests, no invites, and their chat hidden.</summary>
+public sealed class BlockRow
+{
+    public Guid OwnerId { get; set; }
+    public Guid BlockedId { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
+/// <summary>A report of a player, for a person to review.</summary>
+public sealed class ReportRow
+{
+    public Guid Id { get; set; }
+    public Guid ReporterId { get; set; }
+    public Guid ReportedId { get; set; }
+    /// <summary>One of <see cref="Social.ReportReasons.All"/>.</summary>
+    public string Reason { get; set; } = "";
+    public string Details { get; set; } = "";
+    /// <summary>The match it happened in, if it was one.</summary>
+    public string MatchId { get; set; } = "";
+    /// <summary>What the reported player said that the reporter saw, one line each.</summary>
+    public string Chat { get; set; } = "";
+    public DateTimeOffset CreatedAt { get; set; }
+    /// <summary>"open", then whatever a reviewer decides.</summary>
+    public string Status { get; set; } = "open";
 }
 
 /// <summary>Progress on one challenge in one day or week.</summary>

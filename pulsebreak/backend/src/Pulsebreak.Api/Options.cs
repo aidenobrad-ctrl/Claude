@@ -82,6 +82,30 @@ public sealed class DatabaseOptions
 }
 
 /// <summary>Finding matches and the game servers they are played on. Bound from "Matchmaking".</summary>
+/// <summary>Friends, parties, chat and reports.</summary>
+public sealed class SocialOptions
+{
+    public int MaxFriends { get; set; } = 200;
+    public int MaxPartySize { get; set; } = 5;
+    /// <summary>How long a party invite waits for an answer.</summary>
+    public int InviteSeconds { get; set; } = 300;
+    /// <summary>A player counts as online for this long after the game last checked in.</summary>
+    public int PresenceSeconds { get; set; } = 45;
+    public int ChatPerMinute { get; set; } = 20;
+    public int ReportsPerDay { get; set; } = 20;
+    /// <summary>Lets a moderator list reports (X-Admin-Key). Empty switches the list off. At least 32 characters otherwise.</summary>
+    public string AdminKey { get; set; } = "";
+}
+
+/// <summary>Ranked seasons: when the first began, how long each lasts, and how far ratings move back at the turn.</summary>
+public sealed class SeasonOptions
+{
+    public DateTimeOffset FirstStart { get; set; } = new(2026, 11, 2, 0, 0, 0, TimeSpan.Zero);
+    public int LengthDays { get; set; } = 56;
+    /// <summary>The share of a rating's distance from the start rating that survives a new season. 0.5 halves it.</summary>
+    public double Keep { get; set; } = 0.5;
+}
+
 public sealed class MatchmakingOptions
 {
     /// <summary>

@@ -10,12 +10,27 @@ using StackExchange.Redis;
 
 namespace Pulsebreak.Api.Matchmaking;
 
-/// <summary>One player's place in a queue, and once matched, where to go.</summary>
+/// <summary>
+/// A place in a queue, and once matched, where to go. One player, or a party: the leader is
+/// <see cref="Player"/>, and the others are in <see cref="Members"/> ("id|name;id|name").
+/// A party is always matched together, on one side.
+/// </summary>
 public sealed record MatchTicket(
     string Id, string Player, string Name, string Playlist, uint Version, long CreatedMs, long SeenMs,
-    string Status, string Address, string JoinTicket, string MatchId, int Rating = Ranks.StartRating)
+    string Status, string Address, string JoinTicket, string MatchId, int Rating = Ranks.StartRating, string Members = "")
 {
     public const string Searching = "searching", Matched = "matched", Cancelled = "cancelled", Expired = "expired";
+
+    /// <summary>Everyone besides the leader.</summary>
+    public IReadOnlyList<(string Key, string Name)> MemberList =>
+        Members.Split(';', StringSplitOptions.RemoveEmptyEntries).Select(m => m.Split('|')).Where(p => p.Length == 2).Select(p => (p[0], p[1])).ToList();
+
+    /// <summary>How many people this ticket brings.</summary>
+    public int Size => 1 + MemberList.Count;
+
+    public bool Includes(string player) => Player == player || MemberList.Any(m => m.Key == player);
+
+    public static string Encode(IEnumerable<(string Key, string Name)> members) => string.Join(";", members.Select(m => m.Key + "|" + m.Name));
 }
 
 /// <summary>A match the matchmaker set up: which server it went to, and what that server was told.</summary>
@@ -77,40 +92,58 @@ public sealed class MatchmakingService(
 
     // ------------------------------------------------------------------ players
 
-    /// <summary>Puts a player in a playlist's queue. Any place they already had, in any queue, is given up.</summary>
+    /// <summary>The most people a party can bring to a playlist: a team's worth, or the whole match without teams.</summary>
+    public static int MaxGroup(Playlist playlist) => playlist.TeamSize > 0 ? playlist.TeamSize : playlist.Players;
+
+    /// <summary>
+    /// Puts a player, or a party led by them, in a playlist's queue. Any place any of them
+    /// already had, in any queue, is given up.
+    /// </summary>
     /// <param name="rating">The player's rating in this playlist, for ranked; ignored otherwise.</param>
-    public async Task<MatchTicket> EnqueueAsync(Caller caller, Playlist playlist, uint version, int rating = Ranks.StartRating)
+    /// <param name="members">The rest of the party, if this is one.</param>
+    public async Task<MatchTicket> EnqueueAsync(Caller caller, Playlist playlist, uint version, int rating = Ranks.StartRating,
+        IReadOnlyList<(string Key, string Name)>? members = null)
     {
         IDatabase db = Db;
-        RedisValue previous = await db.StringGetAsync(PlayerKey(caller.Key));
-        if (previous.HasValue) await CancelAsync(previous.ToString(), caller.Key);
+        members ??= [];
+        foreach (string key in members.Select(m => m.Key).Prepend(caller.Key))
+        {
+            RedisValue previous = await db.StringGetAsync(PlayerKey(key));
+            if (previous.HasValue) await CancelAsync(previous.ToString(), key);
+        }
 
         long now = NowMs;
         var ticket = new MatchTicket(Guid.NewGuid().ToString("N"), caller.Key, caller.Name, playlist.Id, version, now, now,
-            MatchTicket.Searching, "", "", "", rating);
+            MatchTicket.Searching, "", "", "", rating, MatchTicket.Encode(members));
         ITransaction tran = db.CreateTransaction();
         _ = tran.HashSetAsync(TicketKey(ticket.Id), Fields(ticket));
         _ = tran.KeyExpireAsync(TicketKey(ticket.Id), TicketLife);
         _ = tran.StringSetAsync(PlayerKey(caller.Key), ticket.Id, TicketLife);
+        foreach ((string key, _) in members) _ = tran.StringSetAsync(PlayerKey(key), ticket.Id, TicketLife);
         _ = tran.SortedSetAddAsync(QueueKey(playlist.Id), ticket.Id, now);
         await tran.ExecuteAsync();
         return ticket;
     }
 
-    /// <summary>A ticket, if it exists and belongs to this player. Asking about it keeps it alive.</summary>
+    /// <summary>
+    /// A ticket, if it exists and this player is on it: its leader or one of its party. Each
+    /// is given their own join ticket. Asking about it keeps it alive.
+    /// </summary>
     public async Task<MatchTicket?> CheckAsync(string id, string player)
     {
         MatchTicket? ticket = await ReadTicketAsync(id);
-        if (ticket == null || ticket.Player != player) return null;
+        if (ticket == null || !ticket.Includes(player)) return null;
         if (ticket.Status == MatchTicket.Searching)
         {
             await Db.HashSetAsync(TicketKey(id), "seen", NowMs);
             await Db.KeyExpireAsync(TicketKey(id), TicketLife);
         }
+        if (ticket.Player != player && ticket.Status == MatchTicket.Matched)
+            ticket = ticket with { JoinTicket = (await Db.HashGetAsync(TicketKey(id), "join:" + player)).ToString() };
         return ticket;
     }
 
-    /// <summary>Gives up a place in a queue. False if there was no such place, or it was not this player's.</summary>
+    /// <summary>Gives up a place in a queue. False if there was no such place, or it was not this player's to give up (only a party's leader can).</summary>
     public async Task<bool> CancelAsync(string id, string player)
     {
         MatchTicket? ticket = await ReadTicketAsync(id);
@@ -120,10 +153,12 @@ public sealed class MatchmakingService(
         tran.AddCondition(Condition.HashEqual(TicketKey(id), "status", MatchTicket.Searching));
         _ = tran.HashSetAsync(TicketKey(id), "status", MatchTicket.Cancelled);
         _ = tran.SortedSetRemoveAsync(QueueKey(ticket.Playlist), id);
-        _ = tran.KeyDeleteAsync(PlayerKey(player));
+        foreach (string key in Everyone(ticket)) _ = tran.KeyDeleteAsync(PlayerKey(key));
         await tran.ExecuteAsync();
         return true;
     }
+
+    static IEnumerable<string> Everyone(MatchTicket ticket) => ticket.MemberList.Select(m => m.Key).Prepend(ticket.Player);
 
     public async Task<int> SearchingAsync(string playlist) => (int)await Db.SortedSetLengthAsync(QueueKey(playlist));
 
@@ -243,16 +278,16 @@ public sealed class MatchmakingService(
             }
             while (line.Count > 0)
             {
-                bool full = line.Count >= playlist.Players;
-                bool waitedEnough = line.Count >= playlist.MinPlayers && now - line[0].CreatedMs >= _options.FillAfterSeconds * 1000L;
+                (List<MatchTicket> picked, Dictionary<string, int>? sides, int people) = Pick(playlist, line);
+                bool full = people >= playlist.Players;
+                bool waitedEnough = people >= playlist.MinPlayers && now - line[0].CreatedMs >= _options.FillAfterSeconds * 1000L;
                 if (!full && !waitedEnough) break;
 
                 FleetServer? server = servers.FirstOrDefault(s => s.Free && s.Version == sameVersion.Key);
                 if (server == null) break;       // everyone waits for a server to come free
 
-                List<MatchTicket> players = line.Take(playlist.Players).ToList();
-                line.RemoveRange(0, players.Count);
-                if (await StartMatchAsync(server, playlist, players)) servers.Remove(server);
+                foreach (MatchTicket taken in picked) line.Remove(taken);
+                if (await StartMatchAsync(server, playlist, picked, sides)) servers.Remove(server);
             }
         }
     }
@@ -284,6 +319,34 @@ public sealed class MatchmakingService(
         }
     }
 
+    /// <summary>
+    /// Casual: the oldest tickets that fit, in order. With teams, each party goes whole onto
+    /// the side with most room; a ticket that fits nowhere waits for the next match. Returns
+    /// the tickets, each ticket's side (null without teams), and how many people they are.
+    /// </summary>
+    static (List<MatchTicket> Picked, Dictionary<string, int>? Sides, int People) Pick(Playlist playlist, List<MatchTicket> line)
+    {
+        var picked = new List<MatchTicket>();
+        Dictionary<string, int>? sides = playlist.TeamSize > 0 ? new Dictionary<string, int>() : null;
+        int[] room = { playlist.TeamSize, playlist.TeamSize };
+        int people = 0;
+        foreach (MatchTicket ticket in line)
+        {
+            if (people + ticket.Size > playlist.Players) continue;
+            if (sides != null)
+            {
+                int side = room[0] >= room[1] ? 0 : 1;
+                if (room[side] < ticket.Size) continue;
+                room[side] -= ticket.Size;
+                sides[ticket.Id] = side;
+            }
+            picked.Add(ticket);
+            people += ticket.Size;
+            if (people == playlist.Players) break;
+        }
+        return (picked, sides, people);
+    }
+
     /// <summary>Splits players into two sides as even as their ratings allow: best, then a snake down the list.</summary>
     static Dictionary<string, int> BalanceTeams(List<MatchTicket> players)
     {
@@ -293,18 +356,29 @@ public sealed class MatchmakingService(
         return teams;
     }
 
-    async Task<bool> StartMatchAsync(FleetServer server, Playlist playlist, List<MatchTicket> players)
+    /// <param name="sides">Casual with teams: each ticket's side, so a party stays together. Ranked balances by rating instead.</param>
+    async Task<bool> StartMatchAsync(FleetServer server, Playlist playlist, List<MatchTicket> players, Dictionary<string, int>? sides = null)
     {
         IDatabase db = Db;
         string matchId = Guid.NewGuid().ToString("N")[..16];
 
         // What the server will be told: the rules, who is coming, their sides and their unlocks.
         Dictionary<string, int>? teams = playlist.Ranked && playlist.TeamSize > 0 ? BalanceTeams(players) : null;
+        // With a party in the match, everyone's side is fixed here, so nobody who arrives
+        // first can take a place on the side the party needs. Otherwise the server picks.
+        if (teams == null && sides != null && players.Any(p => p.Size > 1))
+        {
+            teams = new Dictionary<string, int>();
+            foreach (MatchTicket ticket in players)
+            {
+                foreach (string key in Everyone(ticket)) teams[key] = sides[ticket.Id];
+            }
+        }
         AssignedPlayer[] assigned;
         using (IServiceScope scope = scopes.CreateScope())
         {
             assigned = await scope.ServiceProvider.GetRequiredService<ProgressionService>()
-                .UnlocksAsync(players.Select(p => (p.Player, teams != null ? teams[p.Player] : -1)));
+                .UnlocksAsync(players.SelectMany(Everyone).Select(key => (key, teams != null && teams.TryGetValue(key, out int team) ? team : -1)));
         }
         var assignment = new MatchAssignment { matchId = matchId, playlist = playlist.Id, ranked = playlist.Ranked, players = assigned };
         await db.StringSetAsync(MatchKey(matchId), JsonSerializer.Serialize(new StoredMatch(server.Id, assignment), Json), MatchLife);
@@ -322,14 +396,17 @@ public sealed class MatchmakingService(
         {
             ITransaction take = db.CreateTransaction();
             take.AddCondition(Condition.HashEqual(TicketKey(ticket.Id), "status", MatchTicket.Searching));
-            _ = take.HashSetAsync(TicketKey(ticket.Id),
-            [
+            var fields = new List<HashEntry>
+            {
                 new("status", MatchTicket.Matched), new("address", address), new("match", matchId),
-                new("join", JoinTicket(ticket, matchId, playlist.Ranked)),
-            ]);
+                new("join", JoinTicket(ticket.Player, ticket.Name, matchId, playlist.Ranked)),
+            };
+            // Each of a party gets a join ticket of their own.
+            foreach ((string key, string name) in ticket.MemberList) fields.Add(new("join:" + key, JoinTicket(key, name, matchId, playlist.Ranked)));
+            _ = take.HashSetAsync(TicketKey(ticket.Id), fields.ToArray());
             _ = take.SortedSetRemoveAsync(QueueKey(playlist.Id), ticket.Id);
-            _ = take.KeyDeleteAsync(PlayerKey(ticket.Player));
-            if (await take.ExecuteAsync()) matched++;
+            foreach (string key in Everyone(ticket)) _ = take.KeyDeleteAsync(PlayerKey(key));
+            if (await take.ExecuteAsync()) matched += ticket.Size;
         }
 
         log.LogInformation("Match {Match} ({Playlist}, {Players} players) goes to server {Server}.", matchId, playlist.Id, matched, server.Id);
@@ -338,15 +415,15 @@ public sealed class MatchmakingService(
     }
 
     /// <summary>The ticket a player shows the game server: who they are, and that they belong in this match.</summary>
-    string JoinTicket(MatchTicket ticket, string matchId, bool ranked)
+    string JoinTicket(string player, string name, string matchId, bool ranked)
     {
         byte[] key = Encoding.UTF8.GetBytes(_game.TicketSigningKey);
         if (key.Length < GameTicket.MinKeyBytes) return "";      // servers without a key let anyone in
         long now = clock.GetUtcNow().ToUnixTimeSeconds();
         return GameTicket.Create(new TicketClaims
         {
-            AccountId = ticket.Player,
-            Name = ticket.Name,
+            AccountId = player,
+            Name = name,
             Mode = ranked ? GameTicket.Ranked : GameTicket.Casual,
             EmailVerified = ranked,
             ExpiresAt = now + Math.Max(_game.TicketSeconds, 60),
@@ -360,7 +437,7 @@ public sealed class MatchmakingService(
         tran.AddCondition(Condition.HashEqual(TicketKey(ticket.Id), "status", MatchTicket.Searching));
         _ = tran.HashSetAsync(TicketKey(ticket.Id), "status", MatchTicket.Expired);
         _ = tran.SortedSetRemoveAsync(QueueKey(ticket.Playlist), ticket.Id);
-        _ = tran.KeyDeleteAsync(PlayerKey(ticket.Player));
+        foreach (string key in Everyone(ticket)) _ = tran.KeyDeleteAsync(PlayerKey(key));
         await tran.ExecuteAsync();
     }
 
@@ -370,7 +447,7 @@ public sealed class MatchmakingService(
     [
         new("player", t.Player), new("name", t.Name), new("playlist", t.Playlist), new("version", (long)t.Version),
         new("created", t.CreatedMs), new("seen", t.SeenMs), new("status", t.Status), new("address", t.Address),
-        new("join", t.JoinTicket), new("match", t.MatchId), new("rating", t.Rating),
+        new("join", t.JoinTicket), new("match", t.MatchId), new("rating", t.Rating), new("members", t.Members),
     ];
 
     async Task<MatchTicket?> ReadTicketAsync(string id)
@@ -381,7 +458,7 @@ public sealed class MatchmakingService(
         Dictionary<string, RedisValue> f = entries.ToDictionary(e => e.Name.ToString(), e => e.Value);
         return new MatchTicket(id, Text(f, "player"), Text(f, "name"), Text(f, "playlist"), (uint)Number(f, "version"),
             Number(f, "created"), Number(f, "seen"), Text(f, "status"), Text(f, "address"), Text(f, "join"), Text(f, "match"),
-            (int)Number(f, "rating"));
+            (int)Number(f, "rating"), Text(f, "members"));
     }
 
     async Task<FleetServer?> ReadServerAsync(string id)

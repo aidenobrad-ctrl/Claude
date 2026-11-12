@@ -5,6 +5,7 @@ using Pulsebreak.Api.Auth;
 using Pulsebreak.Api.Data;
 using Pulsebreak.Api.Matchmaking;
 using Pulsebreak.Api.Progression;
+using Pulsebreak.Api.Social;
 using Pulsebreak.Shared.Progression;
 using Pulsebreak.Shared.Match;
 
@@ -66,7 +67,7 @@ public static class MatchmakingEndpoints
     }
 
     static async Task<IResult> Enqueue(QueueRequest? request, HttpContext http, GuestPasses guests, AppDbContext db,
-        MatchmakingService matchmaking, ProgressionService progression, TimeProvider clock)
+        MatchmakingService matchmaking, ProgressionService progression, SocialService social, TimeProvider clock)
     {
         Caller? caller = await WhoAsync(http, guests, db);
         if (caller == null) return Api.Unauthorized();
@@ -88,7 +89,23 @@ public static class MatchmakingEndpoints
             rating = await progression.RatingAsync(Guid.Parse(caller.Key), playlist.Id);
         }
 
-        MatchTicket ticket = await matchmaking.EnqueueAsync(caller, playlist, request.Version, rating);
+        // In a party: the leader finds a match for everyone in it.
+        PartyInfo? party = caller.Guest ? null : await social.PartyOfAsync(Guid.Parse(caller.Key));
+        List<(string Key, string Name)> members = [];
+        if (party != null && party.Members.Count > 1)
+        {
+            if (party.LeaderId != caller.Key)
+                return Api.Error(StatusCodes.Status409Conflict, "party_member", "Your party leader starts the search for the party.");
+            if (playlist.Ranked)
+                return Api.Error(StatusCodes.Status409Conflict, "ranked_solo", "Ranked is played alone. Leave the party to queue for it.");
+            if (party.Members.Count > MatchmakingService.MaxGroup(playlist))
+                return Api.Error(StatusCodes.Status409Conflict, "party_too_big",
+                    $"A party of {party.Members.Count} cannot all play {playlist.Title} on one side. Pick a mode with bigger teams.");
+            members = party.Members.Where(m => m.Key != caller.Key).ToList();
+        }
+
+        MatchTicket ticket = await matchmaking.EnqueueAsync(caller, playlist, request.Version, rating, members);
+        if (party != null && party.Members.Count > 1) await social.SetSearchAsync(party.Id, ticket.Id, playlist.Id);
         return Results.Created("/v1/matchmaking/tickets/" + ticket.Id, await StatusOf(ticket, matchmaking, clock));
     }
 
@@ -101,11 +118,15 @@ public static class MatchmakingEndpoints
         return ticket != null ? Results.Ok(await StatusOf(ticket, matchmaking, clock)) : NoTicket();
     }
 
-    static async Task<IResult> Cancel(string id, HttpContext http, GuestPasses guests, AppDbContext db, MatchmakingService matchmaking)
+    static async Task<IResult> Cancel(string id, HttpContext http, GuestPasses guests, AppDbContext db, MatchmakingService matchmaking,
+        SocialService social)
     {
         Caller? caller = await WhoAsync(http, guests, db);
         if (caller == null) return Api.Unauthorized();
-        return await matchmaking.CancelAsync(id, caller.Key) ? Results.NoContent() : NoTicket();
+        if (!await matchmaking.CancelAsync(id, caller.Key)) return NoTicket();
+        PartyInfo? party = caller.Guest ? null : await social.PartyOfAsync(Guid.Parse(caller.Key));
+        if (party != null && party.SearchTicket == id) await social.SetSearchAsync(party.Id, "", "");
+        return Results.NoContent();
     }
 
     static IResult NoTicket() => Api.Error(StatusCodes.Status404NotFound, "no_ticket", "That search is not running any more. Find a match again.");

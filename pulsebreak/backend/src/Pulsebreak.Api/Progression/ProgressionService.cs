@@ -10,10 +10,11 @@ public sealed record LevelDto(int Level, int Xp, long XpIntoLevel, long XpForNex
 public sealed record WeaponProgressDto(string WeaponId, int Level, int Xp, long XpIntoLevel, long XpForNextLevel, int Kills);
 public sealed record ChallengeDto(string Id, string Text, int Progress, int Goal, int RewardXp, bool Completed, bool Weekly, long EndsAt);
 public sealed record RankDto(string Playlist, string Title, int Rating, int Matches, int Wins, int Losses, int Draws, string Name, string Tier,
-    int Division, int PlacementLeft);
+    int Division, int PlacementLeft, int BestRating, string BestName);
 public sealed record LastMatchDto(string MatchId, string Playlist, bool Ranked, int Outcome, int XpGained, int LevelBefore, int LevelAfter,
     int RatingBefore, int RatingAfter, string[] ChallengesCompleted, long EndedAt);
-public sealed record ProgressionDto(LevelDto Level, WeaponProgressDto[] Weapons, ChallengeDto[] Challenges, RankDto[] Ranks, LastMatchDto LastMatch);
+public sealed record ProgressionDto(LevelDto Level, WeaponProgressDto[] Weapons, ChallengeDto[] Challenges, RankDto[] Ranks, LastMatchDto LastMatch,
+    SeasonDto Season, SeasonResultDto[] PastSeasons);
 public sealed record HistoryEntryDto(string MatchId, string Playlist, bool Ranked, long EndedAt, int Outcome, bool Completed, int Kills, int Deaths,
     int Score, int XpGained, int RatingChange);
 public sealed record LeaderboardEntryDto(int Place, string Name, int Rating, string RankName, int Matches, int Wins);
@@ -32,7 +33,7 @@ public enum RecordOutcome
 /// challenges along (paying out the ones finished), changes ratings in ranked, and keeps a
 /// record of the match. Only matches the matchmaker set up count, and each counts once.
 /// </summary>
-public sealed class ProgressionService(AppDbContext db, TimeProvider clock, ILogger<ProgressionService> log)
+public sealed class ProgressionService(AppDbContext db, TimeProvider clock, Seasons seasons, ILogger<ProgressionService> log)
 {
     public async Task<RecordOutcome> RecordAsync(string serverId, MatchReport report, StoredMatch? match)
     {
@@ -67,6 +68,8 @@ public sealed class ProgressionService(AppDbContext db, TimeProvider clock, ILog
         Dictionary<Guid, RatingRow> ratings = ranked
             ? await db.Ratings.Where(r => r.Playlist == playlist!.Id && accountIds.Contains(r.AccountId)).ToDictionaryAsync(r => r.AccountId)
             : new Dictionary<Guid, RatingRow>();
+        // Ratings from an earlier season are carried into this one before the match counts.
+        foreach (RatingRow row in ratings.Values) AddResult(seasons.Roll(row));
 
         db.Matches.Add(new MatchRow
         {
@@ -99,7 +102,7 @@ public sealed class ProgressionService(AppDbContext db, TimeProvider clock, ILog
             {
                 if (!ratings.TryGetValue(accountId, out RatingRow? row))
                 {
-                    row = new RatingRow { AccountId = accountId, Playlist = playlist!.Id };
+                    row = new RatingRow { AccountId = accountId, Playlist = playlist!.Id, Season = seasons.Current, BestRating = Ranks.StartRating };
                     db.Ratings.Add(row);
                     ratings[accountId] = row;
                 }
@@ -111,6 +114,7 @@ public sealed class ProgressionService(AppDbContext db, TimeProvider clock, ILog
                 else if (player.outcome == MatchOutcome.Draw) row.Draws++;
                 else row.Losses++;
                 row.UpdatedAt = now;
+                row.BestRating = Math.Max(row.BestRating, row.Rating);
                 ratingAfter = row.Rating;
             }
 
@@ -215,14 +219,26 @@ public sealed class ProgressionService(AppDbContext db, TimeProvider clock, ILog
 
         var ranks = new List<RankDto>();
         var rated = await db.Ratings.Where(r => r.AccountId == accountId).ToDictionaryAsync(r => r.Playlist);
+        bool rolled = false;
+        foreach (RatingRow row in rated.Values)
+        {
+            if (row.Season >= seasons.Current) continue;
+            AddResult(seasons.Roll(row));
+            rolled = true;
+        }
+        if (rolled) await db.SaveChangesAsync();
         foreach (Playlist playlist in Playlists.All.Where(p => p.Ranked))
         {
             rated.TryGetValue(playlist.Id, out RatingRow? row);
-            int rating = row?.Rating ?? Ranks.StartRating, matches = row?.Matches ?? 0;
+            int rating = row?.Rating ?? Ranks.StartRating, matches = row?.Matches ?? 0, best = Math.Max(row?.BestRating ?? Ranks.StartRating, rating);
             ranks.Add(new RankDto(playlist.Id, playlist.Title, rating, matches, row?.Wins ?? 0, row?.Losses ?? 0, row?.Draws ?? 0,
                 Ranks.Name(rating, matches), Ranks.TierFor(rating).ToString(), Ranks.DivisionFor(rating),
-                Math.Max(0, Ranks.PlacementMatches - matches)));
+                Math.Max(0, Ranks.PlacementMatches - matches), best, matches >= Ranks.PlacementMatches ? Ranks.Name(best, matches) : Ranks.Name(rating, matches)));
         }
+
+        var past = (await db.SeasonResults.Where(r => r.AccountId == accountId).OrderByDescending(r => r.Season).Take(20).ToListAsync())
+            .Select(r => new SeasonResultDto(r.Season, r.Playlist, Playlists.Find(r.Playlist)?.Title ?? r.Playlist, r.FinalRating, r.BestRating,
+                Ranks.Name(r.BestRating, r.Matches), r.Matches, r.Wins)).ToArray();
 
         MatchPlayerRow? last = await db.MatchPlayers.Where(p => p.AccountId == accountId).OrderByDescending(p => p.EndedAt).FirstOrDefaultAsync();
         MatchRow? lastMatch = last != null ? await db.Matches.FindAsync(last.MatchId) : null;
@@ -233,7 +249,8 @@ public sealed class ProgressionService(AppDbContext db, TimeProvider clock, ILog
                 last.ChallengesCompleted.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(id => Challenges.Find(id)?.Text ?? id).ToArray(),
                 last.EndedAt.ToUnixTimeSeconds());
 
-        return new ProgressionDto(new LevelDto(level, profile.Xp, into, needed, Levels.MaxLevel), weapons, challenges.ToArray(), ranks.ToArray(), lastDto);
+        return new ProgressionDto(new LevelDto(level, profile.Xp, into, needed, Levels.MaxLevel), weapons, challenges.ToArray(), ranks.ToArray(), lastDto,
+            seasons.Now(), past);
     }
 
     public async Task<HistoryEntryDto[]> HistoryAsync(Guid accountId, int limit)
@@ -248,12 +265,13 @@ public sealed class ProgressionService(AppDbContext db, TimeProvider clock, ILog
             (r.player.RatingAfter ?? 0) - (r.player.RatingBefore ?? 0))).ToArray();
     }
 
-    /// <summary>The best players in a ranked playlist who have finished their placement matches.</summary>
+    /// <summary>The best players in a ranked playlist this season who have finished their placement matches.</summary>
     public async Task<LeaderboardEntryDto[]> LeaderboardAsync(string playlist, int limit)
     {
+        int season = seasons.Current;
         var rows = await (from rating in db.Ratings
                           join account in db.Accounts on rating.AccountId equals account.Id
-                          where rating.Playlist == playlist && rating.Matches >= Ranks.PlacementMatches && !account.Disabled
+                          where rating.Playlist == playlist && rating.Season == season && rating.Matches >= Ranks.PlacementMatches && !account.Disabled
                           orderby rating.Rating descending, rating.Matches descending
                           select new { account.Username, rating.Rating, rating.Matches, rating.Wins }).Take(Math.Clamp(limit, 1, 100)).ToListAsync();
         return rows.Select((r, i) => new LeaderboardEntryDto(i + 1, r.Username, r.Rating, Ranks.Name(r.Rating, r.Matches), r.Matches, r.Wins)).ToArray();
@@ -279,6 +297,12 @@ public sealed class ProgressionService(AppDbContext db, TimeProvider clock, ILog
         }).ToArray();
     }
 
+    /// <summary>A player's rating in a playlist this season, for matchmaking.</summary>
     public async Task<int> RatingAsync(Guid accountId, string playlist) =>
-        (await db.Ratings.FirstOrDefaultAsync(r => r.AccountId == accountId && r.Playlist == playlist))?.Rating ?? Ranks.StartRating;
+        seasons.RatingNow(await db.Ratings.FirstOrDefaultAsync(r => r.AccountId == accountId && r.Playlist == playlist));
+
+    void AddResult(SeasonResultRow? result)
+    {
+        if (result != null) db.SeasonResults.Add(result);
+    }
 }

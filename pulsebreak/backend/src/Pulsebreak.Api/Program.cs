@@ -14,6 +14,7 @@ using Pulsebreak.Api.Endpoints;
 using Pulsebreak.Api.Loadouts;
 using Pulsebreak.Api.Matchmaking;
 using Pulsebreak.Api.Progression;
+using Pulsebreak.Api.Social;
 using Pulsebreak.Shared.Net;
 using StackExchange.Redis;
 
@@ -48,6 +49,14 @@ builder.Services.AddOptions<MatchmakingOptions>().Bind(config.GetSection("Matchm
                    o.HeartbeatSeconds is >= 1 and <= 60 && o.ServerTimeoutSeconds >= o.HeartbeatSeconds && o.GuestPassHours is >= 1 and <= 720,
         "Matchmaking timings are out of range.")
     .ValidateOnStart();
+builder.Services.AddOptions<SocialOptions>().Bind(config.GetSection("Social"))
+    .Validate(o => o.AdminKey.Length == 0 || Encoding.UTF8.GetByteCount(o.AdminKey) >= 32,
+        "Social:AdminKey must be empty (no report list) or a secret of at least 32 characters.")
+    .Validate(o => o.MaxPartySize is >= 2 and <= 12 && o.MaxFriends is >= 1 and <= 1000, "Social limits are out of range.")
+    .ValidateOnStart();
+builder.Services.AddOptions<SeasonOptions>().Bind(config.GetSection("Seasons"))
+    .Validate(o => o.LengthDays is >= 1 and <= 366 && o.Keep is >= 0 and <= 1, "Seasons:LengthDays or Seasons:Keep is out of range.")
+    .ValidateOnStart();
 builder.Services.AddOptions<RateLimitOptions>().Bind(config.GetSection("RateLimits"));
 builder.Services.AddOptions<DatabaseOptions>().Bind(config.GetSection("Database"));
 
@@ -75,6 +84,8 @@ builder.Services.AddSingleton<SessionIssuer>();
 builder.Services.AddSingleton<AccountMailer>();
 builder.Services.AddScoped<LoadoutService>();
 builder.Services.AddScoped<ProgressionService>();
+builder.Services.AddSingleton<Seasons>();
+builder.Services.AddScoped<SocialService>();
 builder.Services.AddHostedService<EmailWorker>();
 builder.Services.AddSingleton<GuestPasses>();
 builder.Services.AddSingleton<MatchmakingService>();
@@ -204,6 +215,7 @@ app.MapGet("/health/ready", async (AppDbContext db, IConnectionMultiplexer redis
 AuthEndpoints.Map(app);
 PlayerEndpoints.Map(app);
 MatchmakingEndpoints.Map(app);
+SocialEndpoints.Map(app);
 
 if (app.Services.GetRequiredService<IOptions<DatabaseOptions>>().Value.MigrateOnStartup)
 {

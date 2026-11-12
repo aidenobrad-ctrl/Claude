@@ -76,6 +76,24 @@ namespace Pulsebreak.Api.Data.Migrations
                     b.ToTable("accounts", (string)null);
                 });
 
+            modelBuilder.Entity("Pulsebreak.Api.Data.BlockRow", b =>
+                {
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BlockedId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("OwnerId", "BlockedId");
+
+                    b.HasIndex("BlockedId");
+
+                    b.ToTable("blocks", (string)null);
+                });
+
             modelBuilder.Entity("Pulsebreak.Api.Data.ChallengeRow", b =>
                 {
                     b.Property<Guid>("AccountId")
@@ -98,6 +116,30 @@ namespace Pulsebreak.Api.Data.Migrations
                     b.HasKey("AccountId", "Period", "ChallengeId");
 
                     b.ToTable("challenges", (string)null);
+                });
+
+            modelBuilder.Entity("Pulsebreak.Api.Data.FriendshipRow", b =>
+                {
+                    b.Property<Guid>("RequesterId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AddresseeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("Accepted")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTimeOffset?>("AcceptedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("RequesterId", "AddresseeId");
+
+                    b.HasIndex("AddresseeId");
+
+                    b.ToTable("friendships", (string)null);
                 });
 
             modelBuilder.Entity("Pulsebreak.Api.Data.LoadoutRow", b =>
@@ -272,6 +314,11 @@ namespace Pulsebreak.Api.Data.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
 
+                    b.Property<int>("BestRating")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1000);
+
                     b.Property<int>("Draws")
                         .HasColumnType("integer");
 
@@ -284,6 +331,11 @@ namespace Pulsebreak.Api.Data.Migrations
                     b.Property<int>("Rating")
                         .HasColumnType("integer");
 
+                    b.Property<int>("Season")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1);
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -292,9 +344,89 @@ namespace Pulsebreak.Api.Data.Migrations
 
                     b.HasKey("AccountId", "Playlist");
 
-                    b.HasIndex("Playlist", "Rating");
+                    b.HasIndex("Playlist", "Season", "Rating");
 
                     b.ToTable("ratings", (string)null);
+                });
+
+            modelBuilder.Entity("Pulsebreak.Api.Data.ReportRow", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Chat")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Details")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("MatchId")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<Guid>("ReportedId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ReporterId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReportedId");
+
+                    b.HasIndex("ReporterId", "CreatedAt");
+
+                    b.HasIndex("Status", "CreatedAt");
+
+                    b.ToTable("reports", (string)null);
+                });
+
+            modelBuilder.Entity("Pulsebreak.Api.Data.SeasonResultRow", b =>
+                {
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Playlist")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<int>("Season")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("BestRating")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("FinalRating")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Matches")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Wins")
+                        .HasColumnType("integer");
+
+                    b.HasKey("AccountId", "Playlist", "Season");
+
+                    b.ToTable("season_results", (string)null);
                 });
 
             modelBuilder.Entity("Pulsebreak.Api.Data.SettingsRow", b =>
@@ -334,11 +466,41 @@ namespace Pulsebreak.Api.Data.Migrations
                     b.ToTable("weapon_progress", (string)null);
                 });
 
+            modelBuilder.Entity("Pulsebreak.Api.Data.BlockRow", b =>
+                {
+                    b.HasOne("Pulsebreak.Api.Data.Account", null)
+                        .WithMany()
+                        .HasForeignKey("BlockedId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Pulsebreak.Api.Data.Account", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Pulsebreak.Api.Data.ChallengeRow", b =>
                 {
                     b.HasOne("Pulsebreak.Api.Data.Account", null)
                         .WithMany()
                         .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Pulsebreak.Api.Data.FriendshipRow", b =>
+                {
+                    b.HasOne("Pulsebreak.Api.Data.Account", null)
+                        .WithMany()
+                        .HasForeignKey("AddresseeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Pulsebreak.Api.Data.Account", null)
+                        .WithMany()
+                        .HasForeignKey("RequesterId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
@@ -386,6 +548,30 @@ namespace Pulsebreak.Api.Data.Migrations
                 });
 
             modelBuilder.Entity("Pulsebreak.Api.Data.RatingRow", b =>
+                {
+                    b.HasOne("Pulsebreak.Api.Data.Account", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Pulsebreak.Api.Data.ReportRow", b =>
+                {
+                    b.HasOne("Pulsebreak.Api.Data.Account", null)
+                        .WithMany()
+                        .HasForeignKey("ReportedId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Pulsebreak.Api.Data.Account", null)
+                        .WithMany()
+                        .HasForeignKey("ReporterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Pulsebreak.Api.Data.SeasonResultRow", b =>
                 {
                     b.HasOne("Pulsebreak.Api.Data.Account", null)
                         .WithMany()

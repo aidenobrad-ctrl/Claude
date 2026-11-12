@@ -34,6 +34,8 @@ namespace Pulsebreak.Client.Online
         static GameServices _instance;
 
         public AccountClient Account { get; private set; }
+        /// <summary>Finding matches through the backend. Works signed in or not.</summary>
+        public MatchmakingClient Matchmaking { get; private set; }
         public LoadoutLibrary Library { get; private set; }
         /// <summary>Null while accounts are switched off.</summary>
         public LoadoutAccountSync LoadoutSync { get; private set; }
@@ -73,8 +75,11 @@ namespace Pulsebreak.Client.Online
             var store = new SwitchableLoadoutStore(guest);
             Library = new LoadoutLibrary(catalog, store);
 
-            Account = new AccountClient(new UnityHttpTransport(), backendUrl,
+            var http = new UnityHttpTransport();
+            Account = new AccountClient(http, backendUrl,
                 new FileCredentialStore(Path.Combine(profileFolder, "session.txt")), () => Time.realtimeSinceStartupAsDouble);
+            Matchmaking = new MatchmakingClient(http, backendUrl, () => Time.realtimeSinceStartupAsDouble,
+                AccountsEnabled ? (Func<Task<string>>)Account.AccessTokenAsync : null);
             if (!AccountsEnabled)
             {
                 // Never signed in, never syncs. Loadouts that went onto an account while accounts

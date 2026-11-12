@@ -50,12 +50,14 @@ namespace Pulsebreak.Shared.Weapons
                 if (target != null && target.IsAlive && !Targets.Contains(target))
                 {
                     Targets.Add(target);
+                    // Someone the shot cannot hurt (a teammate) does not stop it.
                     if (ApplyHit(stats, weaponId, hit.Hitbox, hit.Point, direction, hit.Distance, damageScale, tick, out HitReport report, attacker))
+                    {
                         reports.Add(report);
-
-                    if (pierced >= stats.pierceTargets) break;
-                    pierced++;
-                    damageScale *= stats.pierceDamageKept;
+                        if (pierced >= stats.pierceTargets) break;
+                        pierced++;
+                        damageScale *= stats.pierceDamageKept;
+                    }
                 }
 
                 travelled = hit.Distance + 0.02f;

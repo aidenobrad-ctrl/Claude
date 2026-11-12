@@ -466,16 +466,31 @@ namespace Pulsebreak.Tests
             var own = new PlayerSimState { Motor = motor, ActiveSlot = 1 };
             own.Weapons[1].AmmoInMagazine = 11;
 
+            var zones = new[]
+            {
+                new ZoneState { Owner = 0, Capturer = Teams.None, Progress = 0f },
+                new ZoneState { Owner = Teams.None, Capturer = 1, Progress = 0.5f, Contested = true },
+            };
+
             Writer.Reset();
-            NetMessages.WriteSnapshotHeader(Writer, 5000, 2);
-            NetMessages.WriteSnapshotPlayer(Writer, 0, true, true, 3, 74.5f, motor, 1, own, 4321);
+            NetMessages.WriteSnapshotHeader(Writer, 5000, 2, zones, 2);
+            NetMessages.WriteSnapshotPlayer(Writer, 0, true, true, 3, 74.5f, motor, 1, own, 4321,
+                new PlayerStats { Team = 1, Kills = 12, Deaths = 3, Score = 1450 });
             int ownerBytes = Writer.Length;
             NetMessages.WriteSnapshotPlayer(Writer, 1, true, false, 7, 0f, motor, 2, null, 0);
             int otherBytes = Writer.Length - ownerBytes;
 
             NetReader reader = Written(NetMessage.Snapshot);
-            Assert.That(reader.ReadInt(), Is.EqualTo(5000));
-            Assert.That(reader.ReadByte(), Is.EqualTo(2));
+            var heard = new ZoneState[NetMessages.MaxZones];
+            NetMessages.ReadSnapshotHeader(reader, out int tick, heard, out int zoneCount, out int playerCount);
+            Assert.That(tick, Is.EqualTo(5000));
+            Assert.That(playerCount, Is.EqualTo(2));
+            Assert.That(zoneCount, Is.EqualTo(2));
+            Assert.That(heard[0].Owner, Is.EqualTo(0));
+            Assert.That(heard[1].Owner, Is.EqualTo(Teams.None));
+            Assert.That(heard[1].Capturer, Is.EqualTo(1));
+            Assert.That(heard[1].Progress, Is.EqualTo(0.5f).Within(0.01f));
+            Assert.That(heard[1].Contested, Is.True);
 
             var player = new SnapshotPlayer();
             NetMessages.ReadSnapshotPlayer(reader, player);
@@ -487,6 +502,10 @@ namespace Pulsebreak.Tests
             Assert.That(player.HasOwn, Is.True);
             Assert.That(player.LastCmdTick, Is.EqualTo(4321));
             Assert.That(player.Own.Weapons[1].AmmoInMagazine, Is.EqualTo(11));
+            Assert.That(player.Stats.Team, Is.EqualTo(1));
+            Assert.That(player.Stats.Kills, Is.EqualTo(12));
+            Assert.That(player.Stats.Deaths, Is.EqualTo(3));
+            Assert.That(player.Stats.Score, Is.EqualTo(1450));
 
             NetMessages.ReadSnapshotPlayer(reader, player);
             Assert.That(player.Id, Is.EqualTo(1));
@@ -512,12 +531,19 @@ namespace Pulsebreak.Tests
             };
 
             Writer.Reset();
-            NetMessages.Write(Writer, new SpawnMessage { PlayerId = 1, SpawnCount = 9, Warmup = true, Loadout = loadout, Position = new Vector3(1f, 2f, 3f), Yaw = 270f });
+            NetMessages.Write(Writer, new SpawnMessage
+            {
+                PlayerId = 1, SpawnCount = 9, UnlimitedAmmo = true, RechargeUtility = false, SlotMask = 0b0101, ActiveSlot = 2,
+                Loadout = loadout, Position = new Vector3(1f, 2f, 3f), Yaw = 270f,
+            });
             SpawnMessage spawn = NetMessages.ReadSpawn(Written(NetMessage.Spawn));
             Assert.That(Reader.Failed, Is.False);
             Assert.That(spawn.PlayerId, Is.EqualTo(1));
             Assert.That(spawn.SpawnCount, Is.EqualTo(9));
-            Assert.That(spawn.Warmup, Is.True);
+            Assert.That(spawn.UnlimitedAmmo, Is.True);
+            Assert.That(spawn.RechargeUtility, Is.False);
+            Assert.That(spawn.SlotMask, Is.EqualTo(0b0101));
+            Assert.That(spawn.ActiveSlot, Is.EqualTo(2));
             Assert.That(spawn.Yaw, Is.EqualTo(270f));
             Assert.That(spawn.Loadout.name, Is.EqualTo("Close quarters"));
             Assert.That(spawn.Loadout.primary.weaponId, Is.EqualTo("smg_a"));
@@ -527,7 +553,7 @@ namespace Pulsebreak.Tests
             Assert.That(spawn.Loadout.perkSet, Is.EqualTo("mover"));
 
             Writer.Reset();
-            NetMessages.Write(Writer, new MatchState { Phase = MatchPhase.RoundEnd, Round = 4, PhaseEndTick = 123456, Score0 = 2, Score1 = 1, RoundWinner = MatchState.Nobody, MatchWinner = MatchState.Nobody });
+            NetMessages.Write(Writer, new MatchState { Phase = MatchPhase.RoundEnd, Round = 4, PhaseEndTick = 123456, Score0 = 2, Score1 = 1, RoundWinner = MatchState.Nobody, MatchWinner = MatchState.Nobody, ActiveZone = -1 });
             MatchState match = NetMessages.ReadMatch(Written(NetMessage.Match));
             Assert.That(match.Phase, Is.EqualTo(MatchPhase.RoundEnd));
             Assert.That(match.Round, Is.EqualTo(4));
@@ -536,14 +562,47 @@ namespace Pulsebreak.Tests
             Assert.That(match.Score(1), Is.EqualTo(1));
             Assert.That(match.RoundWinner, Is.EqualTo(MatchState.Nobody), "a draw comes back as nobody, not as player 255");
             Assert.That(match.MatchWinner, Is.EqualTo(MatchState.Nobody));
+            Assert.That(match.ActiveZone, Is.EqualTo(-1));
 
             Writer.Reset();
-            NetMessages.Write(Writer, new WelcomeMessage { PlayerId = 1, ArenaId = "relay_yard", ServerTick = 99, Config = new DuelConfig { roundsToWin = 4, roundSeconds = 75f, maxHealth = 150f } });
+            NetMessages.Write(Writer, new MatchState { Phase = MatchPhase.Live, Score0 = 1999, Score1 = 250, RoundWinner = MatchState.Nobody, MatchWinner = 7, ActiveZone = 2 });
+            match = NetMessages.ReadMatch(Written(NetMessage.Match));
+            Assert.That(match.Score0, Is.EqualTo(1999), "zone modes score into the hundreds");
+            Assert.That(match.MatchWinner, Is.EqualTo(7), "without teams the winner is a player");
+            Assert.That(match.ActiveZone, Is.EqualTo(2));
+
+            Writer.Reset();
+            MatchSettings rules = MatchSettings.For(GameModeKind.Domination);
+            rules.teamSize = 4;
+            rules.scoreLimit = 150;
+            rules.fillWithBots = true;
+            rules.botSkill = 2;
+            NetMessages.Write(Writer, new WelcomeMessage { PlayerId = 1, ServerTick = 99, Settings = rules });
             WelcomeMessage welcome = NetMessages.ReadWelcome(Written(NetMessage.Welcome));
-            Assert.That(welcome.ArenaId, Is.EqualTo("relay_yard"));
-            Assert.That(welcome.Config.roundsToWin, Is.EqualTo(4));
-            Assert.That(welcome.Config.roundSeconds, Is.EqualTo(75f));
-            Assert.That(welcome.Config.maxHealth, Is.EqualTo(150f));
+            Assert.That(welcome.Settings.mode, Is.EqualTo(GameModeKind.Domination));
+            Assert.That(welcome.Settings.arenaId, Is.EqualTo(rules.arenaId));
+            Assert.That(welcome.Settings.teamSize, Is.EqualTo(4));
+            Assert.That(welcome.Settings.scoreLimit, Is.EqualTo(150));
+            Assert.That(welcome.Settings.captureSeconds, Is.EqualTo(rules.captureSeconds));
+            Assert.That(welcome.Settings.fillWithBots, Is.True);
+            Assert.That(welcome.Settings.botSkill, Is.EqualTo(2));
+
+            Writer.Reset();
+            NetMessages.Write(Writer, new PlayerInfoMessage { PlayerId = 6, Present = true, Name = "Bot Cedar", Team = 1, Bot = true });
+            PlayerInfoMessage info = NetMessages.ReadPlayerInfo(Written(NetMessage.PlayerInfo));
+            Assert.That(info.PlayerId, Is.EqualTo(6));
+            Assert.That(info.Name, Is.EqualTo("Bot Cedar"));
+            Assert.That(info.Team, Is.EqualTo(1));
+            Assert.That(info.Bot, Is.True);
+
+            Writer.Reset();
+            NetMessages.Write(Writer, new RearmMessage { PlayerId = 3, SpawnCount = 41, SlotMask = 0b0110, ActiveSlot = 1, Loadout = loadout });
+            RearmMessage rearm = NetMessages.ReadRearm(Written(NetMessage.Rearm));
+            Assert.That(rearm.PlayerId, Is.EqualTo(3));
+            Assert.That(rearm.SpawnCount, Is.EqualTo(41));
+            Assert.That(rearm.SlotMask, Is.EqualTo(0b0110));
+            Assert.That(rearm.ActiveSlot, Is.EqualTo(1));
+            Assert.That(rearm.Loadout.primary.weaponId, Is.EqualTo("smg_a"));
 
             Writer.Reset();
             NetMessages.Write(Writer, new KillMessage { Killer = KillMessage.NoKiller, Victim = 1, WeaponId = "ar_x", Headshot = true });

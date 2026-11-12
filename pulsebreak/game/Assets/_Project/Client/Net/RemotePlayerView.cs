@@ -9,7 +9,8 @@ namespace Pulsebreak.Client.Net
 {
     /// <summary>
     /// Another player, as drawn on this client: a placeholder body made of the same parts
-    /// the server shoots at, holding a block where their weapon would be.
+    /// the server shoots at, holding a block where their weapon would be. Enemies are red;
+    /// teammates are blue, with a marker over their heads so they are easy to pick out.
     ///
     /// It never simulates anything. Each frame it asks the session where that player was a
     /// moment ago and stands the body there.
@@ -17,15 +18,20 @@ namespace Pulsebreak.Client.Net
     [DefaultExecutionOrder(10)]
     public sealed class RemotePlayerView : MonoBehaviour
     {
-        static readonly Color BodyColor = new Color(0.9f, 0.32f, 0.24f);
-        static readonly Color HeadColor = new Color(1f, 0.7f, 0.32f);
+        static readonly Color EnemyBody = new Color(0.9f, 0.32f, 0.24f);
+        static readonly Color EnemyHead = new Color(1f, 0.7f, 0.32f);
+        static readonly Color FriendBody = new Color(0.22f, 0.56f, 0.95f);
+        static readonly Color FriendHead = new Color(0.55f, 0.85f, 1f);
         const float FlashTime = 0.12f;
 
         ClientSession _session;
         int _playerId;
         UnityCharacterBody _body;
         Transform _weapon;
-        Material _bodyMaterial, _headMaterial, _weaponMaterial;
+        Material _bodyMaterial, _headMaterial, _weaponMaterial, _markerMaterial;
+        Transform _marker;
+        Color _bodyColor = EnemyBody, _headColor = EnemyHead;
+        bool _friendly;
         float _flash;
         int _shownSlot = -1;
         byte _shownSpawn;
@@ -52,8 +58,8 @@ namespace Pulsebreak.Client.Net
             _body = new UnityCharacterBody("Remote " + _playerId, movement, withController: false, server: false);
             _body.Root.SetParent(transform, false);
 
-            _bodyMaterial = new Material(GreyboxMaterials.Flat(BodyColor));
-            _headMaterial = new Material(GreyboxMaterials.Flat(HeadColor));
+            _bodyMaterial = new Material(GreyboxMaterials.Flat(EnemyBody));
+            _headMaterial = new Material(GreyboxMaterials.Flat(EnemyHead));
             foreach (UnityCharacterBody.Part part in _body.Parts)
             {
                 GameObject go = part.Transform.gameObject;
@@ -64,6 +70,12 @@ namespace Pulsebreak.Client.Net
             _weaponMaterial = new Material(GreyboxMaterials.Flat(new Color(0.2f, 0.2f, 0.22f)));
             _weapon = GreyboxKit.Visual(_body.Root, "Weapon", PrimitiveType.Cube, Vector3.zero,
                 new Vector3(0.07f, 0.1f, 0.6f), _weaponMaterial).transform;
+
+            _markerMaterial = new Material(GreyboxMaterials.Unlit(FriendHead));
+            _marker = GreyboxKit.Visual(_body.Root, "Team Marker", PrimitiveType.Cube, Vector3.zero,
+                new Vector3(0.18f, 0.18f, 0.18f), _markerMaterial, castShadows: false).transform;
+            _marker.localRotation = Quaternion.Euler(45f, 0f, 45f);
+            _marker.gameObject.SetActive(false);
 
             _body.Root.gameObject.SetActive(false);
         }
@@ -79,6 +91,7 @@ namespace Pulsebreak.Client.Net
             if (!Visible) return;
 
             _body.SetPose(view.Pose);
+            UpdateSide(view.Pose.EyeHeight);
 
             // The weapon sits at the right shoulder and tips with where they are looking.
             _weapon.localPosition = new Vector3(0.2f, view.Pose.EyeHeight - 0.22f, 0.3f);
@@ -89,9 +102,27 @@ namespace Pulsebreak.Client.Net
             {
                 _flash -= Time.unscaledDeltaTime;
                 float t = Mathf.Clamp01(_flash / FlashTime);
-                GreyboxMaterials.SetColor(_bodyMaterial, Color.Lerp(BodyColor, Color.white, t));
-                GreyboxMaterials.SetColor(_headMaterial, Color.Lerp(HeadColor, Color.white, t));
+                GreyboxMaterials.SetColor(_bodyMaterial, Color.Lerp(_bodyColor, Color.white, t));
+                GreyboxMaterials.SetColor(_headMaterial, Color.Lerp(_headColor, Color.white, t));
             }
+        }
+
+        /// <summary>Blue for a teammate, red for anyone else. Checked every frame: teams can change between matches.</summary>
+        void UpdateSide(float eyeHeight)
+        {
+            ClientPlayer local = _session.Local;
+            ClientPlayer player = _session.Players[_playerId];
+            bool friendly = local != null && _session.Settings.TeamBased && player.Team != Teams.None && player.Team == local.Team;
+            if (friendly != _friendly)
+            {
+                _friendly = friendly;
+                _bodyColor = friendly ? FriendBody : EnemyBody;
+                _headColor = friendly ? FriendHead : EnemyHead;
+                GreyboxMaterials.SetColor(_bodyMaterial, _bodyColor);
+                GreyboxMaterials.SetColor(_headMaterial, _headColor);
+                _marker.gameObject.SetActive(friendly);
+            }
+            if (friendly) _marker.localPosition = new Vector3(0f, eyeHeight + 0.55f + Mathf.Sin(Time.time * 3f) * 0.05f, 0f);
         }
 
         /// <summary>Sizes and colours the weapon block to hint at what they are holding.</summary>
@@ -116,6 +147,7 @@ namespace Pulsebreak.Client.Net
             if (_bodyMaterial != null) Destroy(_bodyMaterial);
             if (_headMaterial != null) Destroy(_headMaterial);
             if (_weaponMaterial != null) Destroy(_weaponMaterial);
+            if (_markerMaterial != null) Destroy(_markerMaterial);
         }
     }
 }

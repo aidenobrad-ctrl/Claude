@@ -37,15 +37,17 @@ namespace Pulsebreak.Shared.Net
         AlreadyHere = 2,
         /// <summary>A ranked server, and the player's ticket is not good for ranked (their email is not verified).</summary>
         RankedOnly = 3,
+        /// <summary>A matchmade server, and the player's ticket is for a different match.</summary>
+        WrongMatch = 4,
     }
 
     public static class NetProtocol
     {
         /// <summary>Changes whenever anything about what goes over the wire changes, so mismatched builds refuse each other.</summary>
-        public const uint Version = 0x50420602u;
+        public const uint Version = 0x50420700u;
         public const int DefaultPort = 7777;
-        /// <summary>A duel. Team modes raise this in a later phase.</summary>
-        public const int MaxPlayers = 2;
+        /// <summary>The most players in one match: five a side, or a twelve-player free-for-all.</summary>
+        public const int MaxPlayers = 12;
         /// <summary>Small enough to cross the internet without being split up.</summary>
         public const int MaxPacketSize = 1200;
         /// <summary>A connect request is padded to this, so a server never answers with more than it was sent.</summary>

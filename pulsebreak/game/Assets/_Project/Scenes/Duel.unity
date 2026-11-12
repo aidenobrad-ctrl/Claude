@@ -108,16 +108,27 @@ MonoBehaviour:
   backendUrl: http://localhost:5080
   port: 7777
   server:
-    arenaId: relay_yard
-    duel:
+    match:
+      mode: 0
+      arenaId: relay_yard
+      teamSize: 1
+      maxPlayers: 8
       roundsToWin: 3
-      countdownSeconds: 3
       roundSeconds: 90
+      scoreLimit: 50
+      timeLimitSeconds: 600
+      respawnSeconds: 3
+      countdownSeconds: 3
       roundEndSeconds: 4
       matchEndSeconds: 8
       maxHealth: 100
+      captureSeconds: 5
+      hardpointSeconds: 60
+      fillWithBots: 0
+      botSkill: 1
     snapshotInterval: 1
     maxRewindSeconds: 0.3
+    lobbySeconds: 6
     rankedOnly: 0
   simulatedConnection:
     latencyMs: 0

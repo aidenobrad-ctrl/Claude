@@ -124,7 +124,8 @@ namespace Pulsebreak.Client.Controls
         /// <summary>Call once per simulation tick.</summary>
         /// <param name="currentSlot">The weapon slot in hand (or being switched to), counting from 0.</param>
         /// <param name="slotCount">How many weapon slots there are, for wrapping the mouse wheel.</param>
-        public PlayerInputCmd BuildCmd(int tick, int currentSlot, int slotCount)
+        /// <param name="usable">One bit per slot that has a weapon in it. The wheel skips the others.</param>
+        public PlayerInputCmd BuildCmd(int tick, int currentSlot, int slotCount, int usable = ~0)
         {
             InputButtons held = InputButtons.None;
             if (_jump.IsPressed()) held |= InputButtons.Jump;
@@ -153,13 +154,13 @@ namespace Pulsebreak.Client.Controls
                 Yaw = Yaw,
                 Pitch = Pitch,
                 Buttons = held | _latched,
-                SelectSlot = ConsumeSlotRequest(currentSlot, slotCount),
+                SelectSlot = ConsumeSlotRequest(currentSlot, slotCount, usable),
             };
             _latched = InputButtons.None;
             return cmd;
         }
 
-        byte ConsumeSlotRequest(int currentSlot, int slotCount)
+        byte ConsumeSlotRequest(int currentSlot, int slotCount, int usable)
         {
             int request = 0;
             if (_latchedSlot > 0 && _latchedSlot <= slotCount)
@@ -169,7 +170,14 @@ namespace Pulsebreak.Client.Controls
             else if (_scrollSteps != 0 && slotCount > 1)
             {
                 int step = _scrollSteps > 0 ? 1 : -1;
-                request = ((currentSlot + step) % slotCount + slotCount) % slotCount + 1;
+                int slot = currentSlot;
+                for (int tries = 0; tries < slotCount; tries++)
+                {
+                    slot = ((slot + step) % slotCount + slotCount) % slotCount;
+                    if ((usable & (1 << slot)) == 0) continue;
+                    request = slot + 1;
+                    break;
+                }
             }
 
             _latchedSlot = 0;

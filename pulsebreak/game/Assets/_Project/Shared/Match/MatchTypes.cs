@@ -1,16 +1,18 @@
 using System;
 using UnityEngine;
 using Pulsebreak.Shared.Combat;
+using Pulsebreak.Shared.Loadouts;
 using Pulsebreak.Shared.Movement;
 using Pulsebreak.Shared.Simulation;
+using Pulsebreak.Shared.Weapons;
 
 namespace Pulsebreak.Shared.Match
 {
     public enum MatchPhase : byte
     {
-        /// <summary>Fewer than two players. Whoever is here can run around and shoot.</summary>
+        /// <summary>Not enough players yet. Whoever is here can run around and shoot.</summary>
         Waiting,
-        /// <summary>Both players are placed and held still until the round starts.</summary>
+        /// <summary>Everyone is placed and held still until the round starts.</summary>
         Countdown,
         Live,
         /// <summary>A round has just been decided. Nobody can be hurt.</summary>
@@ -18,17 +20,189 @@ namespace Pulsebreak.Shared.Match
         MatchEnd,
     }
 
-    /// <summary>The rules of a duel. The server owns them and tells each client when it joins.</summary>
-    [Serializable]
-    public sealed class DuelConfig
+    public static class Teams
     {
-        /// <summary>3 makes it a best of five.</summary>
+        public const int Count = 2;
+        /// <summary>The team of a player in a mode without teams.</summary>
+        public const int None = 255;
+    }
+
+    /// <summary>
+    /// The rules of a match: which mode, on which map, with how many players and to what
+    /// limits. The server owns them and tells each client when it joins. Defaults for each
+    /// mode come from <see cref="For"/>.
+    /// </summary>
+    [Serializable]
+    public sealed class MatchSettings
+    {
+        public GameModeKind mode = GameModeKind.Duel;
+        public string arenaId = ArenaLayout.DefaultId;
+        /// <summary>Players on each team, 1 to 5, in team modes.</summary>
+        [Range(1, 5)] public int teamSize = 1;
+        /// <summary>Players in a mode without teams.</summary>
+        [Range(2, 12)] public int maxPlayers = 8;
+
+        /// <summary>Round modes: rounds a side needs. 3 makes a best of five.</summary>
         [Min(1)] public int roundsToWin = 3;
-        [Min(0f)] public float countdownSeconds = 3f;
         [Min(5f)] public float roundSeconds = 90f;
+
+        /// <summary>Respawning modes: the score that ends the match.</summary>
+        [Min(1)] public int scoreLimit = 50;
+        /// <summary>Respawning modes: how long a match lasts at most.</summary>
+        [Min(30f)] public float timeLimitSeconds = 600f;
+        [Min(0f)] public float respawnSeconds = 3f;
+
+        [Min(0f)] public float countdownSeconds = 3f;
         [Min(0f)] public float roundEndSeconds = 4f;
         [Min(0f)] public float matchEndSeconds = 8f;
         [Min(1f)] public float maxHealth = 100f;
+
+        /// <summary>Zone modes: seconds for one player to take a zone. More players take it faster.</summary>
+        [Min(0.5f)] public float captureSeconds = 5f;
+        /// <summary>Hardpoint: seconds before the zone moves.</summary>
+        [Min(10f)] public float hardpointSeconds = 60f;
+
+        /// <summary>Empty places are taken by bots, and given back when people join.</summary>
+        public bool fillWithBots;
+        /// <summary>0 easy, 1 normal, 2 hard.</summary>
+        [Range(0, 2)] public int botSkill = 1;
+
+        public bool TeamBased => mode != GameModeKind.FreeForAll && mode != GameModeKind.GunGame;
+        public bool RoundBased => mode == GameModeKind.Duel || mode == GameModeKind.Elimination;
+        public bool UsesZones => mode == GameModeKind.Domination || mode == GameModeKind.Hardpoint;
+        /// <summary>How many players a full match has.</summary>
+        public int Capacity => TeamBased ? Mathf.Clamp(teamSize, 1, 5) * Teams.Count : Mathf.Clamp(maxPlayers, 2, 12);
+
+        public MatchSettings Clone() => (MatchSettings)MemberwiseClone();
+
+        /// <summary>Sensible rules for a mode: the map it plays best on, team size and limits.</summary>
+        public static MatchSettings For(GameModeKind mode)
+        {
+            var s = new MatchSettings { mode = mode };
+            switch (mode)
+            {
+                case GameModeKind.Duel:
+                    s.teamSize = 1; s.roundsToWin = 3; s.roundSeconds = 90f; s.arenaId = ArenaLayout.DefaultId;
+                    break;
+                case GameModeKind.Elimination:
+                    s.teamSize = 3; s.roundsToWin = 4; s.roundSeconds = 120f; s.arenaId = ArenaLayout.CrossroadsId;
+                    break;
+                case GameModeKind.TeamDeathmatch:
+                    s.teamSize = 5; s.scoreLimit = 50; s.timeLimitSeconds = 600f; s.respawnSeconds = 3f; s.arenaId = ArenaLayout.CrossroadsId;
+                    break;
+                case GameModeKind.FreeForAll:
+                    s.maxPlayers = 8; s.scoreLimit = 25; s.timeLimitSeconds = 600f; s.respawnSeconds = 2f; s.arenaId = ArenaLayout.CrossroadsId;
+                    break;
+                case GameModeKind.Domination:
+                    s.teamSize = 5; s.scoreLimit = 200; s.timeLimitSeconds = 600f; s.respawnSeconds = 4f; s.arenaId = ArenaLayout.CrossroadsId;
+                    break;
+                case GameModeKind.Hardpoint:
+                    s.teamSize = 5; s.scoreLimit = 150; s.timeLimitSeconds = 600f; s.respawnSeconds = 4f; s.arenaId = ArenaLayout.CrossroadsId;
+                    break;
+                case GameModeKind.GunGame:
+                    s.maxPlayers = 8; s.timeLimitSeconds = 600f; s.respawnSeconds = 2f; s.arenaId = ArenaLayout.CrossroadsId;
+                    s.scoreLimit = GunGameLadder.Length;
+                    break;
+            }
+            return s;
+        }
+
+        public static string Title(GameModeKind mode)
+        {
+            switch (mode)
+            {
+                case GameModeKind.TeamDeathmatch: return "Team Deathmatch";
+                case GameModeKind.FreeForAll: return "Free-for-All";
+                case GameModeKind.GunGame: return "Gun Game";
+                default: return mode.ToString();
+            }
+        }
+    }
+
+    /// <summary>The weapons of Gun Game, in the order they are earned. A kill with the last one wins.</summary>
+    public static class GunGameLadder
+    {
+        public static readonly string[] Weapons =
+        {
+            "ar_hadron", "smg_sprocket", "sg_breaker", "mr_verdict", "lmg_bulwark", "ar_triad", "sp_carom",
+            "sp_volley", "pistol_magnate", "sg_sawed_off", "pistol_notch", "sp_flicker", "melee_field_knife",
+        };
+
+        /// <summary>Carried alongside every step; a kill with it sends the victim down a step.</summary>
+        public const string Knife = "melee_field_knife";
+
+        public static int Length => Weapons.Length;
+    }
+
+    /// <summary>
+    /// What part of a loadout a player may use, for modes that limit it. Bits 0 to 2 are the
+    /// weapon slots (primary, secondary, melee), bit 3 the utility item. The server sends the
+    /// mask with every spawn, and client and server both apply it to the resolved loadout, so
+    /// a prediction never draws a weapon the server will not let the player have.
+    /// </summary>
+    public static class MatchLoadouts
+    {
+        public const byte AllSlots = 0x0F;
+        public const byte UtilityBit = 1 << Loadout.WeaponSlots;
+        const byte WeaponBits = (1 << Loadout.WeaponSlots) - 1;
+
+        /// <summary>Empties every slot the mask leaves out. A mask without a weapon leaves the weapons alone.</summary>
+        public static Loadout Apply(Loadout loadout, int slotMask)
+        {
+            if ((slotMask & WeaponBits) != 0)
+            {
+                for (int i = 0; i < Loadout.WeaponSlots; i++)
+                {
+                    if ((slotMask & (1 << i)) == 0) loadout.Weapons[i] = null;
+                }
+            }
+            if ((slotMask & UtilityBit) == 0)
+            {
+                for (int i = 0; i < loadout.Utilities.Length; i++) loadout.Utilities[i] = null;
+            }
+            return loadout;
+        }
+
+        /// <summary>True if the slot is usable under the mask.</summary>
+        public static bool Allows(int slotMask, int slot) => (slotMask & WeaponBits) == 0 || (slotMask & (1 << slot)) != 0;
+
+        /// <summary>
+        /// Gun Game's loadout for a step of the ladder: that weapon, unmodified, and a knife.
+        /// Nothing else is usable.
+        /// </summary>
+        public static LoadoutData GunGame(int level, LoadoutCatalog catalog, out byte slotMask, out int activeSlot)
+        {
+            level = Mathf.Clamp(level, 0, GunGameLadder.Length - 1);
+            WeaponCatalog weapons = catalog.weapons;
+            WeaponDefinition weapon = weapons.FindWeapon(GunGameLadder.Weapons[level]) ?? weapons.FirstForSlot(WeaponSlotType.Primary);
+            int slot = weapon != null ? (int)weapon.slot : 0;
+
+            var data = new LoadoutData { id = "gun_game", name = "Gun Game" };
+            for (int i = 0; i < Loadout.WeaponSlots; i++)
+            {
+                WeaponDefinition filler = weapons.FirstForSlot((WeaponSlotType)i);
+                data.GetWeapon(i).weaponId = filler != null ? filler.weaponId : "";
+            }
+            if (weapon != null) data.GetWeapon(slot).weaponId = weapon.weaponId;
+            if (slot != (int)WeaponSlotType.Melee) data.melee.weaponId = GunGameLadder.Knife;
+
+            slotMask = (byte)((1 << slot) | (1 << (int)WeaponSlotType.Melee));
+            activeSlot = slot;
+            return data;
+        }
+    }
+
+    /// <summary>One capture zone, as everyone sees it.</summary>
+    public struct ZoneState
+    {
+        /// <summary>The team that holds it, or <see cref="Teams.None"/>.</summary>
+        public int Owner;
+        /// <summary>The team taking it (or taking it back), or <see cref="Teams.None"/>.</summary>
+        public int Capturer;
+        /// <summary>0..1 towards the capturer owning it.</summary>
+        public float Progress;
+        /// <summary>Both teams are standing in it.</summary>
+        public bool Contested;
     }
 
     /// <summary>Where the match stands. Small enough to send whole whenever it changes.</summary>
@@ -41,15 +215,24 @@ namespace Pulsebreak.Shared.Match
         public int Round;
         /// <summary>The server tick at which the current phase ends. 0 if it has no end.</summary>
         public int PhaseEndTick;
-        /// <summary>Rounds won, by player id.</summary>
+        /// <summary>Team scores: rounds won, kills or points, depending on the mode.</summary>
         public int Score0, Score1;
-        /// <summary>Who won the round that just ended, or <see cref="Nobody"/> for a draw.</summary>
+        /// <summary>The team (or in a mode without teams, the player) that won the round that just ended, or <see cref="Nobody"/>.</summary>
         public int RoundWinner;
+        /// <summary>The team, or in a mode without teams the player, that won the match, or <see cref="Nobody"/>.</summary>
         public int MatchWinner;
+        /// <summary>Hardpoint: the zone in play. -1 in other modes.</summary>
+        public int ActiveZone;
 
-        public int Score(int playerId) => playerId == 0 ? Score0 : Score1;
+        public int Score(int team) => team == 0 ? Score0 : team == 1 ? Score1 : 0;
 
-        public static MatchState Empty => new MatchState { RoundWinner = Nobody, MatchWinner = Nobody };
+        public void AddScore(int team, int amount)
+        {
+            if (team == 0) Score0 += amount;
+            else if (team == 1) Score1 += amount;
+        }
+
+        public static MatchState Empty => new MatchState { RoundWinner = Nobody, MatchWinner = Nobody, ActiveZone = -1 };
     }
 
     public static class MatchRules
@@ -101,6 +284,12 @@ namespace Pulsebreak.Shared.Match
         /// <summary>Set between rounds and during the countdown.</summary>
         public bool Invulnerable;
 
+        /// <summary>
+        /// Decides whether a given attacker may hurt this player. The server sets it to keep
+        /// teammates from hurting each other. Null lets everyone.
+        /// </summary>
+        public Func<IDamageable, bool> CanBeHurtBy;
+
         /// <summary>Raised when damage was actually taken.</summary>
         public event Action<PlayerVitals, DamageInfo, DamageResult> Damaged;
 
@@ -114,6 +303,7 @@ namespace Pulsebreak.Shared.Match
         public DamageResult ApplyDamage(in DamageInfo info)
         {
             if (!IsAlive || Invulnerable || info.Amount <= 0f) return default;
+            if (CanBeHurtBy != null && info.Attacker != null && !CanBeHurtBy(info.Attacker)) return default;
 
             float applied = Mathf.Min(info.Amount, Current);
             Current -= applied;

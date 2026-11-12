@@ -294,13 +294,24 @@ namespace Pulsebreak.Client.Player
             Present(TickAlpha);
         }
 
+        /// <summary>One bit per weapon slot with something in it.</summary>
+        int UsableSlots()
+        {
+            int mask = 0;
+            for (int i = 0; i < _sim.SlotCount; i++)
+            {
+                if (_sim.GetWeapon(i) != null) mask |= 1 << i;
+            }
+            return mask;
+        }
+
         /// <summary>One fixed simulation tick.</summary>
         void Step()
         {
             const float dt = SimConstants.TickDelta;
             WeaponInventory inventory = _sim.Inventory;
             PlayerInputCmd cmd = InputEnabled && Alive
-                ? _input.BuildCmd(_tick, inventory.TargetIndex, inventory.SlotCount)
+                ? _input.BuildCmd(_tick, inventory.TargetIndex, inventory.SlotCount, UsableSlots())
                 : _input.BuildIdleCmd(_tick);
 
             if (_session != null)

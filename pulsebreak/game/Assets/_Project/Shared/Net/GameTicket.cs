@@ -22,6 +22,11 @@ namespace Pulsebreak.Shared.Net
         public string Mode = "";
         /// <summary>Seconds since 1970 (UTC) after which the ticket is worthless.</summary>
         public long ExpiresAt;
+        /// <summary>
+        /// Matchmaking's id for the one match this ticket gets into, or empty for a ticket good
+        /// for any server. A matchmade server admits only tickets for its own match.
+        /// </summary>
+        public string MatchId = "";
     }
 
     /// <summary>
@@ -61,6 +66,11 @@ namespace Pulsebreak.Shared.Net
             json.Append(",\"ev\":").Append(claims.EmailVerified ? "true" : "false");
             json.Append(",\"mode\":");
             AppendString(json, claims.Mode);
+            if (!string.IsNullOrEmpty(claims.MatchId))
+            {
+                json.Append(",\"match\":");
+                AppendString(json, claims.MatchId);
+            }
             json.Append(",\"iat\":").Append(issuedAt.ToString(CultureInfo.InvariantCulture));
             json.Append(",\"exp\":").Append(claims.ExpiresAt.ToString(CultureInfo.InvariantCulture));
             json.Append('}');
@@ -108,6 +118,7 @@ namespace Pulsebreak.Shared.Net
                 EmailVerified = fields.TryGetValue("ev", out object verified) && verified is bool flag && flag,
                 Mode = Text(fields, "mode"),
                 ExpiresAt = expiresAt,
+                MatchId = Text(fields, "match"),
             };
             if (claims.AccountId.Length == 0 || claims.Name.Length == 0)
             {

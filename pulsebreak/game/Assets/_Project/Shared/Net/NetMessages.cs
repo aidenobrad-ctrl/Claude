@@ -33,14 +33,16 @@ namespace Pulsebreak.Shared.Net
         Shot = 23,
         ProjectileSpawn = 24,
         ProjectileEnd = 25,
+        /// <summary>Reliable. A player's weapons were swapped where they stand (Gun Game).</summary>
+        Rearm = 26,
     }
 
     public struct WelcomeMessage
     {
         public int PlayerId;
-        public string ArenaId;
         public int ServerTick;
-        public DuelConfig Config;
+        /// <summary>The mode, the map and every limit of the match.</summary>
+        public MatchSettings Settings;
     }
 
     public struct PlayerInfoMessage
@@ -48,6 +50,9 @@ namespace Pulsebreak.Shared.Net
         public int PlayerId;
         public bool Present;
         public string Name;
+        /// <summary>0 or 1, or <see cref="Teams.None"/> in a mode without teams.</summary>
+        public int Team;
+        public bool Bot;
     }
 
     public struct SpawnMessage
@@ -55,11 +60,27 @@ namespace Pulsebreak.Shared.Net
         public int PlayerId;
         /// <summary>Goes up every time the player is placed. Snapshots carry it too, so old ones can be told apart.</summary>
         public byte SpawnCount;
-        /// <summary>Placed with nobody to fight: ammunition and utility never run out.</summary>
-        public bool Warmup;
+        /// <summary>Reloads never run the reserve down (warm-up, Gun Game).</summary>
+        public bool UnlimitedAmmo;
+        /// <summary>Utility items come back over time (warm-up).</summary>
+        public bool RechargeUtility;
+        /// <summary>What of the loadout may be used: see <see cref="MatchLoadouts"/>. Everything, except in Gun Game.</summary>
+        public byte SlotMask;
+        /// <summary>The slot in hand when placed.</summary>
+        public byte ActiveSlot;
         public LoadoutData Loadout;
         public Vector3 Position;
         public float Yaw;
+    }
+
+    public struct RearmMessage
+    {
+        public int PlayerId;
+        /// <summary>Goes up like a spawn's, so snapshots of the old weapons are told apart from the new.</summary>
+        public byte SpawnCount;
+        public byte SlotMask;
+        public byte ActiveSlot;
+        public LoadoutData Loadout;
     }
 
     public struct KillMessage
@@ -133,12 +154,23 @@ namespace Pulsebreak.Shared.Net
         public Stance Stance;
         public bool Grounded, Sprinting;
         public int ActiveSlot;
+        public PlayerStats Stats;
 
         // Only in the snapshot sent to this player.
         public bool HasOwn;
         /// <summary>The last of this player's commands the server had run when it took the snapshot.</summary>
         public int LastCmdTick;
         public readonly PlayerSimState Own = new PlayerSimState();
+    }
+
+    /// <summary>A player's line on the scoreboard. Sent with every snapshot, so it is never stale.</summary>
+    public struct PlayerStats
+    {
+        public int Team;
+        public int Kills;
+        public int Deaths;
+        /// <summary>What ranks players: kills, objective points or a Gun Game level, depending on the mode.</summary>
+        public int Score;
     }
 
     /// <summary>Turns messages into bytes and back. Every read is paired with the write above it.</summary>
@@ -270,31 +302,63 @@ namespace Pulsebreak.Shared.Net
         {
             writer.WriteByte((byte)NetMessage.Welcome);
             writer.WriteByte((byte)message.PlayerId);
-            writer.WriteString(message.ArenaId);
             writer.WriteInt(message.ServerTick);
-            writer.WriteByte((byte)message.Config.roundsToWin);
-            writer.WriteFloat(message.Config.countdownSeconds);
-            writer.WriteFloat(message.Config.roundSeconds);
-            writer.WriteFloat(message.Config.roundEndSeconds);
-            writer.WriteFloat(message.Config.matchEndSeconds);
-            writer.WriteFloat(message.Config.maxHealth);
+            WriteSettings(writer, message.Settings);
         }
 
         public static WelcomeMessage ReadWelcome(NetReader reader) => new WelcomeMessage
         {
             PlayerId = reader.ReadByte(),
-            ArenaId = reader.ReadString(),
             ServerTick = reader.ReadInt(),
-            Config = new DuelConfig
+            Settings = ReadSettings(reader),
+        };
+
+        public static void WriteSettings(NetWriter writer, MatchSettings s)
+        {
+            writer.WriteByte((byte)s.mode);
+            writer.WriteString(s.arenaId);
+            writer.WriteByte((byte)s.teamSize);
+            writer.WriteByte((byte)s.maxPlayers);
+            writer.WriteByte((byte)s.roundsToWin);
+            writer.WriteFloat(s.roundSeconds);
+            writer.WriteUShort((ushort)s.scoreLimit);
+            writer.WriteFloat(s.timeLimitSeconds);
+            writer.WriteFloat(s.respawnSeconds);
+            writer.WriteFloat(s.countdownSeconds);
+            writer.WriteFloat(s.roundEndSeconds);
+            writer.WriteFloat(s.matchEndSeconds);
+            writer.WriteFloat(s.maxHealth);
+            writer.WriteFloat(s.captureSeconds);
+            writer.WriteFloat(s.hardpointSeconds);
+            writer.WriteBool(s.fillWithBots);
+            writer.WriteByte((byte)s.botSkill);
+        }
+
+        public static MatchSettings ReadSettings(NetReader reader)
+        {
+            var s = new MatchSettings
             {
+                mode = (GameModeKind)reader.ReadByte(),
+                arenaId = reader.ReadString(),
+                teamSize = reader.ReadByte(),
+                maxPlayers = reader.ReadByte(),
                 roundsToWin = reader.ReadByte(),
-                countdownSeconds = reader.ReadFloat(),
                 roundSeconds = reader.ReadFloat(),
+                scoreLimit = reader.ReadUShort(),
+                timeLimitSeconds = reader.ReadFloat(),
+                respawnSeconds = reader.ReadFloat(),
+                countdownSeconds = reader.ReadFloat(),
                 roundEndSeconds = reader.ReadFloat(),
                 matchEndSeconds = reader.ReadFloat(),
                 maxHealth = reader.ReadFloat(),
-            },
-        };
+                captureSeconds = reader.ReadFloat(),
+                hardpointSeconds = reader.ReadFloat(),
+                fillWithBots = reader.ReadBool(),
+                botSkill = reader.ReadByte(),
+            };
+            if (s.mode > GameModeKind.GunGame || s.teamSize < 1 || s.teamSize > 5 || s.maxPlayers < 2 || s.maxPlayers > NetProtocol.MaxPlayers) reader.Fail();
+            return s;
+        }
 
         public static void Write(NetWriter writer, in PlayerInfoMessage message)
         {
@@ -302,6 +366,8 @@ namespace Pulsebreak.Shared.Net
             writer.WriteByte((byte)message.PlayerId);
             writer.WriteBool(message.Present);
             writer.WriteString(message.Name);
+            writer.WriteByte((byte)message.Team);
+            writer.WriteBool(message.Bot);
         }
 
         public static PlayerInfoMessage ReadPlayerInfo(NetReader reader) => new PlayerInfoMessage
@@ -309,6 +375,27 @@ namespace Pulsebreak.Shared.Net
             PlayerId = reader.ReadByte(),
             Present = reader.ReadBool(),
             Name = reader.ReadString(),
+            Team = reader.ReadByte(),
+            Bot = reader.ReadBool(),
+        };
+
+        public static void Write(NetWriter writer, in RearmMessage message)
+        {
+            writer.WriteByte((byte)NetMessage.Rearm);
+            writer.WriteByte((byte)message.PlayerId);
+            writer.WriteByte(message.SpawnCount);
+            writer.WriteByte(message.SlotMask);
+            writer.WriteByte(message.ActiveSlot);
+            WriteLoadout(writer, message.Loadout);
+        }
+
+        public static RearmMessage ReadRearm(NetReader reader) => new RearmMessage
+        {
+            PlayerId = reader.ReadByte(),
+            SpawnCount = reader.ReadByte(),
+            SlotMask = reader.ReadByte(),
+            ActiveSlot = reader.ReadByte(),
+            Loadout = ReadLoadout(reader),
         };
 
         public static void Write(NetWriter writer, in SpawnMessage message)
@@ -316,21 +403,28 @@ namespace Pulsebreak.Shared.Net
             writer.WriteByte((byte)NetMessage.Spawn);
             writer.WriteByte((byte)message.PlayerId);
             writer.WriteByte(message.SpawnCount);
-            writer.WriteBool(message.Warmup);
+            writer.WriteByte((byte)((message.UnlimitedAmmo ? 1 : 0) | (message.RechargeUtility ? 2 : 0)));
+            writer.WriteByte(message.SlotMask);
+            writer.WriteByte(message.ActiveSlot);
             WriteLoadout(writer, message.Loadout);
             writer.WriteVector3(message.Position);
             writer.WriteFloat(message.Yaw);
         }
 
-        public static SpawnMessage ReadSpawn(NetReader reader) => new SpawnMessage
+        public static SpawnMessage ReadSpawn(NetReader reader)
         {
-            PlayerId = reader.ReadByte(),
-            SpawnCount = reader.ReadByte(),
-            Warmup = reader.ReadBool(),
-            Loadout = ReadLoadout(reader),
-            Position = reader.ReadVector3(),
-            Yaw = reader.ReadFloat(),
-        };
+            var message = new SpawnMessage { PlayerId = reader.ReadByte(), SpawnCount = reader.ReadByte() };
+            int flags = reader.ReadByte();
+            message.UnlimitedAmmo = (flags & 1) != 0;
+            message.RechargeUtility = (flags & 2) != 0;
+            message.SlotMask = reader.ReadByte();
+            message.ActiveSlot = reader.ReadByte();
+            message.Loadout = ReadLoadout(reader);
+            message.Position = reader.ReadVector3();
+            message.Yaw = reader.ReadFloat();
+            return message;
+        }
+
 
         public static void Write(NetWriter writer, in MatchState state)
         {
@@ -338,10 +432,11 @@ namespace Pulsebreak.Shared.Net
             writer.WriteByte((byte)state.Phase);
             writer.WriteByte((byte)state.Round);
             writer.WriteInt(state.PhaseEndTick);
-            writer.WriteByte((byte)state.Score0);
-            writer.WriteByte((byte)state.Score1);
+            writer.WriteUShort((ushort)state.Score0);
+            writer.WriteUShort((ushort)state.Score1);
             writer.WriteByte((byte)(sbyte)state.RoundWinner);
             writer.WriteByte((byte)(sbyte)state.MatchWinner);
+            writer.WriteByte((byte)(sbyte)state.ActiveZone);
         }
 
         public static MatchState ReadMatch(NetReader reader)
@@ -351,10 +446,11 @@ namespace Pulsebreak.Shared.Net
                 Phase = (MatchPhase)reader.ReadByte(),
                 Round = reader.ReadByte(),
                 PhaseEndTick = reader.ReadInt(),
-                Score0 = reader.ReadByte(),
-                Score1 = reader.ReadByte(),
+                Score0 = reader.ReadUShort(),
+                Score1 = reader.ReadUShort(),
                 RoundWinner = (sbyte)reader.ReadByte(),
                 MatchWinner = (sbyte)reader.ReadByte(),
+                ActiveZone = (sbyte)reader.ReadByte(),
             };
             if (state.Phase > MatchPhase.MatchEnd) reader.Fail();
             return state;
@@ -465,16 +561,48 @@ namespace Pulsebreak.Shared.Net
 
         // ------------------------------------------------------------------ snapshots
 
-        public static void WriteSnapshotHeader(NetWriter writer, int serverTick, int playerCount)
+        public const int MaxZones = 8;
+
+        /// <summary>The start of a snapshot: the tick, the zones (if the mode has any), then how many players follow.</summary>
+        public static void WriteSnapshotHeader(NetWriter writer, int serverTick, int playerCount, ZoneState[] zones = null, int zoneCount = 0)
         {
             writer.WriteByte((byte)NetMessage.Snapshot);
             writer.WriteInt(serverTick);
+            writer.WriteByte((byte)zoneCount);
+            for (int i = 0; i < zoneCount; i++)
+            {
+                writer.WriteByte((byte)zones[i].Owner);
+                writer.WriteByte((byte)zones[i].Capturer);
+                writer.WriteByte((byte)Mathf.RoundToInt(Mathf.Clamp01(zones[i].Progress) * 255f));
+                writer.WriteBool(zones[i].Contested);
+            }
             writer.WriteByte((byte)playerCount);
+        }
+
+        /// <summary>Reads what <see cref="WriteSnapshotHeader"/> wrote after the message type: tick, zones, player count.</summary>
+        public static void ReadSnapshotHeader(NetReader reader, out int serverTick, ZoneState[] zones, out int zoneCount, out int playerCount)
+        {
+            serverTick = reader.ReadInt();
+            zoneCount = reader.ReadByte();
+            if (zoneCount > MaxZones || zoneCount > zones.Length)
+            {
+                reader.Fail();
+                playerCount = 0;
+                return;
+            }
+            for (int i = 0; i < zoneCount; i++)
+            {
+                zones[i].Owner = reader.ReadByte();
+                zones[i].Capturer = reader.ReadByte();
+                zones[i].Progress = reader.ReadByte() / 255f;
+                zones[i].Contested = reader.ReadBool();
+            }
+            playerCount = reader.ReadByte();
         }
 
         /// <param name="own">The player's full state, when this snapshot is going to that player. Otherwise null.</param>
         public static void WriteSnapshotPlayer(NetWriter writer, int id, bool spawned, bool alive, byte spawnCount, float health,
-            in MotorState motor, int activeSlot, PlayerSimState own, int lastCmdTick)
+            in MotorState motor, int activeSlot, PlayerSimState own, int lastCmdTick, in PlayerStats stats = default)
         {
             writer.WriteByte((byte)id);
             writer.WriteByte((byte)((spawned ? 1 : 0) | (alive ? 2 : 0) | (motor.Grounded ? 4 : 0) |
@@ -488,6 +616,10 @@ namespace Pulsebreak.Shared.Net
             writer.WriteFloat(motor.EyeHeight);
             writer.WriteByte((byte)motor.Stance);
             writer.WriteByte((byte)activeSlot);
+            writer.WriteByte((byte)stats.Team);
+            writer.WriteByte((byte)Mathf.Clamp(stats.Kills, 0, 255));
+            writer.WriteByte((byte)Mathf.Clamp(stats.Deaths, 0, 255));
+            writer.WriteShort((short)Mathf.Clamp(stats.Score, short.MinValue, short.MaxValue));
 
             if (own == null) return;
             writer.WriteInt(lastCmdTick);
@@ -512,6 +644,13 @@ namespace Pulsebreak.Shared.Net
             into.EyeHeight = reader.ReadFloat();
             into.Stance = (Stance)reader.ReadByte();
             into.ActiveSlot = reader.ReadByte();
+            into.Stats = new PlayerStats
+            {
+                Team = reader.ReadByte(),
+                Kills = reader.ReadByte(),
+                Deaths = reader.ReadByte(),
+                Score = reader.ReadShort(),
+            };
 
             if (!into.HasOwn) return;
             into.LastCmdTick = reader.ReadInt();

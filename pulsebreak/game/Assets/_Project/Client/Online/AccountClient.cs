@@ -134,6 +134,14 @@ namespace Pulsebreak.Client.Online
         public Task<AccountResult<SettingsDocument>> PutSettingsAsync(SettingsDocument settings) =>
             SendAsync<SettingsDocument>("PUT", "/v1/settings", settings, true);
 
+        /// <summary>A current access token for other parts of the game that call the backend as this account, or null if not signed in.</summary>
+        public async Task<string> AccessTokenAsync()
+        {
+            if (!SignedIn) return null;
+            if (_clock() > _accessExpires - RefreshMargin && !await EnsureFreshAsync()) return null;
+            return _accessToken;
+        }
+
         /// <summary>A ticket to show a game server so it knows who is joining.</summary>
         /// <param name="ranked">Ask for one good for ranked play. The backend refuses unless the email is verified.</param>
         public async Task<AccountResult<string>> GetTicketAsync(bool ranked)
@@ -166,52 +174,8 @@ namespace Pulsebreak.Client.Online
             return result;
         }
 
-        async Task<AccountResult<T>> SendOnceAsync<T>(string method, string path, object body, string bearer) where T : class
-        {
-            HttpResult http;
-            try
-            {
-                http = await _http.SendAsync(method, BaseUrl + path, body != null ? JsonUtility.ToJson(body) : null, bearer);
-            }
-            catch (Exception failure)
-            {
-                http = new HttpResult { NetworkError = failure.Message };
-            }
-
-            if (http.Status == 0)
-                return Fail<T>(0, "offline", "Could not reach the account server. Check your connection and try again.");
-
-            if (http.Status >= 200 && http.Status < 300)
-            {
-                var ok = new AccountResult<T> { Ok = true, Status = http.Status };
-                if (!string.IsNullOrEmpty(http.Body) && typeof(T) != typeof(EmptyBody))
-                {
-                    try
-                    {
-                        ok.Value = JsonUtility.FromJson<T>(http.Body);
-                    }
-                    catch (Exception)
-                    {
-                        return Fail<T>(http.Status, "bad_reply", "The account server sent something the game could not read.");
-                    }
-                }
-                return ok;
-            }
-
-            ApiErrorData error = null;
-            try
-            {
-                if (!string.IsNullOrEmpty(http.Body)) error = JsonUtility.FromJson<ErrorEnvelope>(http.Body)?.error;
-            }
-            catch (Exception)
-            {
-                // Not one of ours: a proxy's error page, perhaps. The status says enough.
-            }
-            var failed = Fail<T>(http.Status, error?.code ?? "http_" + http.Status,
-                !string.IsNullOrEmpty(error?.message) ? error.message : "The account server answered with an error (" + http.Status + ").");
-            if (error?.fields != null) failed.Fields = error.fields;
-            return failed;
-        }
+        Task<AccountResult<T>> SendOnceAsync<T>(string method, string path, object body, string bearer) where T : class =>
+            BackendRequest.SendAsync<T>(_http, method, BaseUrl + path, body, bearer, "account server");
 
         /// <summary>Gets a new access token. Calls that arrive while one is already being fetched wait for that one.</summary>
         Task<bool> EnsureFreshAsync()

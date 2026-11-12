@@ -154,6 +154,15 @@ namespace Pulsebreak.Shared.Match
         {
             if (Arenas.TryGetValue(layout.Id, out GameObject existing) && existing != null) return;
 
+            // Maps are all built around the same centre, so only one can stand at a time.
+            foreach (KeyValuePair<string, GameObject> other in Arenas)
+            {
+                if (other.Value == null) continue;
+                other.Value.SetActive(false);       // gone from physics now, not at the end of the frame
+                Object.Destroy(other.Value);
+            }
+            Arenas.Clear();
+
             var root = new GameObject("Arena Collision (" + layout.DisplayName + ")");
             foreach (ArenaBox box in layout.Boxes)
             {

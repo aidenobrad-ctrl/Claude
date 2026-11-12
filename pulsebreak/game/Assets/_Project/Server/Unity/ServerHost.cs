@@ -39,7 +39,7 @@ namespace Pulsebreak.Server
             Port = port;
             _lastTime = Time.realtimeSinceStartupAsDouble;
             _accumulator = 0.0;
-            Debug.Log("[Server] Listening on UDP port " + port + ", arena " + _server.Arena.DisplayName + ".");
+            Debug.Log("[Server] Listening on UDP port " + port + ": " + MatchSettings.Title(_server.Settings.mode) + " on " + _server.Arena.DisplayName + ".");
         }
 
         public void End()

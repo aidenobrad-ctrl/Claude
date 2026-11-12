@@ -50,8 +50,16 @@ namespace Pulsebreak.Client.Net
         public bool Alive;
         public float Health;
         public byte SpawnCount;
+        /// <summary>0 or 1, or <see cref="Teams.None"/> in a mode without teams.</summary>
+        public int Team = Teams.None;
+        public bool Bot;
+        /// <summary>Kills, deaths and score, as of the newest snapshot.</summary>
+        public PlayerStats Stats;
         public LoadoutData LoadoutData;
+        /// <summary>What they carry, with anything the mode does not let them use already taken out.</summary>
         public Loadout Loadout;
+        /// <summary>What of <see cref="LoadoutData"/> they may use: see <see cref="MatchLoadouts"/>.</summary>
+        public byte SlotMask = MatchLoadouts.AllSlots;
 
         internal readonly Sample[] Samples = new Sample[SampleCount];
         internal int NewestTick = int.MinValue;
@@ -100,6 +108,7 @@ namespace Pulsebreak.Client.Net
         readonly NetReader _reader = new NetReader();
         readonly NetWriter _out = new NetWriter(512);
         readonly SnapshotPlayer _scratch = new SnapshotPlayer();
+        readonly ZoneState[] _zoneScratch = new ZoneState[NetMessages.MaxZones];
         readonly Action<NetReader> _onMessage;
 
         LoadoutData _loadout;
@@ -130,9 +139,13 @@ namespace Pulsebreak.Client.Net
         public int PlayerId { get; private set; } = -1;
         /// <summary>The server has said hello: the rules and the arena are known.</summary>
         public bool Welcomed { get; private set; }
-        public DuelConfig Rules { get; private set; } = new DuelConfig();
-        public string ArenaId { get; private set; } = ArenaLayout.DefaultId;
+        /// <summary>The match's rules, as the server told them on joining.</summary>
+        public MatchSettings Settings { get; private set; } = MatchSettings.For(GameModeKind.Duel);
+        public string ArenaId => Settings.arenaId;
         public MatchState Match { get; private set; } = MatchState.Empty;
+        /// <summary>The capture zones, as of the newest snapshot. Only the first <see cref="ZoneCount"/> mean anything.</summary>
+        public ZoneState[] Zones { get; } = new ZoneState[NetMessages.MaxZones];
+        public int ZoneCount { get; private set; }
 
         /// <summary>The local player is in the world and alive: simulate them.</summary>
         public bool LocalAlive { get; private set; }
@@ -153,6 +166,8 @@ namespace Pulsebreak.Client.Net
         public event Action<ClientPlayer> PlayerChanged;
         /// <summary>A player was placed in the world (start of a round, or a respawn).</summary>
         public event Action<ClientPlayer, SpawnMessage> PlayerSpawned;
+        /// <summary>A player's weapons were swapped where they stand (Gun Game).</summary>
+        public event Action<ClientPlayer, RearmMessage> PlayerRearmed;
         /// <summary>The previous state, then the new one.</summary>
         public event Action<MatchState, MatchState> MatchChanged;
         public event Action<KillMessage> Killed;
@@ -481,6 +496,7 @@ namespace Pulsebreak.Client.Net
                         why == DisconnectReason.TicketRequired ? "That server only admits signed-in players. Sign in from the menu and join again."
                         : why == DisconnectReason.AlreadyHere ? "Your account is already in that match."
                         : why == DisconnectReason.RankedOnly ? "That match is ranked. Verify your email address to play ranked."
+                        : why == DisconnectReason.WrongMatch ? "That server is running a different match now. Find a match again."
                         : "The server closed the connection.");
                     break;
                 }
@@ -505,8 +521,7 @@ namespace Pulsebreak.Client.Net
                 {
                     WelcomeMessage message = NetMessages.ReadWelcome(reader);
                     if (reader.Failed) break;
-                    Rules = message.Config;
-                    ArenaId = message.ArenaId;
+                    Settings = message.Settings;
                     Welcomed = true;
                     break;
                 }
@@ -518,9 +533,12 @@ namespace Pulsebreak.Client.Net
                     ClientPlayer player = _players[message.PlayerId];
                     player.Present = message.Present;
                     player.Name = message.Name;
+                    player.Team = message.Team;
+                    player.Bot = message.Bot;
                     if (!message.Present)
                     {
                         player.Spawned = player.Alive = false;
+                        player.Stats = default;
                         player.ClearSamples();
                     }
                     PlayerChanged?.Invoke(player);
@@ -531,6 +549,13 @@ namespace Pulsebreak.Client.Net
                 {
                     SpawnMessage message = NetMessages.ReadSpawn(reader);
                     if (!reader.Failed && message.PlayerId < _players.Length) OnSpawn(message);
+                    break;
+                }
+
+                case NetMessage.Rearm:
+                {
+                    RearmMessage message = NetMessages.ReadRearm(reader);
+                    if (!reader.Failed && message.PlayerId < _players.Length) OnRearm(message);
                     break;
                 }
 
@@ -593,19 +618,20 @@ namespace Pulsebreak.Client.Net
         {
             ClientPlayer player = _players[message.PlayerId];
             player.LoadoutData = message.Loadout;
-            player.Loadout = LoadoutRules.Resolve(message.Loadout, _catalog);
+            player.SlotMask = message.SlotMask;
+            player.Loadout = MatchLoadouts.Apply(LoadoutRules.Resolve(message.Loadout, _catalog), message.SlotMask);
             player.SpawnCount = message.SpawnCount;
             player.Spawned = true;
             player.Alive = true;
-            player.Health = Rules.maxHealth;
+            player.Health = Settings.maxHealth;
 
             if (message.PlayerId == PlayerId && _sim != null)
             {
                 // Rebuilt exactly as the server rebuilt its copy, so the two start level.
                 _sim.Seed = PlayerSimulation.SeedFor(PlayerId);
-                _sim.InfiniteReserve = message.Warmup;
-                _sim.RechargeUtilities = message.Warmup;
-                _sim.SetLoadout(player.Loadout, 0);
+                _sim.InfiniteReserve = message.UnlimitedAmmo;
+                _sim.RechargeUtilities = message.RechargeUtility;
+                _sim.SetLoadout(player.Loadout, message.ActiveSlot);
                 _sim.Motor.Teleport(message.Position, message.Yaw, 0f);
 
                 // Nothing predicted before this moment applies any more.
@@ -620,10 +646,37 @@ namespace Pulsebreak.Client.Net
             PlayerSpawned?.Invoke(player, message);
         }
 
+        void OnRearm(in RearmMessage message)
+        {
+            ClientPlayer player = _players[message.PlayerId];
+            byte previousCount = player.SpawnCount;
+            player.LoadoutData = message.Loadout;
+            player.SlotMask = message.SlotMask;
+            player.Loadout = MatchLoadouts.Apply(LoadoutRules.Resolve(message.Loadout, _catalog), message.SlotMask);
+            player.SpawnCount = message.SpawnCount;
+
+            // They have not moved, so where they have been is still where they have been.
+            for (int i = 0; i < ClientPlayer.SampleCount; i++)
+            {
+                if (player.Samples[i].SpawnCount == previousCount) player.Samples[i].SpawnCount = message.SpawnCount;
+            }
+
+            if (message.PlayerId == PlayerId && _sim != null && _hasSpawn)
+            {
+                // Same body, same place, new weapons. The server's next word on our state is
+                // about the new weapons, and replaces whatever was predicted with the old ones.
+                _sim.SetLoadout(player.Loadout, message.ActiveSlot);
+                _appliedSpawnCount = message.SpawnCount;
+                _forceRestore = true;
+                _sim.AnnounceActiveWeapon();
+            }
+
+            PlayerRearmed?.Invoke(player, message);
+        }
+
         void OnSnapshot(NetReader reader)
         {
-            int tick = reader.ReadInt();
-            int count = reader.ReadByte();
+            NetMessages.ReadSnapshotHeader(reader, out int tick, _zoneScratch, out int zoneCount, out int count);
             if (reader.Failed || count > _players.Length) return;
 
             // Packets can overtake each other. An old snapshot still fills in where another
@@ -635,6 +688,7 @@ namespace Pulsebreak.Client.Net
                 NetMessages.ReadSnapshotPlayer(reader, _scratch);
                 if (reader.Failed || _scratch.Id >= _players.Length) return;
                 ClientPlayer player = _players[_scratch.Id];
+                if (newest) player.Stats = _scratch.Stats;
 
                 if (_scratch.Id == PlayerId)
                 {
@@ -674,6 +728,8 @@ namespace Pulsebreak.Client.Net
             }
 
             if (!newest) return;
+            for (int i = 0; i < zoneCount; i++) Zones[i] = _zoneScratch[i];
+            ZoneCount = zoneCount;
             if (_newestSnapshotTick != int.MinValue)
                 _snapshotSpacing = Mathf.Lerp(_snapshotSpacing, Mathf.Clamp(tick - _newestSnapshotTick, 1, 10), 0.1f);
             _newestSnapshotTick = tick;

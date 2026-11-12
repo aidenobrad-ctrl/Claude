@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEditor;
 using Pulsebreak.Shared.Loadouts;
+using Pulsebreak.Shared.Match;
 using Pulsebreak.Shared.Simulation;
 using Pulsebreak.Shared.Weapons;
 
@@ -29,6 +30,26 @@ namespace Pulsebreak.Tests
         {
             List<string> problems = LoadoutValidator.Validate(LoadCatalog());
             Assert.That(problems, Is.Empty, string.Join("\n", problems));
+        }
+
+        [Test]
+        public void EveryGunGameWeapon_IsInTheRoster_AndTheLastIsTheKnife()
+        {
+            LoadoutCatalog catalog = LoadCatalog();
+            foreach (string id in GunGameLadder.Weapons)
+                Assert.That(catalog.weapons.FindWeapon(id), Is.Not.Null, "Gun Game wants " + id + ", which is not in the weapon catalog");
+            Assert.That(GunGameLadder.Weapons[GunGameLadder.Length - 1], Is.EqualTo(GunGameLadder.Knife));
+
+            for (int level = 0; level < GunGameLadder.Length; level++)
+            {
+                var notes = new List<string>();
+                LoadoutData data = MatchLoadouts.GunGame(level, catalog, out byte mask, out int active);
+                Loadout loadout = MatchLoadouts.Apply(LoadoutRules.Resolve(data, catalog, notes), mask);
+                Assert.That(notes, Is.Empty, "level " + level + ": " + string.Join("; ", notes));
+                Assert.That(loadout.Weapons[active].Weapon.weaponId, Is.EqualTo(GunGameLadder.Weapons[level]));
+                Assert.That(loadout.Weapons[(int)WeaponSlotType.Melee].Weapon.weaponId, Is.EqualTo(GunGameLadder.Knife));
+                Assert.That(loadout.Utilities[0], Is.Null, "Gun Game is guns only");
+            }
         }
 
         [Test]

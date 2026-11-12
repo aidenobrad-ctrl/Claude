@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
+using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
@@ -25,21 +27,26 @@ using Pulsebreak.Shared.Weapons;
 namespace Pulsebreak.Client.Duel
 {
     /// <summary>
-    /// Entry point of the online duel scene, and the game's main menu. Put this on one object
-    /// in an otherwise empty scene.
+    /// Entry point of the online scene, and the game's main menu. Put this on one object in
+    /// an otherwise empty scene. (It is called the duel scene for history's sake: it plays
+    /// every mode.)
     ///
-    /// The same scene runs three ways:
+    /// The same scene runs four ways:
     ///
-    ///   Host        starts a server in this process, then joins it like anyone else would.
+    ///   Find match  asks the backend's matchmaking for a match in the chosen mode, then
+    ///               joins the server it found.
+    ///   Host        starts a server in this process with the rules picked in the menu (bots
+    ///               included), then joins it like anyone else would.
     ///   Join        connects to a server at an address.
     ///   Dedicated   started with -server (or in batch mode): runs only the server, no
-    ///               window contents, no player.
+    ///               window contents, no player. With -fleet it offers itself to matchmaking.
     ///
     /// A hosting player gets no shortcuts: their client talks to their own server over the
     /// network socket and is predicted, checked and corrected exactly as a remote one is.
     ///
-    /// Command line: -server, -port N, -host, -connect ADDRESS, -name NAME, and for testing
-    /// -lag MS, -jitter MS, -loss PERCENT to make the connection worse on purpose.
+    /// Command line: -server, -port N, -mode ID, -map ID, -bots, -fleet URL, -public-address
+    /// HOST, -host, -connect ADDRESS, -name NAME, and for testing -lag MS, -jitter MS,
+    /// -loss PERCENT to make the connection worse on purpose.
     /// </summary>
     [DefaultExecutionOrder(-100)]
     public sealed class DuelBootstrap : MonoBehaviour
@@ -73,6 +80,8 @@ namespace Pulsebreak.Client.Duel
         DuelUi _ui;
         ServerHost _host;
         Camera _menuCamera;
+        Transform _arenaRoot;
+        string _shownArenaId;
         string _joinHint = "";
         string _nameOverride;
 
@@ -82,7 +91,10 @@ namespace Pulsebreak.Client.Duel
         HudController _hud;
         ProjectileSystem _projectiles;
         readonly RemotePlayerView[] _remotes = new RemotePlayerView[NetProtocol.MaxPlayers];
+        readonly List<ScoreRow> _rows = new List<ScoreRow>(NetProtocol.MaxPlayers);
+        ZoneMarkers _zoneMarkers;
         bool _showNetStats = true;
+        float _deadSince = -1f;
         // Goes up with every attempt to connect and every return to the menu, so an attempt
         // still waiting for its ticket can tell it has been called off.
         int _attempt;
@@ -121,7 +133,21 @@ namespace Pulsebreak.Client.Duel
                 // by anyone on the machine who can list processes.
                 server.ticketKey = Environment.GetEnvironmentVariable("PULSEBREAK_TICKET_KEY") ?? ArgText(args, "-ticket-key") ?? "";
                 server.rankedOnly |= HasArg(args, "-ranked");
-                if (!StartServer(out string problem)) Debug.LogError("[Server] " + problem);
+                ApplyServerArgs(args);
+                if (!StartServer(out string problem))
+                {
+                    Debug.LogError("[Server] " + problem);
+                    return;
+                }
+
+                // Offered to matchmaking: the backend hands this server a match whenever it is free.
+                string fleet = ArgText(args, "-fleet");
+                if (fleet != null)
+                {
+                    var agent = gameObject.AddComponent<FleetAgent>();
+                    agent.Begin(_host, fleet, Environment.GetEnvironmentVariable("PULSEBREAK_FLEET_KEY") ?? ArgText(args, "-fleet-key") ?? "",
+                        ArgText(args, "-public-address") ?? LocalAddress(), port);
+                }
                 return;
             }
 
@@ -131,10 +157,11 @@ namespace Pulsebreak.Client.Duel
             _library = _services.Library;
             _library.EquippedChanged += OnEquippedChanged;
 
-            BuildArena(ArenaLayout.Find(server.arenaId));
+            ShowArena(server.match.arenaId);
             CreateMenuCamera();
 
             _ui = DuelUi.Create(_services);
+            _ui.FindRequested += Find;
             _ui.HostRequested += Host;
             _ui.JoinRequested += Join;
             _ui.CancelRequested += () => Leave("");
@@ -142,8 +169,30 @@ namespace Pulsebreak.Client.Duel
             _ui.QuitRequested += Quit;
 
             string connect = ArgText(args, "-connect");
-            if (connect != null) Join(connect);
-            else if (HasArg(args, "-host")) Host();
+            if (connect != null)
+            {
+                Join(connect);
+            }
+            else if (HasArg(args, "-host"))
+            {
+                ApplyServerArgs(args);
+                Host(server.match);
+            }
+        }
+
+        /// <summary>-mode, -map and -bots set the rules a server started from the command line plays by.</summary>
+        void ApplyServerArgs(string[] args)
+        {
+            string modeId = ArgText(args, "-mode");
+            if (modeId != null)
+            {
+                Playlist playlist = Playlists.Find(modeId);
+                if (playlist != null) server.match = MatchSettings.For(playlist.Mode);
+                else Debug.LogWarning("Pulsebreak: unknown -mode \"" + modeId + "\". Modes: duel, tdm, ffa, elimination, domination, hardpoint, gungame.");
+            }
+            string map = ArgText(args, "-map");
+            if (map != null) server.match.arenaId = map;
+            if (HasArg(args, "-bots")) server.match.fillWithBots = true;
         }
 
         void OnDestroy()
@@ -190,9 +239,10 @@ namespace Pulsebreak.Client.Duel
             _host = null;
         }
 
-        void Host()
+        void Host(MatchSettings rules)
         {
             if (_session != null) return;
+            server.match = rules ?? server.match;
             if (!StartServer(out string problem))
             {
                 _ui.ShowMenu(problem);
@@ -213,6 +263,66 @@ namespace Pulsebreak.Client.Duel
             _joinHint = "";
             Connect(target);
         }
+
+        /// <summary>Queues for a match through the backend, then joins the server it finds.</summary>
+        async void Find(GameModeKind mode)
+        {
+            if (_session != null) return;
+            int attempt = ++_attempt;
+            MatchmakingClient matchmaking = _services.Matchmaking;
+            string name = PlayerName();
+            _ui.ShowConnecting("Joining the " + MatchSettings.Title(mode) + " queue...");
+
+            AccountResult<MatchTicketData> queued = await matchmaking.JoinQueueAsync(mode, name);
+            if (this == null) return;
+            if (attempt != _attempt)
+            {
+                if (queued.Ok) _ = matchmaking.LeaveQueueAsync(queued.Value.id, name);
+                return;
+            }
+            if (!queued.Ok)
+            {
+                _ui.ShowMenu(queued.Offline
+                    ? "Could not reach matchmaking. Is the backend running? You can still host a match or join one by address."
+                    : queued.Message);
+                return;
+            }
+
+            MatchTicketData ticket = queued.Value;
+            while (ticket.Searching)
+            {
+                _ui.ShowConnecting(MatchmakingClient.Describe(ticket, mode));
+                await Task.Delay(1000);
+                if (this == null) return;
+                if (attempt != _attempt)
+                {
+                    // Cancelled while searching: give the place up.
+                    _ = matchmaking.LeaveQueueAsync(ticket.id, name);
+                    return;
+                }
+
+                AccountResult<MatchTicketData> check = await matchmaking.CheckAsync(ticket.id, name);
+                if (this == null || attempt != _attempt) return;
+                if (!check.Ok)
+                {
+                    if (check.Offline) continue;        // a blip: keep the place and ask again
+                    _ui.ShowMenu(check.Message);
+                    return;
+                }
+                ticket = check.Value;
+            }
+
+            if (!ticket.Matched || !NetAddress.TryParse(ticket.address, NetProtocol.DefaultPort, out NetAddress target))
+            {
+                _ui.ShowMenu(ticket.status == "expired" ? "The search ran out of time. Try again." : "The search was called off.");
+                return;
+            }
+            _joinHint = "";
+            ConnectWithTicket(target, ticket.joinTicket);
+        }
+
+        string PlayerName() => _services.Account.SignedIn ? _services.Account.Account.username
+            : string.IsNullOrEmpty(_nameOverride) ? _ui.PlayerName : _nameOverride;
 
         /// <summary>Signed in: get a ticket from the backend first, so servers that ask know who this is.</summary>
         async void Connect(NetAddress target)
@@ -250,12 +360,11 @@ namespace Pulsebreak.Client.Duel
 
             // Signed in, a player goes by their account's name everywhere. (On a server that checks
             // tickets, the name comes from the ticket whatever is sent here.)
-            string playerName = _services.Account.SignedIn ? _services.Account.Account.username
-                : string.IsNullOrEmpty(_nameOverride) ? _ui.PlayerName : _nameOverride;
-            _session = new ClientSession(socket, catalog, playerName, _library.Equipped, ticket: ticket);
+            _session = new ClientSession(socket, catalog, PlayerName(), _library.Equipped, ticket: ticket);
             _session.Connected += EnterMatch;
             _session.PlayerChanged += OnPlayerChanged;
             _session.PlayerSpawned += OnPlayerSpawned;
+            _session.PlayerRearmed += OnPlayerRearmed;
             _session.MatchChanged += OnMatchChanged;
             _session.Killed += OnKilled;
             _session.HitConfirmed += OnHitConfirmed;
@@ -270,7 +379,7 @@ namespace Pulsebreak.Client.Duel
         /// <summary>The server let us in: build the player and the HUD. The server places us a moment later.</summary>
         void EnterMatch()
         {
-            ArenaLayout arena = ArenaLayout.Find(_session.ArenaId);
+            ArenaLayout arena = ShowArena(_session.ArenaId);
             ArenaSpawn start = arena.Sides[_session.PlayerId % arena.Sides.Length][0];
 
             _projectiles = new ProjectileSystem();
@@ -288,6 +397,19 @@ namespace Pulsebreak.Client.Duel
             _ui.ShowMatch(true);
             _ui.SetBanner("", "");
             _ui.SetNotice("");
+            _ui.SetStatus("");
+            _deadSince = -1f;
+        }
+
+        /// <summary>
+        /// The welcome arrived: the rules, and so the map, are known. A server can play a
+        /// different map from the one behind the menu, so the scene follows it.
+        /// </summary>
+        void OnWelcomed()
+        {
+            ArenaLayout arena = ShowArena(_session.ArenaId);
+            if (_zoneMarkers != null) Destroy(_zoneMarkers.gameObject);
+            _zoneMarkers = _session.Settings.UsesZones ? ZoneMarkers.Create(arena, _session.Settings.mode == GameModeKind.Hardpoint) : null;
         }
 
         /// <summary>Back to the menu, whether we chose to go or were dropped.</summary>
@@ -316,6 +438,9 @@ namespace Pulsebreak.Client.Duel
 
             if (_hud != null) Destroy(_hud.gameObject);
             _hud = null;
+            if (_zoneMarkers != null) Destroy(_zoneMarkers.gameObject);
+            _zoneMarkers = null;
+            _welcomed = false;
 
             if (_rig != null)
             {
@@ -338,6 +463,8 @@ namespace Pulsebreak.Client.Duel
 
         // ------------------------------------------------------------------ every frame
 
+        bool _welcomed;
+
         void Update()
         {
             if (_session == null) return;
@@ -356,6 +483,11 @@ namespace Pulsebreak.Client.Duel
                 Leave(_session.StatusText);
                 return;
             }
+            if (_session.Welcomed && !_welcomed)
+            {
+                _welcomed = true;
+                OnWelcomed();
+            }
             if (_rig == null) return;
 
             Keyboard keyboard = Keyboard.current;
@@ -363,8 +495,19 @@ namespace Pulsebreak.Client.Duel
 
             // The pause menu and the loadout swap belong to the HUD underneath; get out of their way.
             _ui.SetMatchHidden(_hud != null && (_hud.IsPaused || _hud.IsQuickSwapOpen));
-            _ui.SetHealth(_session.Local != null ? _session.Local.Health : 0f, _session.Rules.maxHealth);
+            _ui.SetHealth(_session.Local != null ? _session.Local.Health : 0f, _session.Settings.maxHealth);
             UpdateBanner();
+
+            // Hold Tab for the scoreboard. It also comes up by itself when the match ends.
+            bool board = (keyboard != null && keyboard.tabKey.isPressed) || _session.Match.Phase == MatchPhase.MatchEnd;
+            if (board != _ui.ScoreboardVisible)
+            {
+                _ui.ShowScoreboard(board);
+                _textTimer = 0f;
+            }
+
+            if (_zoneMarkers != null && _session.Local != null)
+                _zoneMarkers.Show(_session.Zones, _session.ZoneCount, _session.Match.ActiveZone, _session.Local.Team);
 
             if (_noticeTimer > 0f)
             {
@@ -376,29 +519,180 @@ namespace Pulsebreak.Client.Duel
             _textTimer -= Time.unscaledDeltaTime;
             if (_textTimer > 0f) return;
             _textTimer = 0.1f;
-            UpdateScoreboard();
+            UpdateScores();
+            UpdateStatus();
         }
 
-        void UpdateScoreboard()
+        void UpdateScores()
         {
             MatchState match = _session.Match;
-            int us = _session.PlayerId, them = 1 - us;
-            ClientPlayer opponent = _session.Players[them];
+            MatchSettings rules = _session.Settings;
+            ClientPlayer me = _session.Local;
+            int ourTeam = me.Team;
 
             string clock = "";
-            if (match.Phase == MatchPhase.Live)
+            if (match.Phase == MatchPhase.Live || (match.Phase == MatchPhase.Waiting && match.PhaseEndTick > 0))
             {
                 int seconds = Mathf.Max(0, Mathf.CeilToInt(TicksLeft(match) * SimConstants.TickDelta));
                 clock = (seconds / 60) + ":" + (seconds % 60).ToString("00");
             }
-            string round = match.Phase == MatchPhase.Waiting ? "WARM-UP" : "ROUND " + match.Round;
+            string round = match.Phase == MatchPhase.Waiting ? "WARM-UP"
+                : rules.RoundBased ? "ROUND " + match.Round
+                : MatchSettings.Title(rules.mode).ToUpperInvariant();
 
-            _ui.SetScore(_session.Local.Name, match.Score(us), opponent.Present ? opponent.Name : "-", match.Score(them), round, clock);
+            if (rules.TeamBased)
+            {
+                string ours = "YOUR TEAM", theirs = "ENEMY TEAM";
+                if (rules.teamSize == 1)
+                {
+                    // One on one: names say more than "team".
+                    ClientPlayer opponent = FirstOnTeam(1 - ourTeam);
+                    ours = me.Name;
+                    theirs = opponent != null ? opponent.Name : "-";
+                }
+                _ui.SetScore(ours, match.Score(ourTeam).ToString(), theirs, match.Score(1 - ourTeam).ToString(), round, clock);
+            }
+            else
+            {
+                // Everyone for themselves: you against whoever is doing best.
+                ClientPlayer leader = BestOther();
+                _ui.SetScore("YOU", ScoreText(me), leader != null ? leader.Name : "-", leader != null ? ScoreText(leader) : "0", round, clock);
+            }
+
+            bool hardpoint = rules.mode == GameModeKind.Hardpoint;
+            ArenaLayout arena = _zoneMarkers != null ? _zoneMarkers.Arena : null;
+            string[] names = null;
+            if (arena != null)
+            {
+                ArenaZone[] areas = hardpoint ? arena.Hardpoints : arena.Zones;
+                names = new string[areas.Length];
+                for (int i = 0; i < areas.Length; i++) names[i] = areas[i].Name;
+            }
+            _ui.SetZones(_session.Zones, _session.ZoneCount, match.ActiveZone, ourTeam, hardpoint, names);
+
+            if (_ui.ScoreboardVisible) FillScoreboard(match, rules, ourTeam);
 
             _ui.SetNetStats(!_showNetStats ? "" :
                 "Ping " + Mathf.RoundToInt(_session.RttMs) + " ms    Loss " + Mathf.RoundToInt(_session.LossPercent) + "%    Corrections " + _session.Corrections +
                 (simulatedConnection.Any ? "\nSimulated: +" + simulatedConnection.latencyMs + " ms each way, " + simulatedConnection.lossPercent + "% loss" : "") +
-                "\nF3 hides this");
+                "\nF3 hides this   ·   Tab scores");
+        }
+
+        /// <summary>A player's number on the score line: Gun Game shows which weapon they are on.</summary>
+        string ScoreText(ClientPlayer player) => _session.Settings.mode == GameModeKind.GunGame
+            ? Mathf.Min(player.Stats.Score + 1, GunGameLadder.Length) + "/" + GunGameLadder.Length
+            : player.Stats.Score.ToString();
+
+        void FillScoreboard(in MatchState match, MatchSettings rules, int ourTeam)
+        {
+            _rows.Clear();
+            foreach (ClientPlayer player in _session.Players)
+            {
+                if (!player.Present) continue;
+                _rows.Add(new ScoreRow
+                {
+                    Name = player.Name,
+                    Team = player.Team,
+                    Kills = player.Stats.Kills,
+                    Deaths = player.Stats.Deaths,
+                    Score = player.Stats.Score,
+                    Local = player.Id == _session.PlayerId,
+                    Bot = player.Bot,
+                    Alive = player.Alive,
+                });
+            }
+            string title = MatchSettings.Title(rules.mode).ToUpperInvariant() + "   ·   " + ArenaLayout.Title(rules.arenaId).ToUpperInvariant() +
+                           "   ·   " + Objective(rules).ToUpperInvariant();
+            string scoreLabel = rules.mode == GameModeKind.GunGame ? "WEAPON" : rules.mode == GameModeKind.FreeForAll ? "KILLS" : "SCORE";
+            _ui.SetScoreboard(title, _rows, rules.TeamBased, ourTeam, scoreLabel, match.Score0, match.Score1);
+        }
+
+        /// <summary>The line above the health bar: a respawn countdown, or Gun Game's progress.</summary>
+        void UpdateStatus()
+        {
+            MatchSettings rules = _session.Settings;
+            MatchState match = _session.Match;
+            ClientPlayer me = _session.Local;
+            bool playing = match.Phase == MatchPhase.Live || match.Phase == MatchPhase.Waiting;
+
+            if (playing && (!me.Spawned || !me.Alive))
+            {
+                if (rules.RoundBased && match.Phase == MatchPhase.Live)
+                {
+                    _ui.SetStatus(me.Spawned ? "OUT UNTIL THE NEXT ROUND" : "YOU JOIN AT THE NEXT ROUND");
+                }
+                else if (_deadSince >= 0f)
+                {
+                    float wait = match.Phase == MatchPhase.Waiting ? 1.5f : rules.respawnSeconds;
+                    int left = Mathf.Max(1, Mathf.CeilToInt(wait - (Time.unscaledTime - _deadSince)));
+                    _ui.SetStatus("BACK IN " + left);
+                }
+                else
+                {
+                    _ui.SetStatus("");
+                }
+                return;
+            }
+
+            if (rules.mode == GameModeKind.GunGame && me.Alive)
+            {
+                int level = Mathf.Clamp(me.Stats.Score, 0, GunGameLadder.Length - 1);
+                string next = level + 1 < GunGameLadder.Length ? DisplayName(GunGameLadder.Weapons[level + 1]) : "the win";
+                _ui.SetStatus("WEAPON " + (level + 1) + " OF " + GunGameLadder.Length + "   ·   NEXT: " + next.ToUpperInvariant());
+                return;
+            }
+            _ui.SetStatus("");
+        }
+
+        ClientPlayer FirstOnTeam(int team)
+        {
+            foreach (ClientPlayer player in _session.Players)
+            {
+                if (player.Present && player.Team == team && player.Id != _session.PlayerId) return player;
+            }
+            return null;
+        }
+
+        /// <summary>The best-placed player other than us.</summary>
+        ClientPlayer BestOther()
+        {
+            ClientPlayer best = null;
+            foreach (ClientPlayer player in _session.Players)
+            {
+                if (!player.Present || player.Id == _session.PlayerId) continue;
+                if (best == null || player.Stats.Score > best.Stats.Score) best = player;
+            }
+            return best;
+        }
+
+        /// <summary>Where we finished in a mode without teams: 1 for first.</summary>
+        int Placing()
+        {
+            int place = 1;
+            int ours = _session.Local.Stats.Score;
+            foreach (ClientPlayer player in _session.Players)
+            {
+                if (player.Present && player.Id != _session.PlayerId && player.Stats.Score > ours) place++;
+            }
+            return place;
+        }
+
+        static string Ordinal(int n) => n + (n % 100 >= 11 && n % 100 <= 13 ? "th" : n % 10 == 1 ? "st" : n % 10 == 2 ? "nd" : n % 10 == 3 ? "rd" : "th");
+
+        /// <summary>What wins the match, in a few words.</summary>
+        static string Objective(MatchSettings rules)
+        {
+            switch (rules.mode)
+            {
+                case GameModeKind.Duel:
+                case GameModeKind.Elimination: return "first to " + rules.roundsToWin + " rounds";
+                case GameModeKind.TeamDeathmatch: return "first team to " + rules.scoreLimit + " kills";
+                case GameModeKind.FreeForAll: return "first to " + rules.scoreLimit + " kills";
+                case GameModeKind.Domination:
+                case GameModeKind.Hardpoint: return "first team to " + rules.scoreLimit + " points";
+                case GameModeKind.GunGame: return "a kill with every weapon";
+                default: return "";
+            }
         }
 
         float TicksLeft(in MatchState match) => (float)(match.PhaseEndTick - _session.ArrivalTick);
@@ -406,10 +700,21 @@ namespace Pulsebreak.Client.Duel
         void UpdateBanner()
         {
             MatchState match = _session.Match;
+            MatchSettings rules = _session.Settings;
+            int ourTeam = _session.Local != null ? _session.Local.Team : Teams.None;
             switch (match.Phase)
             {
                 case MatchPhase.Waiting:
-                    _ui.SetBanner("WAITING FOR AN OPPONENT", _joinHint);
+                    if (match.PhaseEndTick > 0)
+                    {
+                        int left = Mathf.Max(1, Mathf.CeilToInt(TicksLeft(match) * SimConstants.TickDelta));
+                        _ui.SetBanner("STARTING IN " + left, "Waiting a moment for anyone else on their way" + (_joinHint.Length > 0 ? "\n" + _joinHint : ""));
+                    }
+                    else
+                    {
+                        _ui.SetBanner("WAITING FOR PLAYERS", (rules.TeamBased ? "A match needs someone on each team." : "A match needs at least two players.") +
+                                                              (_joinHint.Length > 0 ? "\n" + _joinHint : ""));
+                    }
                     break;
 
                 case MatchPhase.Countdown:
@@ -417,8 +722,9 @@ namespace Pulsebreak.Client.Duel
                     // Counted against when our commands reach the server, the same clock that
                     // decides when we can move: the number hits zero as our controls come alive.
                     float left = (float)(match.PhaseEndTick - _session.CommandArrivalTick) * SimConstants.TickDelta;
+                    string what = MatchSettings.Title(rules.mode) + "   ·   " + (rules.RoundBased ? "Round " + match.Round + "   ·   " : "") + Objective(rules);
                     if (left <= 0f) _ui.SetBanner("FIGHT", "");
-                    else _ui.SetBanner(Mathf.Clamp(Mathf.CeilToInt(left), 1, 9).ToString(), "ROUND " + match.Round + "   ·   first to " + _session.Rules.roundsToWin);
+                    else _ui.SetBanner(Mathf.Clamp(Mathf.CeilToInt(left), 1, 9).ToString(), what);
                     break;
                 }
 
@@ -436,17 +742,28 @@ namespace Pulsebreak.Client.Duel
 
                 case MatchPhase.RoundEnd:
                     if (match.RoundWinner == MatchState.Nobody) _ui.SetBanner("DRAW", "Nobody takes the round");
-                    else if (match.RoundWinner == _session.PlayerId) _ui.SetBanner("ROUND WON", "B  changes loadout for the next round");
+                    else if (match.RoundWinner == ourTeam) _ui.SetBanner("ROUND WON", "B  changes loadout for the next round");
                     else _ui.SetBanner("ROUND LOST", "B  changes loadout for the next round", good: false);
                     break;
 
                 case MatchPhase.MatchEnd:
                 {
-                    int us = _session.PlayerId;
-                    string score = match.Score(us) + "  -  " + match.Score(1 - us);
-                    bool forfeit = match.Score(0) < _session.Rules.roundsToWin && match.Score(1) < _session.Rules.roundsToWin;
-                    if (match.MatchWinner == us) _ui.SetBanner("VICTORY", forfeit ? "Your opponent left the match" : score);
-                    else _ui.SetBanner("DEFEAT", score, good: false);
+                    if (rules.TeamBased)
+                    {
+                        string score = match.Score(ourTeam) + "  -  " + match.Score(1 - ourTeam);
+                        bool forfeit = FirstOnTeam(1 - ourTeam) == null;
+                        if (match.MatchWinner == MatchState.Nobody) _ui.SetBanner("DRAW", score);
+                        else if (match.MatchWinner == ourTeam) _ui.SetBanner("VICTORY", forfeit ? "The other side left the match" : score);
+                        else _ui.SetBanner("DEFEAT", score, good: false);
+                    }
+                    else
+                    {
+                        int winner = match.MatchWinner;
+                        string name = winner >= 0 && winner < _session.Players.Length ? _session.Players[winner].Name : "";
+                        if (winner == _session.PlayerId) _ui.SetBanner("VICTORY", "You came first");
+                        else if (winner == MatchState.Nobody) _ui.SetBanner("DRAW", "Time ran out with the lead shared");
+                        else _ui.SetBanner("DEFEAT", name + " wins   ·   you came " + Ordinal(Placing()), good: false);
+                    }
                     break;
                 }
             }
@@ -474,6 +791,7 @@ namespace Pulsebreak.Client.Duel
             if (player.Id == _session.PlayerId)
             {
                 // Whatever loadout we asked for is now the one in our hands.
+                _deadSince = -1f;
                 _noticeTimer = 0f;
                 _ui.SetNotice("");
                 return;
@@ -481,26 +799,59 @@ namespace Pulsebreak.Client.Duel
             if (_remotes[player.Id] == null) _remotes[player.Id] = RemotePlayerView.Create(_session, player.Id, movement);
         }
 
+        void OnPlayerRearmed(ClientPlayer player, RearmMessage rearm)
+        {
+            if (player.Id != _session.PlayerId || _rig == null) return;
+            // Gun Game: a kill moved us up a weapon.
+            WeaponBuild build = BuildOf(player.Id, rearm.ActiveSlot);
+            _ui.SetNotice(build != null ? "NEW WEAPON: " + build.Weapon.displayName.ToUpperInvariant() : "");
+            _noticeTimer = 2f;
+            _rig.Sfx.Play(Sfx.Swap, 1f);
+        }
+
         void OnEquippedChanged()
         {
             if (_session == null || _session.Status != ClientStatus.Connected) return;
             _session.SetLoadout(_library.Equipped);
-            _ui.SetNotice("Loadout \"" + _library.Equipped.name + "\" will be used from the next round");
+            MatchSettings rules = _session.Settings;
+            _ui.SetNotice(rules.mode == GameModeKind.GunGame
+                ? "Gun Game hands out its own weapons; your loadout is for other modes"
+                : "Loadout \"" + _library.Equipped.name + "\" will be used from your " + (rules.RoundBased ? "next round" : "next spawn"));
             _noticeTimer = 5f;
         }
 
         void OnKilled(KillMessage kill)
         {
-            string victim = _session.Players[kill.Victim].Name;
-            bool ours = kill.Killer == _session.PlayerId;
-            if (kill.Killer == KillMessage.NoKiller || kill.Killer >= _session.Players.Length)
+            ClientPlayer victimPlayer = _session.Players[kill.Victim];
+            string victim = victimPlayer.Name;
+            if (kill.Victim == _session.PlayerId)
             {
-                _ui.AddKill(victim + " fell out of the arena", false);
-                return;
+                _deadSince = Time.unscaledTime;
+                if (_rig != null) _rig.Sfx.Play(Sfx.Land, 0.9f);
             }
 
-            _ui.AddKill(_session.Players[kill.Killer].Name + "   [" + DisplayName(kill.WeaponId) + (kill.Headshot ? ", headshot" : "") + "]   " + victim, ours);
-            if (kill.Victim == _session.PlayerId && _rig != null) _rig.Sfx.Play(Sfx.Land, 0.9f);
+            if (kill.Killer == KillMessage.NoKiller || kill.Killer >= _session.Players.Length)
+            {
+                _ui.AddKill(victim + " fell out of the arena", Tone(kill.Victim, victimPlayer.Team, victimIsSubject: true));
+                return;
+            }
+            ClientPlayer killer = _session.Players[kill.Killer];
+            string text = kill.Killer == kill.Victim
+                ? victim + "   [" + DisplayName(kill.WeaponId) + "]   themselves"
+                : killer.Name + "   [" + DisplayName(kill.WeaponId) + (kill.Headshot ? ", headshot" : "") + "]   " + victim;
+            _ui.AddKill(text, kill.Killer == kill.Victim ? Tone(kill.Victim, victimPlayer.Team, true) : Tone(kill.Killer, killer.Team, false));
+        }
+
+        /// <summary>
+        /// Green when it went our way, red when it did not: a kill by us or our team, or a death
+        /// of theirs. <paramref name="victimIsSubject"/> means the player named is the one who died.
+        /// </summary>
+        FeedTone Tone(int playerId, int team, bool victimIsSubject)
+        {
+            bool friendly = playerId == _session.PlayerId ||
+                            (_session.Settings.TeamBased && _session.Local != null && team == _session.Local.Team);
+            if (!friendly && !_session.Settings.TeamBased && playerId != _session.PlayerId) return FeedTone.Neutral;
+            return friendly != victimIsSubject ? FeedTone.Ours : FeedTone.Theirs;
         }
 
         string DisplayName(string id)
@@ -610,13 +961,22 @@ namespace Pulsebreak.Client.Duel
 
         // ------------------------------------------------------------------ the scene
 
-        /// <summary>The arena as the client sees it: the shared collision, plus something to look at.</summary>
-        void BuildArena(ArenaLayout layout)
+        /// <summary>
+        /// The arena as the client sees it: the shared collision, plus something to look at.
+        /// Asking for the one already shown does nothing; another one replaces it.
+        /// </summary>
+        ArenaLayout ShowArena(string arenaId)
         {
+            ArenaLayout layout = ArenaLayout.Find(arenaId);
             new UnityGameWorld(server: false).BuildArena(layout);
+            if (_shownArenaId == layout.Id && _arenaRoot != null) return layout;
 
+            if (_arenaRoot != null) Destroy(_arenaRoot.gameObject);
+            _shownArenaId = layout.Id;
             var root = new GameObject("Arena (" + layout.DisplayName + ")").transform;
             root.SetParent(transform, false);
+            _arenaRoot = root;
+            if (_menuCamera != null) AimMenuCamera(layout);
             foreach (ArenaBox box in layout.Boxes)
             {
                 Color color = box.Paint == ArenaPaint.Floor ? FloorColor
@@ -625,18 +985,28 @@ namespace Pulsebreak.Client.Duel
                     : AccentColor;
                 GreyboxKit.Box(root, "Block", box.Center, box.Size, color, solid: false);
             }
+            return layout;
         }
 
         /// <summary>Looks down on the arena behind the menu.</summary>
         void CreateMenuCamera()
         {
             var go = new GameObject("Menu Camera");
-            go.transform.SetPositionAndRotation(new Vector3(-6f, 19f, -27f), Quaternion.Euler(36f, 12f, 0f));
             _menuCamera = go.AddComponent<Camera>();
             _menuCamera.fieldOfView = 60f;
             _menuCamera.farClipPlane = 600f;
             go.AddComponent<AudioListener>();
             RangeEnvironment.ConfigureCamera(_menuCamera);
+            AimMenuCamera(ArenaLayout.Find(_shownArenaId));
+        }
+
+        /// <summary>Far enough back to take in the whole map.</summary>
+        void AimMenuCamera(ArenaLayout layout)
+        {
+            float size = 0f;
+            foreach (ArenaBox box in layout.Boxes) size = Mathf.Max(size, Mathf.Max(box.Size.x, box.Size.z));
+            float scale = Mathf.Max(1f, size / 40f);
+            _menuCamera.transform.SetPositionAndRotation(new Vector3(-6f, 19f, -27f) * scale, Quaternion.Euler(36f, 12f, 0f));
         }
 
         // ------------------------------------------------------------------ helpers

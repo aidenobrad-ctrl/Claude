@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Pulsebreak.Server.Bots;
 using Pulsebreak.Shared.Loadouts;
 using Pulsebreak.Shared.Match;
 using Pulsebreak.Shared.Net;
@@ -6,7 +7,7 @@ using Pulsebreak.Shared.Simulation;
 
 namespace Pulsebreak.Server
 {
-    /// <summary>Everything the server keeps about one connected player.</summary>
+    /// <summary>Everything the server keeps about one player, connected or a bot.</summary>
     public sealed class ServerPlayer
     {
         /// <summary>How many commands can wait before the oldest is thrown away.</summary>
@@ -19,6 +20,7 @@ namespace Pulsebreak.Server
         public const float MaxCommandCredit = 8f;
 
         public readonly int Id;
+        /// <summary>Null for a bot.</summary>
         public readonly NetConnection Connection;
         public readonly PlayerVitals Vitals;
         public readonly Queue<PlayerInputCmd> Commands = new Queue<PlayerInputCmd>(MaxQueuedCommands);
@@ -28,7 +30,7 @@ namespace Pulsebreak.Server
         /// <summary>The backend account this player proved they own, or empty on a server that does not ask.</summary>
         public string AccountId = "";
         public bool EmailVerified;
-        /// <summary>Has said hello: has a name and a loadout, and takes part in the match.</summary>
+        /// <summary>Has said hello: has a name and a loadout, and takes part in the match. A bot is ready from the start.</summary>
         public bool Ready;
 
         public PlayerSimulation Sim;
@@ -38,23 +40,47 @@ namespace Pulsebreak.Server
         public LoadoutData LoadoutData;
         /// <summary>What they asked to carry from the next time they are placed.</summary>
         public LoadoutData PendingLoadout;
+        /// <summary>What of <see cref="LoadoutData"/> they may use: see <see cref="MatchLoadouts"/>.</summary>
+        public byte SlotMask = MatchLoadouts.AllSlots;
 
         /// <summary>In the world. A ready player is not spawned until the match places them.</summary>
         public bool Spawned;
-        /// <summary>Goes up each time they are placed. Lets a client tell snapshots from before and after apart.</summary>
+        /// <summary>Goes up each time they are placed or rearmed. Lets a client tell snapshots from before and after apart.</summary>
         public byte SpawnCount;
+
+        // The match's view of them.
+        /// <summary>0 or 1, or <see cref="Teams.None"/> in a mode without teams.</summary>
+        public int Team = Teams.None;
+        public int Kills, Deaths, Score;
+        /// <summary>Gun Game: how far up the ladder they are.</summary>
+        public int GunLevel;
+        /// <summary>Respawning modes: the tick they come back at, or -1 if they are not waiting to.</summary>
+        public int RespawnTick = -1;
+
+        /// <summary>Drives a bot. Null for a person.</summary>
+        public BotBrain Brain;
 
         public int LastReceivedTick = int.MinValue;
         public int LastProcessedTick;
         public float CommandCredit;
 
+        public bool IsBot => Connection == null;
         public bool Alive => Spawned && Vitals.IsAlive;
+        public PlayerStats Stats => new PlayerStats { Team = Team, Kills = Kills, Deaths = Deaths, Score = Score };
 
         public ServerPlayer(int id, NetConnection connection)
         {
             Id = id;
             Connection = connection;
             Vitals = new PlayerVitals(id);
+        }
+
+        /// <summary>A fresh match: everything the scoreboard shows goes back to zero.</summary>
+        public void ResetStats()
+        {
+            Kills = Deaths = Score = 0;
+            GunLevel = 0;
+            RespawnTick = -1;
         }
     }
 }

@@ -13,10 +13,10 @@ MonoBehaviour:
   m_Name: UTL_shock_charge
   m_EditorClassIdentifier: 
   utilityId: shock_charge
-  displayName: Shock Charge
+  displayName: Shockwave Grenade
   description: 'A wide, weak blast. Softens a whole group for the follow-up.'
   unlockLevel: 6
-  charges: 1
+  charges: 2
   throwTime: 0.3
   cooldown: 0.8
   rechargeTime: 8

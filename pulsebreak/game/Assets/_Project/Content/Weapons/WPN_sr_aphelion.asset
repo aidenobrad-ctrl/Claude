@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: WPN_sr_aphelion
   m_EditorClassIdentifier: 
   weaponId: sr_aphelion
-  displayName: Aphelion
-  description: 'Bolt action. One round to the chest or head, and it carries on through.'
+  displayName: Sniper Rifle
+  description: 'Bolt action. One round to the chest or head, and it carries on through. Legs take 75.'
   weaponClass: 4
   slot: 0
   unlockLevel: 4
@@ -29,9 +29,9 @@ MonoBehaviour:
     pellets: 1
     pierceTargets: 1
     pierceDamageKept: 0.75
-    damage: 105
+    damage: 100
     headMultiplier: 2
-    limbMultiplier: 0.8
+    limbMultiplier: 0.75
     falloffStart: 80
     falloffEnd: 140
     minDamageMultiplier: 0.85

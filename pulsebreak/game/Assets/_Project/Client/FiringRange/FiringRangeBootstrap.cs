@@ -146,13 +146,12 @@ namespace Pulsebreak.Client.FiringRange
             preset.primary = rifle;
             preset.secondary = pistol;
             preset.melee = knife;
-            preset.utility1 = Grenade("fallback_frag", "Fallback Frag", fuse: 2f);
-            preset.utility2 = Grenade("fallback_impact", "Fallback Impact", fuse: 0f);
+            preset.utility = Grenade("fallback_frag", "Fallback Frag", fuse: 2f);
             preset.perkSet = perks;
 
             var catalog = ScriptableObject.CreateInstance<LoadoutCatalog>();
             catalog.weapons = weapons;
-            catalog.utilities = new[] { preset.utility1, preset.utility2 };
+            catalog.utilities = new[] { preset.utility };
             catalog.perkSets = new[] { perks };
             catalog.presets = new[] { preset };
             return catalog;

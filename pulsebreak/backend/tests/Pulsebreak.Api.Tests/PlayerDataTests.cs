@@ -25,7 +25,7 @@ public class LoadoutSyncTests
         primary = new WeaponBuildData { weaponId = primary, attachments = ["sight_red_dot", "grip_vertical"] },
         secondary = new WeaponBuildData { weaponId = "pistol_notch" },
         melee = new WeaponBuildData { weaponId = "melee_field_knife" },
-        utility1 = "frag_grenade", utility2 = "impact_grenade", perkSet = "vanguard",
+        utility = "frag_grenade", perkSet = "vanguard",
     };
 
     static async Task<LoadoutCollection> SyncAsync(TestPlayer device, LoadoutCollection mine)
@@ -59,7 +59,7 @@ public class LoadoutSyncTests
         Assert.That(first.primary.weaponId, Is.EqualTo("ar_hadron"));
         Assert.That(first.primary.attachments, Is.EqualTo(new[] { "sight_red_dot", "grip_vertical" }));
         Assert.That(first.secondary.weaponId, Is.EqualTo("pistol_notch"));
-        Assert.That(first.utility2, Is.EqualTo("impact_grenade"));
+        Assert.That(first.utility, Is.EqualTo("frag_grenade"));
         Assert.That(first.perkSet, Is.EqualTo("vanguard"));
         Assert.That(first.updatedAt, Is.EqualTo(_now - 100));
 

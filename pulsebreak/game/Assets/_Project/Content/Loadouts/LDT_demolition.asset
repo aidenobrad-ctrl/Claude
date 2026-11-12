@@ -14,13 +14,12 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   presetId: demolition
   displayName: Demolition
-  description: 'A belt-fed gun, a rocket launcher, and more grenades than anyone needs.'
+  description: 'A minigun, a rocket launcher, and an extra grenade.'
   primary: {fileID: 11400000, guid: 8e74a6ea83948b54ba08dc91f94073ab, type: 2}
   primaryAttachments:
   - {fileID: 11400000, guid: f0ccfc29c240b707a378dce542d86b1c, type: 2}
   secondary: {fileID: 11400000, guid: a1e071ad5b4f4cf49e0a2c7ab9a660c8, type: 2}
   secondaryAttachments: []
   melee: {fileID: 11400000, guid: e7a331c50b20c566955bf4b462141e37, type: 2}
-  utility1: {fileID: 11400000, guid: 7b11223ef436b8c010a6f236f868451f, type: 2}
-  utility2: {fileID: 11400000, guid: edc0b1651e82dd70e1f880d1c10de4c0, type: 2}
+  utility: {fileID: 11400000, guid: 7b11223ef436b8c010a6f236f868451f, type: 2}
   perkSet: {fileID: 11400000, guid: 72da7f3e24f0aa6a0a2faee8f82bed94, type: 2}

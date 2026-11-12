@@ -32,8 +32,8 @@ namespace Pulsebreak.Shared.Loadouts
         public WeaponBuildData primary = new WeaponBuildData();
         public WeaponBuildData secondary = new WeaponBuildData();
         public WeaponBuildData melee = new WeaponBuildData();
-        public string utility1 = "";
-        public string utility2 = "";
+        /// <summary>The one utility item carried, such as a grenade.</summary>
+        public string utility = "";
         public string perkSet = "";
         /// <summary>When it was last changed, in seconds since 1970 (UTC). Decides which copy wins once loadouts sync between devices.</summary>
         public long updatedAt;
@@ -47,8 +47,7 @@ namespace Pulsebreak.Shared.Loadouts
                 primary = primary.Clone(),
                 secondary = secondary.Clone(),
                 melee = melee.Clone(),
-                utility1 = utility1,
-                utility2 = utility2,
+                utility = utility,
                 perkSet = perkSet,
                 updatedAt = updatedAt,
             };
@@ -79,7 +78,7 @@ namespace Pulsebreak.Shared.Loadouts
     [Serializable]
     public sealed class LoadoutCollection
     {
-        public const int CurrentVersion = 2;
+        public const int CurrentVersion = 3;
 
         /// <summary>Format version, so a later change to the layout can migrate old saves.</summary>
         public int version = CurrentVersion;
@@ -88,7 +87,7 @@ namespace Pulsebreak.Shared.Loadouts
         /// <summary>When the equipped loadout was last chosen. Seconds since 1970 (UTC). Added in version 2.</summary>
         public long equippedUpdatedAt;
         public LoadoutData[] loadouts = new LoadoutData[0];
-        /// <summary>Loadouts that were deleted, newest first. Added in version 2.</summary>
+        /// <summary>Loadouts that were deleted, newest first. Added in version 2. (Version 3 cut the two utility slots to one.)</summary>
         public DeletedLoadout[] deleted = new DeletedLoadout[0];
     }
 }

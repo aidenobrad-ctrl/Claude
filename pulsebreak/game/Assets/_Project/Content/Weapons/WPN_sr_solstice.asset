@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: WPN_sr_solstice
   m_EditorClassIdentifier: 
   weaponId: sr_solstice
-  displayName: Solstice
-  description: 'Semi-automatic. Two to the body or one to the head, as fast as you can settle.'
+  displayName: Semi-Auto Sniper
+  description: 'Two to the body or one to the head, as fast as you can settle.'
   weaponClass: 4
   slot: 0
   unlockLevel: 22
@@ -30,11 +30,11 @@ MonoBehaviour:
     pierceTargets: 0
     pierceDamageKept: 0.75
     damage: 70
-    headMultiplier: 1.6
-    limbMultiplier: 0.85
+    headMultiplier: 1.5
+    limbMultiplier: 0.86
     falloffStart: 60
     falloffEnd: 110
-    minDamageMultiplier: 0.8
+    minDamageMultiplier: 0.86
     maxRange: 450
     projectileSpeed: 60
     projectileGravity: 0

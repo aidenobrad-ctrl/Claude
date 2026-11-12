@@ -9,7 +9,8 @@ namespace Pulsebreak.Shared.Loadouts
     public sealed class Loadout
     {
         public const int WeaponSlots = 3;
-        public const int UtilitySlots = 2;
+        /// <summary>One utility item (a grenade or similar) per loadout.</summary>
+        public const int UtilitySlots = 1;
 
         public string Id;
         public string Name;

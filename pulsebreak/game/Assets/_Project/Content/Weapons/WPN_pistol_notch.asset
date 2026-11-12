@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: WPN_pistol_notch
   m_EditorClassIdentifier: 
   weaponId: pistol_notch
-  displayName: Notch
+  displayName: Handgun
   description: 'The sidearm you start with. Quick to draw, accurate, and enough to finish a fight.'
   weaponClass: 6
   slot: 1
@@ -29,9 +29,9 @@ MonoBehaviour:
     pellets: 1
     pierceTargets: 0
     pierceDamageKept: 0.75
-    damage: 30
-    headMultiplier: 1.5
-    limbMultiplier: 0.9
+    damage: 25
+    headMultiplier: 1.6
+    limbMultiplier: 1
     falloffStart: 14
     falloffEnd: 30
     minDamageMultiplier: 0.6
@@ -58,7 +58,7 @@ MonoBehaviour:
     reloadIntroTime: 0
     adsTime: 0.12
     adsZoom: 1.15
-    hipMoveMultiplier: 1.05
+    hipMoveMultiplier: 1.06
     adsMoveMultiplier: 0.92
     sprintToFireTime: 0.06
     equipTime: 0.22

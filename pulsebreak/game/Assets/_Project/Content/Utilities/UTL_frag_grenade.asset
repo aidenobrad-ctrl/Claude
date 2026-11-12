@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   utilityId: frag_grenade
   displayName: Frag Grenade
-  description: 'Bounces, then bursts when the fuse runs out. Bank it off a wall or cook the timing.'
+  description: 'Bounces, then bursts when the fuse runs out. 120 at the centre. Bank it off a wall or cook the timing.'
   unlockLevel: 1
   charges: 2
   throwTime: 0.3

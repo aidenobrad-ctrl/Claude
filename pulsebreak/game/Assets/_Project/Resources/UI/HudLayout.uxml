@@ -47,12 +47,12 @@
         <ui:VisualElement name="hints" class="panel hints" picking-mode="Ignore">
             <ui:Label class="panel-title" text="FIRING RANGE" picking-mode="Ignore" />
             <ui:Label class="hint" text="WASD  move      Mouse  look" picking-mode="Ignore" />
-            <ui:Label class="hint" text="Shift  sprint      Space  jump" picking-mode="Ignore" />
+            <ui:Label class="hint" text="Shift  sprint (hold, or toggle in Esc)      Space  jump" picking-mode="Ignore" />
             <ui:Label class="hint" text="Ctrl / C  crouch      sprint + crouch  slide" picking-mode="Ignore" />
             <ui:Label class="hint" text="hold Space + W at a ledge  mantle" picking-mode="Ignore" />
             <ui:Label class="hint" text="Q / E  lean      RMB  aim      LMB  fire" picking-mode="Ignore" />
             <ui:Label class="hint" text="1 2 3 / wheel  switch weapon      R  reload" picking-mode="Ignore" />
-            <ui:Label class="hint" text="G / F  throw utility      B  swap loadout" picking-mode="Ignore" />
+            <ui:Label class="hint" text="G  throw grenade      B  swap loadout" picking-mode="Ignore" />
             <ui:Label class="hint" text="Esc  loadouts and settings" picking-mode="Ignore" />
             <ui:Label class="hint" text="F5  reset stats      F1  hide this" picking-mode="Ignore" />
         </ui:VisualElement>
@@ -98,6 +98,7 @@
                 <ui:VisualElement class="loadouts-body">
                     <ui:VisualElement class="loadouts-column">
                         <ui:ScrollView name="loadout-list" class="loadout-list" />
+                        <ui:Button name="loadout-deploy" class="pause-button primary deploy-button" text="Deploy" />
                         <ui:VisualElement class="loadout-actions">
                             <ui:Button name="loadout-new" class="pause-button" text="New" />
                             <ui:Button name="loadout-delete" class="pause-button" text="Delete" />
@@ -130,6 +131,7 @@
                 <ui:SliderInt name="set-fov" label="Field of view" low-value="70" high-value="120" show-input-field="true" />
                 <ui:Slider name="set-volume" label="Volume" low-value="0" high-value="1" show-input-field="true" />
                 <ui:Toggle name="set-damage-numbers" label="Damage numbers" />
+                <ui:Toggle name="set-toggle-sprint" label="Toggle sprint" />
                 <ui:VisualElement class="pause-buttons">
                     <ui:Button name="btn-resume" class="pause-button primary" text="Resume" />
                     <ui:Button name="btn-reset" class="pause-button" text="Reset stats" />

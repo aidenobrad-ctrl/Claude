@@ -29,8 +29,7 @@ namespace Pulsebreak.Shared.Loadouts
             for (int slot = 0; slot < Loadout.WeaponSlots; slot++)
                 loadout.Weapons[slot] = ResolveWeapon(data.GetWeapon(slot), SlotTypes[slot], catalog, notes);
 
-            loadout.Utilities[0] = ResolveUtility(data.utility1, null, catalog, notes);
-            loadout.Utilities[1] = ResolveUtility(data.utility2, loadout.Utilities[0], catalog, notes);
+            loadout.Utilities[0] = ResolveUtility(data.utility, catalog, notes);
 
             loadout.PerkSet = catalog.FindPerkSet(data.perkSet);
             if (loadout.PerkSet == null && catalog.perkSets.Length > 0)
@@ -52,8 +51,7 @@ namespace Pulsebreak.Shared.Loadouts
                 primary = ToData(loadout.Weapons[0]),
                 secondary = ToData(loadout.Weapons[1]),
                 melee = ToData(loadout.Weapons[2]),
-                utility1 = loadout.Utilities[0] != null ? loadout.Utilities[0].utilityId : "",
-                utility2 = loadout.Utilities[1] != null ? loadout.Utilities[1].utilityId : "",
+                utility = loadout.Utilities[0] != null ? loadout.Utilities[0].utilityId : "",
                 perkSet = loadout.PerkSet != null ? loadout.PerkSet.perkSetId : "",
                 updatedAt = updatedAt,
             };
@@ -117,18 +115,15 @@ namespace Pulsebreak.Shared.Loadouts
             return build;
         }
 
-        /// <summary>The two utility slots must hold different items.</summary>
-        static UtilityDefinition ResolveUtility(string utilityId, UtilityDefinition other, LoadoutCatalog catalog, List<string> notes)
+        static UtilityDefinition ResolveUtility(string utilityId, LoadoutCatalog catalog, List<string> notes)
         {
             UtilityDefinition utility = catalog.FindUtility(utilityId);
-            if (utility != null && utility != other) return utility;
+            if (utility != null) return utility;
 
             foreach (UtilityDefinition candidate in catalog.utilities)
             {
-                if (candidate == null || candidate == other) continue;
-                Note(notes, utility == null
-                    ? "Utility '" + utilityId + "' is not available; using " + candidate.displayName + "."
-                    : "Both utility slots held " + utility.displayName + "; changed one to " + candidate.displayName + ".");
+                if (candidate == null) continue;
+                Note(notes, "Utility '" + utilityId + "' is not available; using " + candidate.displayName + ".");
                 return candidate;
             }
             return null;

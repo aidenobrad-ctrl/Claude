@@ -1,0 +1,24 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cf495866b88359d8f1b6e8c964588444, type: 3}
+  m_Name: LDT_brawler
+  m_EditorClassIdentifier: 
+  presetId: brawler
+  displayName: Brawler
+  description: 'Fire, buckshot and an axe. Get in their face and stay there.'
+  primary: {fileID: 11400000, guid: 2d1a28278c3cb24663f939cced2afee3, type: 2}
+  primaryAttachments: []
+  secondary: {fileID: 11400000, guid: 34fcb13c41f9e7efceab768d39ffa824, type: 2}
+  secondaryAttachments: []
+  melee: {fileID: 11400000, guid: beb05637e5cc6823a51957fb68d1475b, type: 2}
+  utility: {fileID: 11400000, guid: edc0b1651e82dd70e1f880d1c10de4c0, type: 2}
+  perkSet: {fileID: 11400000, guid: 3b1db5a585e809888e9abdfbbacbe84f, type: 2}

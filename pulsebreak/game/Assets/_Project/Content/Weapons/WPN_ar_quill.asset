@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: WPN_ar_quill
   m_EditorClassIdentifier: 
   weaponId: ar_quill
-  displayName: Quill AR
-  description: 'Light and quick. Sprays fast and weaves more than it climbs.'
+  displayName: Carbine
+  description: 'Light and quick. Sprays fast, moves fast, and weaves more than it climbs.'
   weaponClass: 0
   slot: 0
   unlockLevel: 16
@@ -29,12 +29,12 @@ MonoBehaviour:
     pellets: 1
     pierceTargets: 0
     pierceDamageKept: 0.75
-    damage: 21
+    damage: 20
     headMultiplier: 1.5
-    limbMultiplier: 0.9
+    limbMultiplier: 1
     falloffStart: 22
     falloffEnd: 46
-    minDamageMultiplier: 0.6
+    minDamageMultiplier: 0.75
     maxRange: 300
     projectileSpeed: 60
     projectileGravity: 0
@@ -58,8 +58,8 @@ MonoBehaviour:
     reloadIntroTime: 0
     adsTime: 0.18
     adsZoom: 1.25
-    hipMoveMultiplier: 1.01
-    adsMoveMultiplier: 0.72
+    hipMoveMultiplier: 1.03
+    adsMoveMultiplier: 0.78
     sprintToFireTime: 0.14
     equipTime: 0.35
     holsterTime: 0.2

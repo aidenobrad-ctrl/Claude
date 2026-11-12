@@ -9,6 +9,23 @@ namespace Pulsebreak.Tests
 {
     public class DamageCalculatorTests
     {
+        [Test]
+        public void DealtDamage_IsAlwaysAMultipleOfFive_AndNeverRoundsAHitAway()
+        {
+            Assert.That(DamageCalculator.Standardize(25f), Is.EqualTo(25f));
+            Assert.That(DamageCalculator.Standardize(44f), Is.EqualTo(45f), "the example of an untidy number");
+            Assert.That(DamageCalculator.Standardize(41.2f), Is.EqualTo(40f));
+            Assert.That(DamageCalculator.Standardize(1f), Is.EqualTo(5f), "a hit that lands always counts");
+            Assert.That(DamageCalculator.Standardize(0f), Is.EqualTo(0f));
+            Assert.That(DamageCalculator.Standardize(-3f), Is.EqualTo(0f));
+            for (float amount = 0.5f; amount < 300f; amount += 0.37f)
+            {
+                float dealt = DamageCalculator.Standardize(amount);
+                Assert.That(dealt % 5f, Is.EqualTo(0f), amount.ToString());
+                Assert.That(Mathf.Abs(dealt - amount), Is.LessThanOrEqualTo(4.5f), amount.ToString());
+            }
+        }
+
         static WeaponStats MakeStats()
         {
             return new WeaponStats

@@ -403,7 +403,6 @@ namespace Pulsebreak.Tests
                 };
             }
             state.Utilities[0] = new UtilitySlotState { Charges = 2, Cooldown = 0.3f, RechargeTimer = 1.5f };
-            state.Utilities[1] = new UtilitySlotState { Charges = 0, Cooldown = 0f, RechargeTimer = 4f };
 
             Writer.Reset();
             NetMessages.WriteSimState(Writer, state);
@@ -509,7 +508,7 @@ namespace Pulsebreak.Tests
                 primary = new WeaponBuildData { weaponId = "smg_a", attachments = new[] { "sight_a", "grip_b" } },
                 secondary = new WeaponBuildData { weaponId = "pistol_a" },
                 melee = new WeaponBuildData { weaponId = "knife_a" },
-                utility1 = "frag", utility2 = "impact", perkSet = "mover",
+                utility = "impact", perkSet = "mover",
             };
 
             Writer.Reset();
@@ -524,7 +523,7 @@ namespace Pulsebreak.Tests
             Assert.That(spawn.Loadout.primary.weaponId, Is.EqualTo("smg_a"));
             Assert.That(spawn.Loadout.primary.attachments, Is.EqualTo(new[] { "sight_a", "grip_b" }));
             Assert.That(spawn.Loadout.secondary.attachments, Is.Empty);
-            Assert.That(spawn.Loadout.utility2, Is.EqualTo("impact"));
+            Assert.That(spawn.Loadout.utility, Is.EqualTo("impact"));
             Assert.That(spawn.Loadout.perkSet, Is.EqualTo("mover"));
 
             Writer.Reset();

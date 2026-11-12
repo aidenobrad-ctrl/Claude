@@ -20,6 +20,8 @@ namespace Pulsebreak.Client.Settings
         /// <summary>Horizontal field of view in degrees, measured at 16:9.</summary>
         public static float FieldOfView = 100f;
         public static bool ShowDamageNumbers = true;
+        /// <summary>Sprint stays on after one press of the key, instead of only while it is held.</summary>
+        public static bool ToggleSprint;
         public static float MasterVolume = 0.8f;
 
         /// <summary>When the settings were last changed by the player. Seconds since 1970 (UTC). Decides which copy wins when they sync.</summary>
@@ -43,6 +45,7 @@ namespace Pulsebreak.Client.Settings
             AdsSensitivityMultiplier = Mathf.Clamp(PlayerPrefs.GetFloat("pb.adsSensitivity", 1f), MinAdsMultiplier, MaxAdsMultiplier);
             FieldOfView = Mathf.Clamp(PlayerPrefs.GetFloat("pb.fov", 100f), MinFieldOfView, MaxFieldOfView);
             ShowDamageNumbers = PlayerPrefs.GetInt("pb.damageNumbers", 1) != 0;
+            ToggleSprint = PlayerPrefs.GetInt("pb.toggleSprint", 0) != 0;
             MasterVolume = Mathf.Clamp01(PlayerPrefs.GetFloat("pb.masterVolume", 0.8f));
             UpdatedAt = long.TryParse(PlayerPrefs.GetString("pb.settingsUpdatedAt", "0"), out long stamp) ? stamp : 0;
             Apply();
@@ -76,6 +79,7 @@ namespace Pulsebreak.Client.Settings
             PlayerPrefs.SetFloat("pb.adsSensitivity", AdsSensitivityMultiplier);
             PlayerPrefs.SetFloat("pb.fov", FieldOfView);
             PlayerPrefs.SetInt("pb.damageNumbers", ShowDamageNumbers ? 1 : 0);
+            PlayerPrefs.SetInt("pb.toggleSprint", ToggleSprint ? 1 : 0);
             PlayerPrefs.SetFloat("pb.masterVolume", MasterVolume);
             PlayerPrefs.Save();
         }

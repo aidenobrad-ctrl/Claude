@@ -6,6 +6,20 @@ namespace Pulsebreak.Shared.Weapons
     /// <summary>The one place damage is worked out, so client feedback and server authority cannot disagree.</summary>
     public static class DamageCalculator
     {
+        /// <summary>Every hit deals a multiple of this.</summary>
+        public const float Step = 5f;
+
+        /// <summary>
+        /// Rounds damage to a multiple of five, never less than five. Range, explosions,
+        /// charging, piercing and bounces all scale damage; this keeps what actually lands to
+        /// numbers a player can count with: 25, 30, 45, never 44. Applied once, as damage is dealt.
+        /// </summary>
+        public static float Standardize(float amount)
+        {
+            if (amount <= 0f) return 0f;
+            return Mathf.Max(Step, Mathf.Round(amount / Step) * Step);
+        }
+
         /// <summary>Damage of one bullet or pellet at a distance, on a body part.</summary>
         public static float Compute(WeaponStats stats, float distance, HitZone zone) =>
             stats.damage * FalloffMultiplier(stats, distance) * ZoneMultiplier(stats, zone);

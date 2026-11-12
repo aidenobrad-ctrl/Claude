@@ -24,8 +24,7 @@ namespace Pulsebreak.Shared.Loadouts
         public WeaponDefinition melee;
 
         [Header("Equipment")]
-        public UtilityDefinition utility1;
-        public UtilityDefinition utility2;
+        public UtilityDefinition utility;
         public PerkSetDefinition perkSet;
 
         /// <summary>The preset in its stored form.</summary>
@@ -38,8 +37,7 @@ namespace Pulsebreak.Shared.Loadouts
                 primary = BuildData(primary, primaryAttachments),
                 secondary = BuildData(secondary, secondaryAttachments),
                 melee = BuildData(melee, null),
-                utility1 = utility1 != null ? utility1.utilityId : "",
-                utility2 = utility2 != null ? utility2.utilityId : "",
+                utility = utility != null ? utility.utilityId : "",
                 perkSet = perkSet != null ? perkSet.perkSetId : "",
             };
         }

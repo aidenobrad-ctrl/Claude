@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: WPN_sp_flicker
   m_EditorClassIdentifier: 
   weaponId: sp_flicker
-  displayName: Flicker Knives
+  displayName: Throwing Knives
   description: 'Thrown blades. Silent, quick to draw, and one to the head is enough.'
   weaponClass: 8
   slot: 1
@@ -29,9 +29,9 @@ MonoBehaviour:
     pellets: 1
     pierceTargets: 0
     pierceDamageKept: 0.75
-    damage: 65
+    damage: 60
     headMultiplier: 2
-    limbMultiplier: 0.9
+    limbMultiplier: 1
     falloffStart: 1000
     falloffEnd: 1000
     minDamageMultiplier: 1

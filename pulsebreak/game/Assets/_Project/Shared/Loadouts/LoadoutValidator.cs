@@ -35,7 +35,7 @@ namespace Pulsebreak.Shared.Loadouts
                 if (utility.projectile.fuseTime > 0f && utility.projectile.explosionRadius <= 0f) problems.Add(name + ": has a fuse but no explosionRadius.");
             }
             if (catalog.utilities.Length < Loadout.UtilitySlots)
-                problems.Add("loadout catalog: needs at least " + Loadout.UtilitySlots + " utility items to fill both slots.");
+                problems.Add("loadout catalog: needs at least one utility item.");
 
             foreach (PerkSetDefinition perkSet in catalog.perkSets)
             {

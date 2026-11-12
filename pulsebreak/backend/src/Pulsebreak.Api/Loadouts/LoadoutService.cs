@@ -137,14 +137,13 @@ public sealed partial class LoadoutService(AppDbContext db, TimeProvider clock)
 
             loadout.name = CleanName(loadout.name);
             loadout.updatedAt = ClampTime(loadout.updatedAt, now);
-            loadout.utility1 ??= "";
-            loadout.utility2 ??= "";
+            loadout.utility ??= "";
             loadout.perkSet ??= "";
             loadout.primary ??= new WeaponBuildData();
             loadout.secondary ??= new WeaponBuildData();
             loadout.melee ??= new WeaponBuildData();
 
-            if (!IsIdOrEmpty(loadout.utility1) || !IsIdOrEmpty(loadout.utility2) || !IsIdOrEmpty(loadout.perkSet))
+            if (!IsIdOrEmpty(loadout.utility) || !IsIdOrEmpty(loadout.perkSet))
                 errors.Add(where, "Utility and perk ids can use letters, numbers, dashes and underscores.");
 
             for (int slot = 0; slot < 3; slot++)

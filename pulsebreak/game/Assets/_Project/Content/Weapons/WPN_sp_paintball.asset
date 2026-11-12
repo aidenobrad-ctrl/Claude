@@ -1,0 +1,128 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f6a251fe876909704af95a88ea478068, type: 3}
+  m_Name: WPN_sp_paintball
+  m_EditorClassIdentifier: 
+  weaponId: sp_paintball
+  displayName: Paintball Gun
+  description: 'Quick, bouncy pellets with a gentle arc. Five to the body, three to the head.'
+  weaponClass: 8
+  slot: 0
+  unlockLevel: 7
+  stats:
+    fireMode: 0
+    roundsPerMinute: 480
+    burstCount: 3
+    burstCooldown: 0.2
+    chargeTime: 0.6
+    minChargeDamage: 0.35
+    ballistics: 1
+    pellets: 1
+    pierceTargets: 0
+    pierceDamageKept: 0.75
+    damage: 20
+    headMultiplier: 1.75
+    limbMultiplier: 1
+    falloffStart: 1000
+    falloffEnd: 1000
+    minDamageMultiplier: 1
+    maxRange: 300
+    projectileSpeed: 48
+    projectileGravity: 6
+    projectileLifetime: 3
+    projectileRadius: 0.08
+    bounces: 0
+    bounceSpeedKept: 0.6
+    bounceDamageMultiplier: 1
+    explosionRadius: 0
+    explosionEdgeDamage: 0.25
+    fuseTime: 0
+    detonateOnTarget: 1
+    meleeRange: 2.2
+    meleeRadius: 0.45
+    meleeHitDelay: 0.12
+    magazineSize: 25
+    reserveAmmo: 125
+    reloadStyle: 0
+    reloadTime: 2
+    emptyReloadTime: 2.4
+    reloadIntroTime: 0
+    adsTime: 0.18
+    adsZoom: 1.25
+    hipMoveMultiplier: 1.04
+    adsMoveMultiplier: 0.8
+    sprintToFireTime: 0.14
+    equipTime: 0.35
+    holsterTime: 0.2
+    hipSpread: 0.9
+    adsSpread: 0.06
+    moveSpreadPenalty: 1.2
+    airSpreadPenalty: 3
+    crouchSpreadMultiplier: 0.8
+    bloomPerShot: 0.15
+    maxBloom: 1
+    bloomRecovery: 5
+    adsBloomMultiplier: 0.2
+    recoilPattern:
+    - {x: -0.06, y: 0.3}
+    - {x: 0.013, y: 0.274}
+    - {x: 0.069, y: 0.247}
+    - {x: -0.022, y: 0.221}
+    - {x: -0.055, y: 0.12}
+    - {x: -0.2, y: 0.12}
+    - {x: -0.069, y: 0.12}
+    - {x: 0.157, y: 0.12}
+    - {x: 0.166, y: 0.12}
+    - {x: -0.055, y: 0.12}
+    - {x: -0.2, y: 0.12}
+    - {x: -0.069, y: 0.12}
+    - {x: 0.157, y: 0.12}
+    - {x: 0.166, y: 0.12}
+    - {x: -0.055, y: 0.12}
+    - {x: -0.2, y: 0.12}
+    recoilLoopStart: 4
+    recoilRandomness: 0.12
+    recoilVerticalScale: 1
+    recoilHorizontalScale: 1
+    adsRecoilMultiplier: 0.75
+    crouchRecoilMultiplier: 0.85
+    recoilSnappiness: 28
+    recoilRecovery: 9
+    recoilRecoveryDelay: 0.12
+    recoilResetTime: 0.35
+  reticle: 0
+  attachments:
+  - {fileID: 11400000, guid: f95313d2c50561b865952851718eecf8, type: 2}
+  - {fileID: 11400000, guid: 9ae6080a6981af55082842fd53486649, type: 2}
+  - {fileID: 11400000, guid: cac71da591c30ba7b76f5be7c7364e9d, type: 2}
+  - {fileID: 11400000, guid: 3ddd05335cec6df3a100b9686cfbb4e3, type: 2}
+  - {fileID: 11400000, guid: f0ccfc29c240b707a378dce542d86b1c, type: 2}
+  - {fileID: 11400000, guid: 6242cd4f3400567a3f05abf96ff54fc1, type: 2}
+  - {fileID: 11400000, guid: 6fada89d01e99c15bea4104ac352bec9, type: 2}
+  - {fileID: 11400000, guid: 544b4d67a6a8b3c512f4ae072f7a831b, type: 2}
+  - {fileID: 11400000, guid: c1d00cf082de219ca93f6697e4b0579c, type: 2}
+  - {fileID: 11400000, guid: 15612471dfbbb722e66de53e9d9648a1, type: 2}
+  view:
+    kind: 0
+    bodyLength: 0.3
+    bulk: 1.1
+    barrelLength: 0.22
+    stockLength: 0.18
+    magazineLength: 0.2
+    bodyColor: {r: 0.62, g: 0.65, b: 0.7, a: 1}
+    accentColor: {r: 0.7, g: 0.4, b: 1, a: 1}
+  audio:
+    kind: 2
+    pitch: 1.6
+    weight: 0.4
+    tail: 0.12
+    volume: 0.6

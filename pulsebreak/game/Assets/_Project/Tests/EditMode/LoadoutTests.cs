@@ -48,8 +48,7 @@ namespace Pulsebreak.Tests
             alpha.primaryAttachments = new[] { sight };
             alpha.secondary = pistol;
             alpha.melee = knife;
-            alpha.utility1 = frag;
-            alpha.utility2 = impact;
+            alpha.utility = frag;
             alpha.perkSet = plain;
 
             var bravo = ScriptableObject.CreateInstance<LoadoutPreset>();
@@ -58,8 +57,7 @@ namespace Pulsebreak.Tests
             bravo.primary = smg;
             bravo.secondary = pistol;
             bravo.melee = knife;
-            bravo.utility1 = disc;
-            bravo.utility2 = frag;
+            bravo.utility = disc;
             bravo.perkSet = mover;
 
             var catalog = ScriptableObject.CreateInstance<LoadoutCatalog>();
@@ -79,8 +77,7 @@ namespace Pulsebreak.Tests
                 primary = new WeaponBuildData { weaponId = "rifle", attachments = new[] { "holo", "quick_mag" } },
                 secondary = new WeaponBuildData { weaponId = "pistol" },
                 melee = new WeaponBuildData { weaponId = "knife" },
-                utility1 = "disc",
-                utility2 = "impact",
+                utility = "disc",
                 perkSet = "mover",
             };
         }
@@ -158,8 +155,8 @@ namespace Pulsebreak.Tests
             Assert.That(loadout.Weapons[0].Get(AttachmentSlot.Magazine).attachmentId, Is.EqualTo("quick_mag"));
             Assert.That(loadout.Weapons[1].Weapon.weaponId, Is.EqualTo("pistol"));
             Assert.That(loadout.Weapons[2].Weapon.weaponId, Is.EqualTo("knife"));
+            Assert.That(loadout.Utilities.Length, Is.EqualTo(1), "one utility item per loadout");
             Assert.That(loadout.Utilities[0].utilityId, Is.EqualTo("disc"));
-            Assert.That(loadout.Utilities[1].utilityId, Is.EqualTo("impact"));
             Assert.That(loadout.PerkSet.perkSetId, Is.EqualTo("mover"));
         }
 
@@ -208,24 +205,18 @@ namespace Pulsebreak.Tests
         }
 
         [Test]
-        public void TheTwoUtilitySlots_AlwaysHoldDifferentItems()
+        public void AnUnknownUtility_IsReplacedByTheFirstInTheCatalog()
         {
             LoadoutCatalog catalog = LoadoutTestKit.MakeCatalog();
             LoadoutData data = LoadoutTestKit.ValidData();
-            data.utility1 = "frag";
-            data.utility2 = "frag";
+            data.utility = "gone";
+            var notes = new List<string>();
 
-            Loadout loadout = LoadoutRules.Resolve(data, catalog);
+            Loadout loadout = LoadoutRules.Resolve(data, catalog, notes);
 
             Assert.That(loadout.Utilities[0].utilityId, Is.EqualTo("frag"));
-            Assert.That(loadout.Utilities[1].utilityId, Is.EqualTo("impact"));
-
-            data.utility1 = "gone";
-            data.utility2 = "also_gone";
-            loadout = LoadoutRules.Resolve(data, catalog);
-            Assert.That(loadout.Utilities[0], Is.Not.Null);
-            Assert.That(loadout.Utilities[1], Is.Not.Null);
-            Assert.That(loadout.Utilities[0], Is.Not.SameAs(loadout.Utilities[1]));
+            Assert.That(notes, Has.Count.EqualTo(1));
+            Assert.That(LoadoutRules.ToData(loadout).utility, Is.EqualTo("frag"));
         }
 
         [Test]
@@ -260,17 +251,17 @@ namespace Pulsebreak.Tests
             LoadoutData same = LoadoutRules.Sanitize(good, catalog);
             Assert.That(same.id, Is.EqualTo(good.id));
             Assert.That(same.primary.attachments, Is.EqualTo(good.primary.attachments));
-            Assert.That(same.utility1, Is.EqualTo(good.utility1));
+            Assert.That(same.utility, Is.EqualTo(good.utility));
             Assert.That(same.perkSet, Is.EqualTo(good.perkSet));
             Assert.That(same.updatedAt, Is.EqualTo(1234));
 
-            var bad = new LoadoutData { id = "x", name = "  ", utility1 = "frag", utility2 = "frag" };
+            var bad = new LoadoutData { id = "x", name = "  ", utility = "not_a_grenade" };
             LoadoutData fixedUp = LoadoutRules.Sanitize(bad, catalog);
             Assert.That(fixedUp.name, Is.EqualTo("Loadout"));
             Assert.That(fixedUp.primary.weaponId, Is.EqualTo("rifle"));
             Assert.That(fixedUp.secondary.weaponId, Is.EqualTo("pistol"));
             Assert.That(fixedUp.melee.weaponId, Is.EqualTo("knife"));
-            Assert.That(fixedUp.utility2, Is.Not.EqualTo(fixedUp.utility1));
+            Assert.That(fixedUp.utility, Is.EqualTo("frag"));
 
             // Once clean, cleaning again changes nothing.
             var notes = new List<string>();
@@ -318,8 +309,8 @@ namespace Pulsebreak.Tests
         static UtilityBelt MakeBelt(out LoadoutCatalog catalog)
         {
             catalog = LoadoutTestKit.MakeCatalog();
-            // Slot 0: frag (2 carried, 0.25 s wind-up, 0.5 s cooldown). Slot 1: impact (1 carried, 0.2 s wind-up).
-            return new UtilityBelt(new[] { catalog.FindUtility("frag"), catalog.FindUtility("impact") }, new[] { 2, 1 });
+            // One slot: frag (2 carried, 0.25 s wind-up, 0.5 s cooldown).
+            return new UtilityBelt(new[] { catalog.FindUtility("frag") }, new[] { 2 });
         }
 
         /// <summary>Runs ticks and returns the slots released, in order.</summary>
@@ -381,16 +372,18 @@ namespace Pulsebreak.Tests
         }
 
         [Test]
-        public void TheSecondKey_ThrowsTheSecondSlot()
+        public void OnlyTheUtilityKey_Throws()
         {
             UtilityBelt belt = MakeBelt(out _);
 
-            List<int> released = Run(belt, 1, InputButtons.Utility2);
-            released.AddRange(Run(belt, 30, InputButtons.None));
-
-            Assert.That(released, Is.EqualTo(new[] { 1 }));
+            // The old second-slot button is gone from the controls; even if it arrives, it does nothing.
+            Assert.That(Run(belt, 30, InputButtons.Utility2), Is.Empty);
             Assert.That(belt.GetState(0).Charges, Is.EqualTo(2));
-            Assert.That(belt.GetState(1).Charges, Is.EqualTo(0));
+
+            List<int> released = Run(belt, 1, InputButtons.Utility1);
+            released.AddRange(Run(belt, 30, InputButtons.None));
+            Assert.That(released, Is.EqualTo(new[] { 0 }));
+            Assert.That(belt.GetState(0).Charges, Is.EqualTo(1));
         }
 
         [Test]

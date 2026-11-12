@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: WPN_sp_stinger
   m_EditorClassIdentifier: 
   weaponId: sp_stinger
-  displayName: Stinger Repeater
+  displayName: Plasma Rifle
   description: 'Rapid plasma bolts with travel time. Lead your target and it shreds.'
   weaponClass: 8
   slot: 0
@@ -29,9 +29,9 @@ MonoBehaviour:
     pellets: 1
     pierceTargets: 0
     pierceDamageKept: 0.75
-    damage: 27
+    damage: 25
     headMultiplier: 1.4
-    limbMultiplier: 0.9
+    limbMultiplier: 1
     falloffStart: 1000
     falloffEnd: 1000
     minDamageMultiplier: 1

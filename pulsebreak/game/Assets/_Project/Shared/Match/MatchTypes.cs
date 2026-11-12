@@ -86,7 +86,7 @@ namespace Pulsebreak.Shared.Match
 
         const InputButtons AllButtons =
             InputButtons.Jump | InputButtons.Sprint | InputButtons.Crouch | InputButtons.Fire | InputButtons.Ads |
-            InputButtons.Reload | InputButtons.LeanLeft | InputButtons.LeanRight | InputButtons.Utility1 | InputButtons.Utility2;
+            InputButtons.Reload | InputButtons.LeanLeft | InputButtons.LeanRight | InputButtons.Utility1;
     }
 
     /// <summary>

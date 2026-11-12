@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: WPN_sg_hailstorm
   m_EditorClassIdentifier: 
   weaponId: sg_hailstorm
-  displayName: Hailstorm
+  displayName: Auto Shotgun
   description: 'Fully automatic. Each blast is weaker, but they do not stop coming.'
   weaponClass: 3
   slot: 0
@@ -30,11 +30,11 @@ MonoBehaviour:
     pierceTargets: 0
     pierceDamageKept: 0.75
     damage: 10
-    headMultiplier: 1.2
-    limbMultiplier: 0.9
+    headMultiplier: 1.5
+    limbMultiplier: 1
     falloffStart: 5
     falloffEnd: 13
-    minDamageMultiplier: 0.3
+    minDamageMultiplier: 0.5
     maxRange: 50
     projectileSpeed: 60
     projectileGravity: 0

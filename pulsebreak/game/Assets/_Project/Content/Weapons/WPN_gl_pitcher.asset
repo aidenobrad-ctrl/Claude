@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: WPN_gl_pitcher
   m_EditorClassIdentifier: 
   weaponId: gl_pitcher
-  displayName: Pitcher GL
+  displayName: Grenade Launcher
   description: 'Lobs grenades that bounce, then burst. Bank them round corners.'
   weaponClass: 7
   slot: 1

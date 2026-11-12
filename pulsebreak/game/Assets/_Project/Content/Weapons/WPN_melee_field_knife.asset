@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: WPN_melee_field_knife
   m_EditorClassIdentifier: 
   weaponId: melee_field_knife
-  displayName: Field Knife
-  description: 'Fast and always ready. Two cuts, or one if they never saw you.'
+  displayName: Knife
+  description: 'Fast and always ready. Two cuts.'
   weaponClass: 9
   slot: 2
   unlockLevel: 1
@@ -29,7 +29,7 @@ MonoBehaviour:
     pellets: 1
     pierceTargets: 0
     pierceDamageKept: 0.75
-    damage: 55
+    damage: 50
     headMultiplier: 1
     limbMultiplier: 1
     falloffStart: 1000

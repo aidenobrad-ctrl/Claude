@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: WPN_sp_volley
   m_EditorClassIdentifier: 
   weaponId: sp_volley
-  displayName: Volley Crossbow
+  displayName: Crossbow
   description: 'Three silent bolts a pull. They arc, so aim a little high at range.'
   weaponClass: 8
   slot: 0
@@ -29,9 +29,9 @@ MonoBehaviour:
     pellets: 1
     pierceTargets: 0
     pierceDamageKept: 0.75
-    damage: 42
-    headMultiplier: 1.8
-    limbMultiplier: 0.9
+    damage: 45
+    headMultiplier: 2
+    limbMultiplier: 1
     falloffStart: 1000
     falloffEnd: 1000
     minDamageMultiplier: 1

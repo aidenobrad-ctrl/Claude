@@ -22,6 +22,5 @@ MonoBehaviour:
   secondaryAttachments:
   - {fileID: 11400000, guid: 28fbf477d29c8f2049314b19f5d907fa, type: 2}
   melee: {fileID: 11400000, guid: e7a331c50b20c566955bf4b462141e37, type: 2}
-  utility1: {fileID: 11400000, guid: 3b38c5c467931de36dff563b087dead5, type: 2}
-  utility2: {fileID: 11400000, guid: ab30681abe28888d4278e4f50181af1f, type: 2}
+  utility: {fileID: 11400000, guid: 3b38c5c467931de36dff563b087dead5, type: 2}
   perkSet: {fileID: 11400000, guid: 01b6839a97866eac95b727eca781b94b, type: 2}

@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: WPN_lmg_bulwark
   m_EditorClassIdentifier: 
   weaponId: lmg_bulwark
-  displayName: Bulwark LMG
+  displayName: Light Machine Gun
   description: 'A hundred rounds and the weight to match. Settles into a laser once it is firing.'
   weaponClass: 2
   slot: 0
@@ -29,12 +29,12 @@ MonoBehaviour:
     pellets: 1
     pierceTargets: 0
     pierceDamageKept: 0.75
-    damage: 32
+    damage: 30
     headMultiplier: 1.5
-    limbMultiplier: 0.9
+    limbMultiplier: 1
     falloffStart: 36
     falloffEnd: 70
-    minDamageMultiplier: 0.75
+    minDamageMultiplier: 0.84
     maxRange: 300
     projectileSpeed: 60
     projectileGravity: 0
@@ -58,8 +58,8 @@ MonoBehaviour:
     reloadIntroTime: 0
     adsTime: 0.38
     adsZoom: 1.25
-    hipMoveMultiplier: 0.9
-    adsMoveMultiplier: 0.55
+    hipMoveMultiplier: 0.88
+    adsMoveMultiplier: 0.5
     sprintToFireTime: 0.24
     equipTime: 0.6
     holsterTime: 0.35

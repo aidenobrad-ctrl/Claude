@@ -121,7 +121,7 @@ namespace Pulsebreak.Client.Duel
             card.Add(subtitle);
             _mainCard = card;
 
-            if (_services != null)
+            if (_services != null && GameServices.AccountsEnabled)
             {
                 var accountHost = new VisualElement();
                 card.Add(accountHost);

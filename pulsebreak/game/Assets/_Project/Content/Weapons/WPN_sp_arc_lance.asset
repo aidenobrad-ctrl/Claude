@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: WPN_sp_arc_lance
   m_EditorClassIdentifier: 
   weaponId: sp_arc_lance
-  displayName: Arc Lance
+  displayName: Energy Rifle
   description: 'Hold to charge, release to fire a beam through everything in a line.'
   weaponClass: 8
   slot: 0
@@ -31,7 +31,7 @@ MonoBehaviour:
     pierceDamageKept: 0.85
     damage: 110
     headMultiplier: 1.5
-    limbMultiplier: 0.9
+    limbMultiplier: 1
     falloffStart: 60
     falloffEnd: 120
     minDamageMultiplier: 0.8

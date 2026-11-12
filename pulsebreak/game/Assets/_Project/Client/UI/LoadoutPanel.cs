@@ -16,7 +16,7 @@ namespace Pulsebreak.Client.UI
     /// </summary>
     public sealed class LoadoutPanel
     {
-        static readonly string[] TabTitles = { "PRIMARY", "SECONDARY", "MELEE", "UTILITY 1", "UTILITY 2", "PERKS" };
+        static readonly string[] TabTitles = { "PRIMARY", "SECONDARY", "MELEE", "UTILITY", "PERKS" };
         static readonly string[] BarTitles = { "Damage", "Fire rate", "Range", "Accuracy", "Recoil control", "Mobility", "Handling" };
         const int FirstUtilityTab = Loadout.WeaponSlots;
         const int PerkTab = Loadout.WeaponSlots + Loadout.UtilitySlots;
@@ -40,6 +40,13 @@ namespace Pulsebreak.Client.UI
 
         int _tab;
         bool _batching;
+        // Bars compare a weapon with the others that fit the same slot; one scale per slot.
+        readonly WeaponRatingScale[] _scales = new WeaponRatingScale[Loadout.WeaponSlots];
+        readonly VisualElement[] _barRows = new VisualElement[BarTitles.Length];
+        readonly Button _deployButton;
+
+        /// <summary>The player pressed Deploy: the selected loadout is equipped and they want to get back to playing.</summary>
+        public event Action DeployRequested;
 
         public LoadoutPanel(VisualElement root, LoadoutLibrary library)
         {
@@ -63,6 +70,8 @@ namespace Pulsebreak.Client.UI
             _nameField.RegisterValueChangedCallback(e => _library.Rename(_library.EquippedId, e.newValue));
             _newButton.clicked += CreateCopy;
             _deleteButton.clicked += () => _library.Delete(_library.EquippedId);
+            _deployButton = root.Q<Button>("loadout-deploy");
+            if (_deployButton != null) _deployButton.clicked += () => DeployRequested?.Invoke();
 
             VisualElement tabRow = root.Q<VisualElement>("loadout-tabs");
             for (int i = 0; i < TabTitles.Length; i++)
@@ -94,6 +103,7 @@ namespace Pulsebreak.Client.UI
                 row.Add(track);
 
                 _barList.Add(row);
+                _barRows[i] = row;
             }
 
             _library.Changed += Refresh;
@@ -186,16 +196,8 @@ namespace Pulsebreak.Client.UI
 
         void ChooseUtility(UtilityDefinition utility)
         {
-            bool first = _tab == FirstUtilityTab;
-            Edit(data =>
-            {
-                string mine = first ? data.utility1 : data.utility2;
-                string other = first ? data.utility2 : data.utility1;
-                // The two slots hold different items, so picking the other slot's item swaps them.
-                if (utility.utilityId == other) other = mine;
-                data.utility1 = first ? utility.utilityId : other;
-                data.utility2 = first ? other : utility.utilityId;
-            });
+            if (_library.Equipped.utility == utility.utilityId) return;
+            Edit(data => data.utility = utility.utilityId);
         }
 
         void ChoosePerkSet(PerkSetDefinition perkSet)
@@ -245,10 +247,32 @@ namespace Pulsebreak.Client.UI
         void AddLoadoutButton(LoadoutData loadout, LoadoutData equipped)
         {
             string id = loadout.id;
-            var button = new Button(() => _library.Equip(id)) { text = loadout.name };
+            var button = new Button(() => _library.Equip(id)) { text = "" };
             button.AddToClassList("armory-weapon");
+            button.AddToClassList("loadout-entry");
             button.EnableInClassList("armory-weapon--active", loadout.id == equipped.id);
+
+            // The name, and underneath it what the loadout carries, so loadouts can be told apart without opening each.
+            var name = new Label(loadout.name);
+            name.AddToClassList("loadout-entry-name");
+            var contents = new Label(Contents(loadout));
+            contents.AddToClassList("loadout-entry-contents");
+            button.Add(name);
+            button.Add(contents);
             _loadoutList.Add(button);
+        }
+
+        /// <summary>"Assault Rifle · Handgun · Knife · Frag Grenade".</summary>
+        string Contents(LoadoutData data)
+        {
+            Loadout loadout = LoadoutRules.Resolve(data, _catalog);
+            var parts = new List<string>(4);
+            foreach (WeaponBuild build in loadout.Weapons)
+            {
+                if (build != null) parts.Add(build.Weapon.displayName);
+            }
+            if (loadout.Utilities[0] != null) parts.Add(loadout.Utilities[0].displayName);
+            return string.Join("  ·  ", parts);
         }
 
         static void AddGroupHeader(VisualElement list, string title)
@@ -347,15 +371,15 @@ namespace Pulsebreak.Client.UI
             WeaponStats stats = loadout.ResolveStats(slot);
             WeaponRatings now = WeaponRatings.From(stats);
             WeaponRatings stock = WeaponRatings.From(weapon.stats);
+            WeaponRatingScale scale = ScaleFor(slot);
 
             _barList.style.display = DisplayStyle.Flex;
-            SetBar(0, stock.Damage, now.Damage);
-            SetBar(1, stock.FireRate, now.FireRate);
-            SetBar(2, stock.Range, now.Range);
-            SetBar(3, stock.Accuracy, now.Accuracy);
-            SetBar(4, stock.Control, now.Control);
-            SetBar(5, stock.Mobility, now.Mobility);
-            SetBar(6, stock.Handling, now.Handling);
+            for (int i = 0; i < BarTitles.Length; i++)
+            {
+                bool meaningful = scale.Meaningful(i);
+                _barRows[i].style.display = meaningful ? DisplayStyle.Flex : DisplayStyle.None;
+                if (meaningful) SetBar(i, scale.Bar(stock, i), scale.Bar(now, i));
+            }
 
             _numbers.text = Summarise(stats, now);
         }
@@ -445,6 +469,19 @@ namespace Pulsebreak.Client.UI
             row.Add(effect);
 
             return row;
+        }
+
+        /// <summary>The scale for the bars of weapons that go in a slot, worked out the first time it is needed.</summary>
+        WeaponRatingScale ScaleFor(int slot)
+        {
+            if (_scales[slot] != null) return _scales[slot];
+            var stats = new List<WeaponStats>();
+            foreach (WeaponDefinition weapon in _catalog.weapons.weapons)
+            {
+                if (weapon != null && (int)weapon.slot == slot) stats.Add(weapon.stats);
+            }
+            _scales[slot] = WeaponRatingScale.From(stats);
+            return _scales[slot];
         }
 
         /// <summary>Shows the stock value in white and what the loadout added (green) or cost (red).</summary>

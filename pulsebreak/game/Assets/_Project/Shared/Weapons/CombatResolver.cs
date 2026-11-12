@@ -172,7 +172,7 @@ namespace Pulsebreak.Shared.Weapons
         {
             DamageResult result = target.ApplyDamage(new DamageInfo
             {
-                Amount = amount,
+                Amount = DamageCalculator.Standardize(amount),
                 Zone = zone,
                 Point = point,
                 Direction = direction,

@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: WPN_ar_hadron
   m_EditorClassIdentifier: 
   weaponId: ar_hadron
-  displayName: Hadron AR
-  description: 'The all-rounder. Steady fire rate, a climb you can learn, useful at any range.'
+  displayName: Assault Rifle
+  description: 'The all-rounder. Four to the body, three to the head, useful at any range.'
   weaponClass: 0
   slot: 0
   unlockLevel: 1
@@ -29,12 +29,12 @@ MonoBehaviour:
     pellets: 1
     pierceTargets: 0
     pierceDamageKept: 0.75
-    damage: 26
-    headMultiplier: 1.5
-    limbMultiplier: 0.9
+    damage: 25
+    headMultiplier: 1.4
+    limbMultiplier: 1
     falloffStart: 28
     falloffEnd: 55
-    minDamageMultiplier: 0.65
+    minDamageMultiplier: 0.8
     maxRange: 300
     projectileSpeed: 60
     projectileGravity: 0

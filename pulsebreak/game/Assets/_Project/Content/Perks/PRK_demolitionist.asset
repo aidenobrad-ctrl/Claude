@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   perkSetId: demolitionist
   displayName: Demolitionist
-  description: 'Carry one more of each utility item, and get them back sooner.'
+  description: 'Carry one more of your utility item, and get it back sooner.'
   unlockLevel: 12
   weaponModifiers: []
   moveSpeedMultiplier: 1

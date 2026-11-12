@@ -225,8 +225,7 @@ namespace Pulsebreak.Shared.Net
                 writer.WriteByte((byte)count);
                 for (int i = 0; i < count; i++) writer.WriteString(weapon.attachments[i]);
             }
-            writer.WriteString(data.utility1);
-            writer.WriteString(data.utility2);
+            writer.WriteString(data.utility);
             writer.WriteString(data.perkSet);
         }
 
@@ -246,8 +245,7 @@ namespace Pulsebreak.Shared.Net
                 weapon.attachments = new string[count];
                 for (int i = 0; i < count; i++) weapon.attachments[i] = reader.ReadString();
             }
-            data.utility1 = reader.ReadString();
-            data.utility2 = reader.ReadString();
+            data.utility = reader.ReadString();
             data.perkSet = reader.ReadString();
             return data;
         }

@@ -24,10 +24,18 @@ namespace Pulsebreak.Client.Online
     {
         public const string DefaultBackendUrl = "http://localhost:5080";
 
+        /// <summary>
+        /// Accounts are switched off for now: nothing talks to the backend, the menu has no
+        /// sign-in, and loadouts and settings stay on this computer. Everything is still here;
+        /// set this to true to bring accounts back (and the plan is to make them required then).
+        /// </summary>
+        public static readonly bool AccountsEnabled = false;
+
         static GameServices _instance;
 
         public AccountClient Account { get; private set; }
         public LoadoutLibrary Library { get; private set; }
+        /// <summary>Null while accounts are switched off.</summary>
         public LoadoutAccountSync LoadoutSync { get; private set; }
         public string Profile { get; private set; }
 
@@ -67,6 +75,13 @@ namespace Pulsebreak.Client.Online
 
             Account = new AccountClient(new UnityHttpTransport(), backendUrl,
                 new FileCredentialStore(Path.Combine(profileFolder, "session.txt")), () => Time.realtimeSinceStartupAsDouble);
+            if (!AccountsEnabled)
+            {
+                // Never signed in, never syncs. Loadouts that went onto an account while accounts
+                // were on come back to this computer, so nothing made then is lost.
+                RecoverAccountLoadouts(root, guest);
+                return;
+            }
             Account.SignedOutUnexpectedly += reason => Notice?.Invoke(reason);
 
             LoadoutSync = new LoadoutAccountSync(Account, Library, store, guest,
@@ -106,7 +121,30 @@ namespace Pulsebreak.Client.Online
 
         void Update()
         {
-            LoadoutSync.Tick(Time.realtimeSinceStartupAsDouble);
+            LoadoutSync?.Tick(Time.realtimeSinceStartupAsDouble);
+        }
+
+        /// <summary>
+        /// Signing in moved the loadouts made without an account onto that account. With
+        /// accounts switched off, the newest copy kept on this computer of any account's
+        /// loadouts is merged back into the ones used without an account.
+        /// </summary>
+        void RecoverAccountLoadouts(string root, LocalFileLoadoutStore guest)
+        {
+            string folder = Path.Combine(root, "accounts");
+            if (!Directory.Exists(folder)) return;
+            try
+            {
+                foreach (string file in Directory.GetFiles(folder, LocalFileLoadoutStore.FileName, SearchOption.AllDirectories))
+                {
+                    LoadoutCollection kept = new LocalFileLoadoutStore(file).Load();
+                    if (kept != null && kept.loadouts != null && kept.loadouts.Length > 0) Library.MergeFrom(kept);
+                }
+            }
+            catch (Exception error)
+            {
+                Debug.LogWarning("Pulsebreak: could not bring back loadouts kept for an account (" + error.Message + ").");
+            }
         }
 
         // ------------------------------------------------------------------ settings

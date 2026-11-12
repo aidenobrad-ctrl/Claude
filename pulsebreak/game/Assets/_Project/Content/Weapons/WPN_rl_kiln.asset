@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: WPN_rl_kiln
   m_EditorClassIdentifier: 
   weaponId: rl_kiln
-  displayName: Kiln RL
+  displayName: Rocket Launcher
   description: 'A rocket that flies straight and takes the whole corner with it.'
   weaponClass: 7
   slot: 1

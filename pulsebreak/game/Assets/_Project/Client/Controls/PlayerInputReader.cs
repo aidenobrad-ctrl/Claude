@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using Pulsebreak.Client.Settings;
 using UnityEngine.InputSystem;
 using Pulsebreak.Shared.Simulation;
 
@@ -21,10 +22,12 @@ namespace Pulsebreak.Client.Controls
         readonly InputActionMap _map;
         readonly InputAction _move, _look;
         readonly InputAction _jump, _sprint, _crouch, _fire, _ads, _reload, _leanLeft, _leanRight;
-        readonly InputAction _utility1, _utility2;
+        readonly InputAction _utility;
         readonly InputAction _scroll;
         readonly InputAction[] _slotKeys;
         InputButtons _latched;
+        // Toggle sprint: on after a press of the key, until something calls it off.
+        bool _sprintOn;
         int _latchedSlot;
         int _scrollSteps;
 
@@ -52,8 +55,7 @@ namespace Pulsebreak.Client.Controls
             _reload = AddButton("Reload", "<Keyboard>/r");
             _leanLeft = AddButton("LeanLeft", "<Keyboard>/q");
             _leanRight = AddButton("LeanRight", "<Keyboard>/e");
-            _utility1 = AddButton("Utility1", "<Keyboard>/g");
-            _utility2 = AddButton("Utility2", "<Keyboard>/f");
+            _utility = AddButton("Utility", "<Keyboard>/g");
 
             _scroll = _map.AddAction("WeaponScroll", InputActionType.Value, "<Mouse>/scroll");
             _slotKeys = new[]
@@ -90,15 +92,22 @@ namespace Pulsebreak.Client.Controls
             Pitch = Mathf.Clamp(Pitch - delta.y, -MaxPitch, MaxPitch);
 
             Latch(_jump, InputButtons.Jump);
-            Latch(_sprint, InputButtons.Sprint);
+            if (GameSettings.ToggleSprint)
+            {
+                if (_sprint.WasPressedThisFrame()) _sprintOn = !_sprintOn;
+            }
+            else
+            {
+                _sprintOn = false;
+                Latch(_sprint, InputButtons.Sprint);
+            }
             Latch(_crouch, InputButtons.Crouch);
             Latch(_fire, InputButtons.Fire);
             Latch(_ads, InputButtons.Ads);
             Latch(_reload, InputButtons.Reload);
             Latch(_leanLeft, InputButtons.LeanLeft);
             Latch(_leanRight, InputButtons.LeanRight);
-            Latch(_utility1, InputButtons.Utility1);
-            Latch(_utility2, InputButtons.Utility2);
+            Latch(_utility, InputButtons.Utility1);
 
             for (int i = 0; i < _slotKeys.Length; i++)
             {
@@ -123,15 +132,25 @@ namespace Pulsebreak.Client.Controls
         {
             InputButtons held = InputButtons.None;
             if (_jump.IsPressed()) held |= InputButtons.Jump;
-            if (_sprint.IsPressed()) held |= InputButtons.Sprint;
+            if (GameSettings.ToggleSprint)
+            {
+                // A toggled sprint ends when the player stops running forward, or wants to
+                // aim or shoot, the same moments a held sprint would be let go.
+                Vector2 move = _move.ReadValue<Vector2>();
+                if (move.y < 0.3f || _ads.IsPressed() || _fire.IsPressed()) _sprintOn = false;
+                if (_sprintOn) held |= InputButtons.Sprint;
+            }
+            else if (_sprint.IsPressed())
+            {
+                held |= InputButtons.Sprint;
+            }
             if (_crouch.IsPressed()) held |= InputButtons.Crouch;
             if (_fire.IsPressed()) held |= InputButtons.Fire;
             if (_ads.IsPressed()) held |= InputButtons.Ads;
             if (_reload.IsPressed()) held |= InputButtons.Reload;
             if (_leanLeft.IsPressed()) held |= InputButtons.LeanLeft;
             if (_leanRight.IsPressed()) held |= InputButtons.LeanRight;
-            if (_utility1.IsPressed()) held |= InputButtons.Utility1;
-            if (_utility2.IsPressed()) held |= InputButtons.Utility2;
+            if (_utility.IsPressed()) held |= InputButtons.Utility1;
 
             var cmd = new PlayerInputCmd
             {

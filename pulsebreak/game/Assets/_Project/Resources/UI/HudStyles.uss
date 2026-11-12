@@ -714,3 +714,32 @@
     color: rgb(6, 20, 26);
     -unity-font-style: bold;
 }
+
+/* ---------------------------------------------------------------- loadout list entries */
+
+.loadout-entry {
+    flex-direction: column;
+    align-items: flex-start;
+    height: auto;
+    padding-top: 6px;
+    padding-bottom: 6px;
+}
+
+.loadout-entry-name {
+    font-size: 16px;
+    -unity-font-style: bold;
+}
+
+.loadout-entry-contents {
+    font-size: 11px;
+    color: rgba(240, 244, 250, 0.62);
+    white-space: normal;
+    margin-top: 2px;
+}
+
+.deploy-button {
+    margin-left: 0;
+    margin-top: 10px;
+    height: 46px;
+    font-size: 18px;
+}

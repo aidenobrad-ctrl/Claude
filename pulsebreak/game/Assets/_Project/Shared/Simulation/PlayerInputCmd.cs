@@ -16,6 +16,7 @@ namespace Pulsebreak.Shared.Simulation
         LeanLeft = 1 << 6,
         LeanRight = 1 << 7,
         Utility1 = 1 << 8,
+        /// <summary>No longer used: loadouts carry one utility item. Kept so the other bits keep their values.</summary>
         Utility2 = 1 << 9,
     }
 

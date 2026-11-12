@@ -116,7 +116,7 @@ namespace Pulsebreak.Shared.Loadouts
             }
 
             if (!canUse) return;
-            int wanted = (pressed & InputButtons.Utility1) != 0 ? 0 : (pressed & InputButtons.Utility2) != 0 ? 1 : -1;
+            int wanted = (pressed & InputButtons.Utility1) != 0 ? 0 : -1;
             if (wanted < 0 || wanted >= _slots.Length || _items[wanted] == null) return;
             if (_slots[wanted].Charges <= 0 || _slots[wanted].Cooldown > 0f) return;
 

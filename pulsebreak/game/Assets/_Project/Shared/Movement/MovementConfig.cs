@@ -23,7 +23,7 @@ namespace Pulsebreak.Shared.Movement
 
         [Header("Ground")]
         public float runSpeed = 5.6f;
-        public float sprintSpeed = 7.8f;
+        public float sprintSpeed = 8.6f;
         public float crouchSpeed = 3.2f;
         [Tooltip("Higher reaches top speed sooner. Must be at least groundFriction or top speed is never reached.")]
         public float groundAcceleration = 14f;

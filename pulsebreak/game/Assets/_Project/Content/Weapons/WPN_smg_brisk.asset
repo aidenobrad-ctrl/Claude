@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: WPN_smg_brisk
   m_EditorClassIdentifier: 
   weaponId: smg_brisk
-  displayName: Brisk PDW
+  displayName: PDW
   description: 'A slower, harder-hitting SMG that holds on a little further out.'
   weaponClass: 1
   slot: 0
@@ -29,12 +29,12 @@ MonoBehaviour:
     pellets: 1
     pierceTargets: 0
     pierceDamageKept: 0.75
-    damage: 28
-    headMultiplier: 1.5
-    limbMultiplier: 0.9
+    damage: 25
+    headMultiplier: 1.4
+    limbMultiplier: 1
     falloffStart: 14
     falloffEnd: 32
-    minDamageMultiplier: 0.62
+    minDamageMultiplier: 0.6
     maxRange: 300
     projectileSpeed: 60
     projectileGravity: 0

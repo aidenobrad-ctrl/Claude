@@ -13,14 +13,14 @@ MonoBehaviour:
   m_Name: WPN_melee_crescent
   m_EditorClassIdentifier: 
   weaponId: melee_crescent
-  displayName: Crescent
-  description: 'A long blade with a slow, wide swing. One clean hit is all it takes.'
+  displayName: Katana
+  description: 'A long blade with a wide swing. Two clean hits.'
   weaponClass: 9
   slot: 2
   unlockLevel: 21
   stats:
     fireMode: 1
-    roundsPerMinute: 75
+    roundsPerMinute: 95
     burstCount: 3
     burstCooldown: 0.2
     chargeTime: 0.6
@@ -29,7 +29,7 @@ MonoBehaviour:
     pellets: 1
     pierceTargets: 0
     pierceDamageKept: 0.75
-    damage: 100
+    damage: 65
     headMultiplier: 1
     limbMultiplier: 1
     falloffStart: 1000
@@ -47,9 +47,9 @@ MonoBehaviour:
     explosionEdgeDamage: 0.25
     fuseTime: 0
     detonateOnTarget: 1
-    meleeRange: 2.9
+    meleeRange: 2.6
     meleeRadius: 0.6
-    meleeHitDelay: 0.2
+    meleeHitDelay: 0.16
     magazineSize: 0
     reserveAmmo: 0
     reloadStyle: 0

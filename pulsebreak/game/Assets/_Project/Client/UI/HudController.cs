@@ -32,8 +32,15 @@ namespace Pulsebreak.Client.UI
         const float SlowRefreshInterval = 0.1f;
 
         static readonly Color HitColor = Color.white;
-        static readonly Color HeadshotColor = new Color(1f, 0.82f, 0.25f);
+        static readonly Color HeadshotColor = new Color(1f, 0.72f, 0.1f);
         static readonly Color KillColor = new Color(1f, 0.33f, 0.27f);
+
+        // Body hits are small and white; head hits are big, gold and pop in, so the two can be
+        // told apart at a glance. A finishing hit is red, and bigger again if it was to the head.
+        const float BodyNumberSize = 22f, HeadNumberSize = 36f, KillNumberSize = 30f, HeadKillNumberSize = 42f;
+        const float PopTime = 0.14f;
+        // Hits on the same target this close together are one number: a whole shotgun blast reads as one total.
+        const float MergeWindow = 0.08f;
 
         struct DamageNumber
         {
@@ -42,6 +49,11 @@ namespace Pulsebreak.Client.UI
             public float Age;
             public float Drift;
             public bool Active;
+            public object Target;
+            public float Damage;
+            public bool Head, Killed;
+            /// <summary>How much bigger it starts than it settles. Head hits pop harder.</summary>
+            public float Pop;
         }
 
         LocalPlayerController _player;
@@ -251,6 +263,17 @@ namespace Pulsebreak.Client.UI
                 GameSettings.Apply();
             });
 
+            var toggleSprint = _root.Q<Toggle>("set-toggle-sprint");
+            if (toggleSprint != null)
+            {
+                toggleSprint.SetValueWithoutNotify(GameSettings.ToggleSprint);
+                toggleSprint.RegisterValueChangedCallback(e =>
+                {
+                    GameSettings.ToggleSprint = e.newValue;
+                    GameSettings.Apply();
+                });
+            }
+
             _root.Q<Button>("btn-resume").clicked += () => SetPaused(false);
             _root.Q<Button>("btn-reset").clicked += () => ResetStatsRequested?.Invoke();
             _root.Q<Button>("btn-quit").clicked += Quit;
@@ -269,6 +292,8 @@ namespace Pulsebreak.Client.UI
 
             if (!_ready) return;
             _loadoutPanel = new LoadoutPanel(_root.Q<VisualElement>("loadouts"), library);
+            // Deploy: the chosen loadout is already equipped; close the menu and get back in.
+            _loadoutPanel.DeployRequested += () => SetPaused(false);
             OnLoadoutChanged();
             OnActiveWeaponChanged(player.ActiveBuild);
             OnLibraryChanged();
@@ -337,11 +362,20 @@ namespace Pulsebreak.Client.UI
             {
                 string id = all[i].id;
                 string number = i < 9 ? (i + 1) + "   " : "     ";
-                var button = new Button(() => QuickEquip(id)) { text = number + all[i].name };
+                var button = new Button(() => QuickEquip(id)) { text = number + all[i].name + "   " + QuickContents(all[i]) };
                 button.AddToClassList("quick-item");
                 button.EnableInClassList("quick-item--active", id == _library.EquippedId);
                 _quickList.Add(button);
             }
+        }
+
+        /// <summary>The primary and the secondary, in brackets, so the quick list says what each loadout is.</summary>
+        string QuickContents(LoadoutData data)
+        {
+            Loadout loadout = LoadoutRules.Resolve(data, _library.Catalog);
+            string primary = loadout.Weapons[0] != null ? loadout.Weapons[0].Weapon.displayName : "-";
+            string secondary = loadout.Weapons[1] != null ? loadout.Weapons[1].Weapon.displayName : "-";
+            return "(" + primary + " / " + secondary + ")";
         }
 
         void QuickEquip(string id)
@@ -710,6 +744,23 @@ namespace Pulsebreak.Client.UI
 
         void SpawnDamageNumber(in HitReport hit, Color color)
         {
+            bool head = hit.Zone == HitZone.Head;
+
+            // Another pellet of the same blast on the same target: add it to that number.
+            for (int i = 0; i < DamageNumberCount; i++)
+            {
+                ref DamageNumber recent = ref _numbers[i];
+                if (!recent.Active || recent.Age > MergeWindow) continue;
+                bool same = hit.Target != null ? recent.Target == hit.Target : (recent.World - hit.Point).sqrMagnitude < 1.5f;
+                if (!same) continue;
+
+                recent.Damage += hit.Damage;
+                recent.Head |= head;
+                recent.Killed |= hit.Killed;
+                StyleDamageNumber(ref recent);
+                return;
+            }
+
             ref DamageNumber number = ref _numbers[_nextNumber];
             _nextNumber = (_nextNumber + 1) % DamageNumberCount;
 
@@ -717,8 +768,21 @@ namespace Pulsebreak.Client.UI
             number.Age = 0f;
             number.Drift = UnityEngine.Random.Range(-28f, 28f);
             number.Active = true;
-            number.Label.text = Mathf.Max(1, Mathf.RoundToInt(hit.Damage)).ToString();
-            number.Label.style.color = color;
+            number.Target = hit.Target;
+            number.Damage = hit.Damage;
+            number.Head = head;
+            number.Killed = hit.Killed;
+            StyleDamageNumber(ref number);
+        }
+
+        static void StyleDamageNumber(ref DamageNumber number)
+        {
+            number.Label.text = Mathf.Max(1, Mathf.RoundToInt(number.Damage)).ToString();
+            number.Label.style.color = number.Killed ? KillColor : number.Head ? HeadshotColor : HitColor;
+            number.Label.style.fontSize = number.Killed
+                ? (number.Head ? HeadKillNumberSize : KillNumberSize)
+                : (number.Head ? HeadNumberSize : BodyNumberSize);
+            number.Pop = number.Head || number.Killed ? 1.7f : 1.2f;
         }
 
         void UpdateDamageNumbers(float dt)
@@ -747,6 +811,8 @@ namespace Pulsebreak.Client.UI
                 number.Label.style.left = position.x + number.Drift * t;
                 number.Label.style.top = position.y - 28f - 70f * t;
                 number.Label.style.opacity = t < 0.6f ? 1f : 1f - (t - 0.6f) / 0.4f;
+                float pop = Mathf.Lerp(number.Pop, 1f, Mathf.Clamp01(number.Age / PopTime));
+                number.Label.style.scale = new Scale(new Vector3(pop, pop, 1f));
                 number.Label.style.display = DisplayStyle.Flex;
             }
         }

@@ -108,6 +108,11 @@ namespace Pulsebreak.Client.Duel
         int _streak, _multiKill;
         Vector3 _menuFocus, _menuOffset;
 
+        // Chat in this match: who we have muted, and what each player said (for reports).
+        readonly HashSet<int> _muted = new HashSet<int>();
+        readonly List<(int Player, string Text)> _chatLog = new List<(int, string)>();
+        bool _wasTyping;
+
         void Awake()
         {
             if (movement == null)
@@ -177,9 +182,21 @@ namespace Pulsebreak.Client.Duel
             _ = _services.RefreshProgressionAsync();
             _ui.HostRequested += Host;
             _ui.JoinRequested += Join;
-            _ui.CancelRequested += () => Leave("");
+            _ui.CancelRequested += () =>
+            {
+                // A party member stops following the leader's search by leaving the party.
+                if (_followingParty && _services.Social != null) _ = _services.Social.LeavePartyAsync();
+                _followingParty = false;
+                Leave("");
+            };
+            if (_services.Social != null)
+            {
+                _services.Social.Status = SocialClient.Menu;
+                _services.Social.PartySearchStarted += OnPartySearch;
+            }
             _ui.RangeRequested += () => SceneManager.LoadScene(RangeScene);
             _ui.CustomizeRequested += () => CustomizeScreen.Open(_services.Cosmetics, _library, movement);
+            _ui.ChatSubmitted += (text, team) => _session?.SendChat(text, team);
             _services.Cosmetics.Changed += OnLookChanged;
             _ui.QuitRequested += Quit;
 
@@ -212,6 +229,7 @@ namespace Pulsebreak.Client.Duel
 
         void OnDestroy()
         {
+            if (_services != null && _services.Social != null) _services.Social.PartySearchStarted -= OnPartySearch;
             if (_library != null) _library.EquippedChanged -= OnEquippedChanged;
             if (_services != null && _services.Cosmetics != null) _services.Cosmetics.Changed -= OnLookChanged;
             TearDownMatch();
@@ -342,6 +360,57 @@ namespace Pulsebreak.Client.Duel
             ConnectWithTicket(target, ticket.joinTicket);
         }
 
+        bool _followingParty;
+
+        /// <summary>
+        /// The party leader started a search: follow it, and join the match it finds with a
+        /// ticket of our own. Cancel leaves the party.
+        /// </summary>
+        void OnPartySearch(PartySearchData search) => FollowParty(search);
+
+        async void FollowParty(PartySearchData search)
+        {
+            if (_session != null || _ui == null) return;
+            int attempt = ++_attempt;
+            _followingParty = true;
+            Playlist playlist = Playlists.Find(search.playlist);
+            string what = playlist != null ? "a " + playlist.Title + " match" : "a match";
+            string name = PlayerName();
+            UiSounds.Play(Sfx.UiClick);
+
+            MatchTicketData ticket = null;
+            while (true)
+            {
+                _ui.ShowConnecting("Your party leader is finding " + what + ". You will join it automatically.\nCancel leaves the party.");
+                AccountResult<MatchTicketData> check = await _services.Matchmaking.CheckAsync(search.ticketId, name);
+                if (this == null || attempt != _attempt) return;
+                if (check.Ok && check.Value != null)
+                {
+                    ticket = check.Value;
+                    if (!ticket.Searching) break;
+                }
+                else if (!check.Offline)
+                {
+                    _followingParty = false;
+                    _ui.ShowMenu("The party's search has ended.");
+                    return;
+                }
+                await Task.Delay(1000);
+                if (this == null || attempt != _attempt) return;
+            }
+
+            _followingParty = false;
+            if (!ticket.Matched || !NetAddress.TryParse(ticket.address, NetProtocol.DefaultPort, out NetAddress target))
+            {
+                _ui.ShowMenu(ticket.status == "expired" ? "The party's search ran out of time." : "The party leader stopped the search.");
+                return;
+            }
+            _joinHint = "";
+            _matchmadeId = ticket.matchId;
+            UiSounds.Play(Sfx.MatchFound);
+            ConnectWithTicket(target, ticket.joinTicket);
+        }
+
         string PlayerName() => _services.Account.SignedIn ? _services.Account.Account.username
             : string.IsNullOrEmpty(_nameOverride) ? _ui.PlayerName : _nameOverride;
 
@@ -393,6 +462,7 @@ namespace Pulsebreak.Client.Duel
             _session.ProjectileSpawned += OnProjectileSpawned;
             _session.ProjectileEnded += OnProjectileEnded;
             _session.Hurt += OnHurt;
+            _session.ChatReceived += OnChat;
 
             _session.Connect(target, Time.realtimeSinceStartupAsDouble);
             _ui.ShowConnecting(_session.StatusText);
@@ -424,6 +494,10 @@ namespace Pulsebreak.Client.Duel
 
             MusicPlayer.SetMenu(false);
             ScreenEffects.Calm();
+            _hud.AddPauseButton("Players", OpenPlayers);
+            _muted.Clear();
+            _chatLog.Clear();
+            if (_services.Social != null) _services.Social.Status = SocialClient.Match;
             _heardZoneCount = _heardActiveZone = _heardCountdown = -1;
             _heardGo = _heardMatchStart = false;
             _streak = _multiKill = 0;
@@ -438,6 +512,11 @@ namespace Pulsebreak.Client.Duel
             ArenaLayout arena = ShowArena(_session.ArenaId);
             if (_zoneMarkers != null) Destroy(_zoneMarkers.gameObject);
             _zoneMarkers = _session.Settings.UsesZones ? ZoneMarkers.Create(arena, _session.Settings.mode == GameModeKind.Hardpoint) : null;
+            if (_session.Settings.weapons != WeaponRule.Any)
+            {
+                _ui.SetNotice(WeaponRules.Title(_session.Settings.weapons).ToUpperInvariant() + " in this match: anything else in your loadout is swapped");
+                _noticeTimer = 8f;
+            }
         }
 
         /// <summary>
@@ -494,6 +573,8 @@ namespace Pulsebreak.Client.Duel
             _ui.ShowMenu(reason);
             MusicPlayer.SetMenu(true);
             ScreenEffects.Calm();
+            TextEntry.Active = false;
+            if (_services.Social != null) _services.Social.Status = SocialClient.Menu;
             if (!string.IsNullOrEmpty(reason)) UiSounds.Play(Sfx.UiError);
         }
 
@@ -568,7 +649,8 @@ namespace Pulsebreak.Client.Duel
             if (_rig == null) return;
 
             Keyboard keyboard = Keyboard.current;
-            if (keyboard != null && keyboard.f3Key.wasPressedThisFrame) _showNetStats = !_showNetStats;
+            if (keyboard != null && keyboard.f3Key.wasPressedThisFrame && !TextEntry.Active) _showNetStats = !_showNetStats;
+            UpdateChatKeys(keyboard);
 
             // The pause menu and the loadout swap belong to the HUD underneath; get out of their way.
             _ui.SetMatchHidden(_hud != null && (_hud.IsPaused || _hud.IsQuickSwapOpen));
@@ -1031,6 +1113,105 @@ namespace Pulsebreak.Client.Duel
             bool fromAway = toward.sqrMagnitude > 0.25f;
             if (fromAway && _hud != null) _hud.ShowHurt(hurt.Source, share * 3f);
             if (fromAway) _rig.Camera.AddFlinch(Mathf.Clamp01(share * 2.5f), Vector3.Dot(eye.right, toward.normalized));
+        }
+
+        // ------------------------------------------------------------------ chat and players
+
+        /// <summary>Enter or T to chat to everyone, Y to the team; nothing moves while typing.</summary>
+        void UpdateChatKeys(Keyboard keyboard)
+        {
+            bool typing = TextEntry.Active;
+            if (typing) _rig.Player.InputEnabled = false;
+            else if (_wasTyping && _hud != null && !_hud.IsPaused && !_hud.IsQuickSwapOpen) _rig.Player.InputEnabled = true;
+            _wasTyping = typing;
+
+            if (keyboard == null || typing || !GameSettings.ShowChat || _hud == null || _hud.IsPaused || _hud.IsQuickSwapOpen) return;
+            if (keyboard.enterKey.wasPressedThisFrame || keyboard.tKey.wasPressedThisFrame) _ui.OpenChat(false);
+            else if (keyboard.yKey.wasPressedThisFrame) _ui.OpenChat(_session.Settings.TeamBased);
+        }
+
+        void OnChat(ChatLineMessage line)
+        {
+            ClientPlayer speaker = _session.Players[line.PlayerId];
+            _chatLog.Add((line.PlayerId, line.Text));
+            if (_chatLog.Count > 200) _chatLog.RemoveAt(0);
+            if (!GameSettings.ShowChat || _muted.Contains(line.PlayerId)) return;
+            if (_services.Social != null && _services.Social.IsBlocked(speaker.AccountId)) return;
+
+            string text = GameSettings.FilterChat ? Shared.Social.ChatText.Filter(line.Text) : line.Text;
+            _ui.AddChat(speaker.Name, text, SideColor(speaker), line.TeamOnly);
+            UiSounds.Play(Sfx.UiToggle, 0.35f);
+        }
+
+        /// <summary>White for us, blue for a teammate, red for an opponent; grey without teams.</summary>
+        Color SideColor(ClientPlayer player)
+        {
+            if (player.Id == _session.PlayerId) return Color.white;
+            if (!_session.Settings.TeamBased || _session.Local == null) return new Color(0.75f, 0.78f, 0.82f);
+            return player.Team == _session.Local.Team ? new Color32(96, 190, 255, 255) : DuelUi.Bad;
+        }
+
+        void OpenPlayers()
+        {
+            SocialClient social = _services.Social;
+            PlayersScreen.Open(new PlayerActions
+            {
+                List = PlayerRows,
+                SignedIn = () => _services.Account.SignedIn && social != null,
+                ToggleMute = row =>
+                {
+                    bool muted = _muted.Add(row.Id);
+                    if (!muted) _muted.Remove(row.Id);
+                    _ui.AddChatNotice(row.Name + (muted ? " is muted for this match." : " is no longer muted."));
+                },
+                AddFriend = row => _ = social?.AddFriendAsync(row.Name),
+                Block = row =>
+                {
+                    _ = social?.BlockAsync(row.AccountId);
+                    _ui.AddChatNotice(row.Name + " is blocked.");
+                },
+                Report = row => ReportDialog.Open(row.Name, row.AccountId, _matchmadeId ?? "", ChatOf(row.Id), report => social.ReportAsync(report)),
+            });
+        }
+
+        List<PlayerRow> PlayerRows()
+        {
+            var rows = new List<PlayerRow>();
+            if (_session == null) return rows;
+            SocialClient social = _services.Social;
+            foreach (ClientPlayer player in _session.Players)
+            {
+                if (!player.Present) continue;
+                bool teams = _session.Settings.TeamBased && _session.Local != null;
+                rows.Add(new PlayerRow
+                {
+                    Id = player.Id,
+                    Name = player.Name,
+                    AccountId = player.AccountId,
+                    Side = !teams ? "" : player.Team == _session.Local.Team ? "Your team" : "Enemy",
+                    SideColor = SideColor(player),
+                    Bot = player.Bot,
+                    Self = player.Id == _session.PlayerId,
+                    Muted = _muted.Contains(player.Id),
+                    Friend = social != null && social.IsFriend(player.AccountId),
+                    Asked = social != null && social.HasAsked(player.AccountId),
+                    Blocked = social != null && social.IsBlocked(player.AccountId),
+                });
+            }
+            rows.Sort((a, b) => string.CompareOrdinal(a.Side, b.Side));
+            return rows;
+        }
+
+        /// <summary>What a player said in this match, newest last, for a report.</summary>
+        List<string> ChatOf(int playerId)
+        {
+            var lines = new List<string>();
+            foreach ((int player, string text) in _chatLog)
+            {
+                if (player == playerId) lines.Add(text);
+            }
+            if (lines.Count > 10) lines.RemoveRange(0, lines.Count - 10);
+            return lines;
         }
 
         /// <summary>Who took us out, with what, and what they had left.</summary>

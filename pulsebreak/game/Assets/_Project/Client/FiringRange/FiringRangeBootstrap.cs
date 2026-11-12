@@ -60,7 +60,9 @@ namespace Pulsebreak.Client.FiringRange
             RangeLayout layout = RangeLayout.Build(transform);
 
             // The player's loadouts: on this computer, or on their account if they are signed in.
-            _library = GameServices.Get(catalog).Library;
+            GameServices services = GameServices.Get(catalog);
+            _library = services.Library;
+            if (services.Social != null) services.Social.Status = SocialClient.Range;
 
             _rig = PlayerRigFactory.Create(layout.PlayerSpawn, layout.SpawnYaw, movement, _library.ResolveEquipped(), new ProjectileSystem());
             _rig.Player.InfiniteReserve = true;

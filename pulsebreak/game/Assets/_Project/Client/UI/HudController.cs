@@ -521,10 +521,11 @@ namespace Pulsebreak.Client.UI
             Keyboard keyboard = Keyboard.current;
             if (keyboard != null)
             {
-                if (keyboard.escapeKey.wasPressedThisFrame)
+                if (TextEntry.Active) { }
+                else if (keyboard.escapeKey.wasPressedThisFrame)
                 {
                     // The Customize screen, open over the pause menu, takes Esc for itself.
-                    if (CustomizeScreen.IsOpen || SettingsScreen.IsOpen) { }
+                    if (CustomizeScreen.IsOpen || SettingsScreen.IsOpen || PlayersScreen.IsOpen || ReportDialog.IsOpen) { }
                     else if (IsQuickSwapOpen) SetQuickSwapOpen(false);
                     else SetPaused(!IsPaused);
                 }
@@ -564,6 +565,18 @@ namespace Pulsebreak.Client.UI
             }
 
             if (_stats != null && _stats.Version != _shownStatsVersion) UpdateStatsPanel();
+        }
+
+        /// <summary>Adds a button to the pause menu, above Quit: "Players" in a match, for example.</summary>
+        public void AddPauseButton(string label, Action onClick)
+        {
+            if (!_ready) return;
+            Button quit = _root.Q<Button>("btn-quit");
+            if (quit == null || quit.parent == null) return;
+            var button = new Button(onClick) { text = label };
+            button.AddToClassList("pause-button");
+            button.AddToClassList("menu-button");
+            quit.parent.Insert(quit.parent.IndexOf(quit), button);
         }
 
         /// <summary>

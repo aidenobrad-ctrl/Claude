@@ -153,7 +153,10 @@ namespace Pulsebreak.Client.UI
             AddToggle("Damage numbers", GameSettings.ShowDamageNumbers, v => GameSettings.ShowDamageNumbers = v);
             AddToggle("Toggle sprint", GameSettings.ToggleSprint, v => GameSettings.ToggleSprint = v);
             AddToggle("Camera shake", GameSettings.CameraShake, v => GameSettings.CameraShake = v);
-            _hint.text = "Sensitivity, field of view and these switches follow your account to other computers.";
+            AddToggle("Show chat", GameSettings.ShowChat, v => GameSettings.ShowChat = v);
+            AddToggle("Filter strong language", GameSettings.FilterChat, v => GameSettings.FilterChat = v);
+            _hint.text = "Sensitivity, field of view, damage numbers and toggle sprint follow your account to other computers. " +
+                         "In a match, Enter or T chats to everyone and Y to your team.";
         }
 
         void BuildVideo()

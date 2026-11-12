@@ -66,6 +66,8 @@ namespace Pulsebreak.Shared.Match
         public bool fillWithBots;
         /// <summary>0 easy, 1 normal, 2 hard.</summary>
         [Range(0, 2)] public int botSkill = 1;
+        /// <summary>Private matches: what people may carry.</summary>
+        public WeaponRule weapons = WeaponRule.Any;
 
         public bool TeamBased => mode != GameModeKind.FreeForAll && mode != GameModeKind.GunGame;
         public bool RoundBased => mode == GameModeKind.Duel || mode == GameModeKind.Elimination;

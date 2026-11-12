@@ -771,6 +771,62 @@ namespace Pulsebreak.Server
                     player.LookChanged = true;
                     break;
                 }
+                case NetMessage.Chat:
+                {
+                    NetMessages.ReadChat(reader, out string text, out bool teamOnly);
+                    if (!reader.Failed && player.Ready) OnChat(player, text, teamOnly);
+                    break;
+                }
+            }
+        }
+
+        /// <summary>What each team's bots have seen lately, so they can go where a teammate spotted someone.</summary>
+        public readonly TeamSightings Sightings = new TeamSightings();
+
+        /// <summary>A line of team chat from a bot (a callout), to the people on its team. Nothing if there are none.</summary>
+        public void SayToTeam(ServerPlayer bot, string text)
+        {
+            if (bot.Team == Teams.None) return;
+            _out.Reset();
+            NetMessages.Write(_out, new ChatLineMessage { PlayerId = bot.Id, TeamOnly = true, Text = text });
+            foreach (ServerPlayer receiver in _players)
+            {
+                if (receiver == null || receiver.IsBot || !receiver.Ready || receiver.Team != bot.Team) continue;
+                receiver.Connection.Send(_out, true);
+            }
+        }
+
+        /// <summary>A short burst of chat is fine; after that, one line every second and a half.</summary>
+        const int ChatBurst = 5;
+        const int ChatRefillTicks = SimConstants.TickRate * 3 / 2;
+
+        /// <summary>
+        /// Passes a line of chat on: to everyone, or to the speaker's team. It is cleaned first
+        /// (no control characters, a length limit) but not filtered; each player's game hides
+        /// strong language if they choose to, and mutes whoever they like.
+        /// </summary>
+        void OnChat(ServerPlayer player, string text, bool teamOnly)
+        {
+            string clean = Shared.Social.ChatText.Clean(text);
+            if (clean == null) return;
+
+            int earned = (Tick - player.ChatRefillTick) / ChatRefillTicks;
+            if (earned > 0)
+            {
+                player.ChatAllowance = Mathf.Min(ChatBurst, player.ChatAllowance + earned);
+                player.ChatRefillTick += earned * ChatRefillTicks;
+            }
+            if (player.ChatAllowance <= 0) return;
+            player.ChatAllowance--;
+
+            bool toTeam = teamOnly && Settings.TeamBased && player.Team != Teams.None;
+            _out.Reset();
+            NetMessages.Write(_out, new ChatLineMessage { PlayerId = player.Id, TeamOnly = toTeam, Text = clean });
+            foreach (ServerPlayer receiver in _players)
+            {
+                if (receiver == null || receiver.IsBot || !receiver.Ready) continue;
+                if (toTeam && receiver.Team != player.Team) continue;
+                receiver.Connection.Send(_out, true);
             }
         }
 
@@ -1062,6 +1118,14 @@ namespace Pulsebreak.Server
             }
             LoadoutData carried = options.Loadout ?? player.LoadoutData ?? new LoadoutData();
             byte mask = options.SlotMask == 0 ? MatchLoadouts.AllSlots : options.SlotMask;
+            int activeSlot = options.ActiveSlot;
+            // A private match's weapon rule, for loadouts the players chose (Gun Game hands out its own).
+            if (Settings.weapons != WeaponRule.Any && options.Loadout == null)
+            {
+                carried = WeaponRules.Apply(carried, _catalog, Settings.weapons);
+                mask &= WeaponRules.Mask(Settings.weapons);
+                if (!MatchLoadouts.Allows(mask, activeSlot)) activeSlot = WeaponRules.FirstSlot(Settings.weapons);
+            }
 
             if (player.Sim == null)
             {
@@ -1072,7 +1136,7 @@ namespace Pulsebreak.Server
 
             player.Sim.InfiniteReserve = options.UnlimitedAmmo;
             player.Sim.RechargeUtilities = options.RechargeUtility;
-            player.Sim.SetLoadout(MatchLoadouts.Apply(LoadoutRules.Resolve(carried, _catalog), mask), options.ActiveSlot);
+            player.Sim.SetLoadout(MatchLoadouts.Apply(LoadoutRules.Resolve(carried, _catalog), mask), activeSlot);
             player.Sim.Motor.Teleport(spawn.Position, spawn.Yaw, 0f);
             player.Sim.Capture(player.State);
 
@@ -1094,7 +1158,7 @@ namespace Pulsebreak.Server
                     UnlimitedAmmo = options.UnlimitedAmmo,
                     RechargeUtility = options.RechargeUtility,
                     SlotMask = mask,
-                    ActiveSlot = options.ActiveSlot,
+                    ActiveSlot = activeSlot,
                 },
                 Carried = carried,
             };
@@ -1180,6 +1244,7 @@ namespace Pulsebreak.Server
                 Team = player.Team,
                 Bot = player.IsBot,
                 Look = player.Look,
+                AccountId = player.IsBot ? "" : player.AccountId ?? "",
             });
         }
 

@@ -158,6 +158,9 @@ public sealed class MatchmakingService(
         return true;
     }
 
+    /// <summary>A ticket as it stands, whoever asks, without keeping it alive. For showing a party its leader's search.</summary>
+    public Task<MatchTicket?> PeekAsync(string id) => ReadTicketAsync(id);
+
     static IEnumerable<string> Everyone(MatchTicket ticket) => ticket.MemberList.Select(m => m.Key).Prepend(ticket.Player);
 
     public async Task<int> SearchingAsync(string playlist) => (int)await Db.SortedSetLengthAsync(QueueKey(playlist));

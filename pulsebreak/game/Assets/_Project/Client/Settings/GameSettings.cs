@@ -45,6 +45,10 @@ namespace Pulsebreak.Client.Settings
         public static bool ShowDamageNumbers = true;
         /// <summary>Sprint stays on after one press of the key, instead of only while it is held.</summary>
         public static bool ToggleSprint;
+        /// <summary>Show chat in matches and the party. Off hides it all and the chat keys do nothing.</summary>
+        public static bool ShowChat = true;
+        /// <summary>Strong language in chat shows as asterisks.</summary>
+        public static bool FilterChat = true;
 
         // ------------------------------------------------------------------ sound
 
@@ -105,6 +109,8 @@ namespace Pulsebreak.Client.Settings
             Window = (WindowMode)Mathf.Clamp(PlayerPrefs.GetInt("pb.window", (int)WindowMode.Fullscreen), 0, (int)WindowMode.Windowed);
             ShowFps = PlayerPrefs.GetInt("pb.showFps", 0) != 0;
             CameraShake = PlayerPrefs.GetInt("pb.cameraShake", 1) != 0;
+            ShowChat = PlayerPrefs.GetInt("pb.showChat", 1) != 0;
+            FilterChat = PlayerPrefs.GetInt("pb.filterChat", 1) != 0;
             Apply();
         }
 
@@ -173,6 +179,8 @@ namespace Pulsebreak.Client.Settings
             PlayerPrefs.SetInt("pb.window", (int)Window);
             PlayerPrefs.SetInt("pb.showFps", ShowFps ? 1 : 0);
             PlayerPrefs.SetInt("pb.cameraShake", CameraShake ? 1 : 0);
+            PlayerPrefs.SetInt("pb.showChat", ShowChat ? 1 : 0);
+            PlayerPrefs.SetInt("pb.filterChat", FilterChat ? 1 : 0);
             PlayerPrefs.Save();
         }
 

@@ -75,6 +75,15 @@ All requests and replies are JSON. Errors always look like
 | `GET /v1/progression` | yes | Level and XP, weapon levels, today's and this week's challenges, ranks, and what the last match earned |
 | `GET /v1/matches` | yes | The account's recent matches (`limit`, default 10) |
 | `GET /v1/ranked/{playlist}/leaderboard` | | The best players in `duel_ranked` or `elimination_ranked` who have finished placement (`limit`, default 50) |
+| `POST /v1/social/poll` | yes | Checks in (`status`: `menu`, `match` or `range`; `chatAfter`: last party chat line seen) and returns friends with where they are, requests both ways, blocked players, the party (members, leader, the leader's search), invites, new party chat and the season |
+| `POST /v1/friends` | yes | Ask someone to be friends, by `username`. If they had already asked, this accepts |
+| `POST /v1/friends/{id}/accept`, `DELETE /v1/friends/{id}` | yes | Accept a request; unfriend, decline or take back a request |
+| `POST /v1/blocks/{id}`, `DELETE /v1/blocks/{id}` | yes | Block (ends any friendship, stops requests and invites, hides their party chat); unblock |
+| `POST /v1/reports` | yes | Report a player: `accountId`, `reason` (`cheating`, `abusive_chat`, `offensive_name`, `griefing`, `other`), `details`, `matchId`, `chat` (their recent lines). One per player per hour; `Social__ReportsPerDay` a day |
+| `POST /v1/party/invites` | yes | Invite a friend (`accountId`), starting a party if there is none |
+| `POST /v1/party/invites/{partyId}/accept`, `DELETE /v1/party/invites/{partyId}` | yes | Join a party (leaving any other); decline |
+| `POST /v1/party/leave`, `POST /v1/party/members/{id}/kick`, `POST /v1/party/chat` | yes | Leave; remove a member (leader only); say something (`text`) |
+| `GET /v1/admin/reports`, `POST /v1/admin/reports/{id}/status` | admin key | For moderators (`X-Admin-Key`, set `Social__AdminKey`): open reports with the reporter, the reported player, reason, details and chat; mark one (`status`, such as `actioned` or `dismissed`) |
 | `GET /health`, `GET /health/ready` | | Alive; and able to reach the database and Redis |
 
 "Signed in" means an `Authorization: Bearer <access token>` header; "guest" means a guest pass
@@ -172,6 +181,14 @@ missing from the report lose. The tables are `weapon_progress`, `ratings`, `chal
 The XP, level and rank formulas are the game's own `Shared/Progression/Progression.cs`, compiled
 in here, so the game always shows what the backend awards.
 
+## Friends, parties and seasons
+
+Friendships, blocks, reports and season results are tables (`friendships`, `blocks`, `reports`, `season_results`, added by the `Social` migration, which also gives ratings a season). Presence, parties, invites and party chat are in Redis under `sc:` and expire by themselves.
+
+A party searches as one ticket: only its leader can start or stop the search, every member can read the ticket and gets a join ticket in their own name, and the whole party is put on one side. Ranked refuses parties, and a party bigger than a playlist's team (Duel, for any party) cannot queue for it. Any change to the party ends its search.
+
+Seasons follow one another from `Seasons__FirstStart`, each `Seasons__LengthDays` long (56). At the turn a rating keeps `Seasons__Keep` (0.5) of its distance from 1000, placements start again, and the season's finish is written to `season_results`; this happens to each rating the next time it is used, so nothing has to run at the turn.
+
 ## Changing the database
 
 The schema is in `src/Pulsebreak.Api/Data/`. After changing it, add a migration:
@@ -183,9 +200,9 @@ dotnet ef migrations add <Name> --project src/Pulsebreak.Api --output-dir Data/M
 
 ## Shared with the game
 
-Five files are the game's own source, compiled into the API as well, so the two cannot drift
+Six files are the game's own source, compiled into the API as well, so the two cannot drift
 apart: the stored loadout format (`LoadoutData.cs`), the rule for merging two copies of a
 player's loadouts (`LoadoutSync.cs`), the join ticket (`GameTicket.cs`), the playlists
-matchmaking fills (`Playlists.cs`), and the progression rules and report formats
-(`Progression.cs`). They live under
+matchmaking fills (`Playlists.cs`), the progression rules and report formats
+(`Progression.cs`), and the chat text rules (`ChatText.cs`). They live under
 `game/Assets/_Project/Shared/`.

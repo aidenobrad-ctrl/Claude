@@ -30,6 +30,9 @@ namespace Pulsebreak.Server
         public string Name = "";
         /// <summary>The backend account this player proved they own, or empty on a server that does not ask.</summary>
         public string AccountId = "";
+        /// <summary>Lines of chat this player may still send before slowing down, and when the allowance last grew.</summary>
+        public int ChatAllowance = 5;
+        public int ChatRefillTick;
         public bool EmailVerified;
         /// <summary>Has said hello: has a name and a loadout, and takes part in the match. A bot is ready from the start.</summary>
         public bool Ready;

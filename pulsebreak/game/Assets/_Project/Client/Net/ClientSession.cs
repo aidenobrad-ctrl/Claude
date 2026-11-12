@@ -54,6 +54,8 @@ namespace Pulsebreak.Client.Net
         /// <summary>0 or 1, or <see cref="Teams.None"/> in a mode without teams.</summary>
         public int Team = Teams.None;
         public bool Bot;
+        /// <summary>Their account, if the server knows it: for blocking, muting across matches and reporting.</summary>
+        public string AccountId = "";
         /// <summary>How they look. A new object each time it changes, so a view can tell by comparing references.</summary>
         public CharacterLook Look = new CharacterLook();
         /// <summary>Kills, deaths and score, as of the newest snapshot.</summary>
@@ -179,6 +181,8 @@ namespace Pulsebreak.Client.Net
         public event Action<HitMessage> HitConfirmed;
         /// <summary>We took damage.</summary>
         public event Action<HurtMessage> Hurt;
+        /// <summary>Someone said something we can hear.</summary>
+        public event Action<ChatLineMessage> ChatReceived;
         public event Action<ShotMessage> RemoteShot;
         public event Action<ProjectileSpawnMessage> ProjectileSpawned;
         public event Action<ProjectileEndMessage> ProjectileEnded;
@@ -239,6 +243,17 @@ namespace Pulsebreak.Client.Net
             _out.Reset();
             NetMessages.WriteLookChange(_out, _look);
             _connection.Send(_out, true);
+        }
+
+        /// <summary>Says something in the match: to everyone, or only to our team. False if there was nothing to send.</summary>
+        public bool SendChat(string text, bool teamOnly)
+        {
+            string clean = Shared.Social.ChatText.Clean(text);
+            if (clean == null || Status != ClientStatus.Connected) return false;
+            _out.Reset();
+            NetMessages.WriteChat(_out, clean, teamOnly);
+            _connection.Send(_out, true);
+            return true;
         }
 
         public void Disconnect()
@@ -562,6 +577,7 @@ namespace Pulsebreak.Client.Net
                     player.Team = message.Team;
                     player.Bot = message.Bot;
                     player.Look = message.Look;
+                    player.AccountId = message.AccountId ?? "";
                     if (!message.Present)
                     {
                         player.Spawned = player.Alive = false;
@@ -615,6 +631,13 @@ namespace Pulsebreak.Client.Net
                 {
                     HitMessage message = NetMessages.ReadHit(reader);
                     if (!reader.Failed) HitConfirmed?.Invoke(message);
+                    break;
+                }
+
+                case NetMessage.ChatLine:
+                {
+                    ChatLineMessage message = NetMessages.ReadChatLine(reader);
+                    if (!reader.Failed && message.PlayerId < _players.Length) ChatReceived?.Invoke(message);
                     break;
                 }
 

@@ -25,7 +25,8 @@ public static class Presence
 
 public sealed record PersonDto(string AccountId, string Username, string Status, bool InParty);
 public sealed record PartyMemberDto(string AccountId, string Username, bool Leader, string Status);
-public sealed record PartySearchDto(string TicketId, string Playlist);
+/// <summary>The leader's search for the party: its ticket, playlist, "searching" or "matched", and when it began (seconds since 1970).</summary>
+public sealed record PartySearchDto(string TicketId, string Playlist, string Status, long StartedAt);
 public sealed record PartyDto(string Id, string LeaderId, PartyMemberDto[] Members, PartySearchDto? Search, int MaxSize);
 public sealed record InviteDto(string PartyId, string FromId, string FromName, long SentAt);
 public sealed record ChatLineDto(long Seq, string AccountId, string Username, string Text, long At);
@@ -453,9 +454,18 @@ public sealed class SocialService(
         string leader = party.GetValueOrDefault("leader", "");
         var members = ids.Select(id => new PartyMemberDto(id, names.GetValueOrDefault(id, "?"), id == leader,
             statuses.GetValueOrDefault(Guid.Parse(id), Presence.Offline))).ToArray();
+        // The search, while it is running or has just found a match; once it is over it goes.
+        PartySearchDto? searchDto = null;
         string search = party.GetValueOrDefault("search", "");
-        return new PartyDto(partyId, leader, members, search.Length > 0 ? new PartySearchDto(search, party.GetValueOrDefault("searchPlaylist", "")) : null,
-            _options.MaxPartySize);
+        if (search.Length > 0)
+        {
+            MatchTicket? ticket = await matchmaking.PeekAsync(search);
+            if (ticket is { Status: MatchTicket.Searching or MatchTicket.Matched })
+                searchDto = new PartySearchDto(search, ticket.Playlist, ticket.Status, ticket.CreatedMs / 1000);
+            else
+                await SetSearchAsync(partyId, "", "");
+        }
+        return new PartyDto(partyId, leader, members, searchDto, _options.MaxPartySize);
     }
 
     async Task<string?> PartyIdAsync(Guid accountId)

@@ -2,7 +2,7 @@
 
 Pulsebreak (working title) is a fast, competitive multiplayer FPS for PC: tight gunplay and loadouts from modern military shooters, short rounds and snappy movement from arena shooters. This document covers the technology choices, how the repository is laid out, and how the systems connect. The phased plan is in [ROADMAP.md](ROADMAP.md).
 
-Phases 1 to 8 exist as code today: movement, the weapon system, loadouts, a firing range to try them in, online matches on a server that owns the match, accounts on a backend that the loadouts and settings follow, every game mode with bots and matchmaking, character cosmetics, and progression with challenges and ranked play. Accounts can be switched off with one flag, `GameServices.AccountsEnabled` (they were, during Phase 5 to 7); they are on. Sections that describe later phases say so.
+Phases 1 to 10 (and 9b) exist as code today: movement, the weapon system, loadouts, a firing range to try them in, online matches on a server that owns the match, accounts on a backend that the loadouts and settings follow, every game mode with bots and matchmaking, character cosmetics, progression with challenges and ranked play, sound, effects and settings, friends, parties, chat and ranked seasons, and five maps. Accounts can be switched off with one flag, `GameServices.AccountsEnabled` (they were, during Phase 5 to 7); they are on. Sections that describe later phases say so.
 
 ## Technology choices
 
@@ -417,6 +417,26 @@ The tests that need the stand-in physics world are not in the Unity project, bec
 - **A player's own projectiles appear when the server launches them**, one round trip after the trigger. The shot sound and recoil are immediate.
 - **Players pass through each other.** It keeps prediction independent of where the opponent is.
 
+
+## Social
+
+Friends, blocks and reports live in PostgreSQL; presence, parties, invites and party chat live in Redis, where they fade by themselves. The game checks in with one call (`POST /v1/social/poll`, every 3 s in the menu and 8 s in a match) that both marks the player online and returns everything the social panel shows.
+
+| Piece | Where | Job |
+| --- | --- | --- |
+| Friends, blocks, reports, parties, party chat | backend `SocialService` | The rules: friends only by mutual consent, blocks end friendships and stop requests and invites, reports rate-limited, a party of one ends, lead passes on, members whose game stops checking in drop out |
+| Party matchmaking | backend `MatchmakingService` | A party is one ticket carrying every member. Members can read it and each gets a join ticket in their own name; the matcher puts each party whole on one side (and then fixes everyone's side, so nobody arriving first takes the party's places). Ranked refuses parties |
+| Seasons | backend `Seasons`, `ProgressionService` | Season number from a fixed first start and length; a rating from an earlier season is soft-reset the next time it is used, and its finish written to `season_results` |
+| Chat text | `Shared/Social/ChatText.cs` | Cleaning (control and invisible characters, length) and the strong-language filter, shared by the game, its servers and the backend |
+| Match chat | `NetMessage.Chat` / `ChatLine`, `GameServer.OnChat` | Cleaned and rate-limited on the server (a burst of five, then one every 1.5 s), sent to everyone or the team. The filter and muting are each player's choice, on their own screen |
+| Who is who | `PlayerInfoMessage.AccountId` | Each player's account (when a ticket said so), for blocking, friending and reporting from a match |
+| In the game | `SocialClient`, `SocialPanel`, `PlayersScreen`, `ReportDialog`, `DuelUi` chat | Shows what the backend says; follows the party leader's search into the match |
+
+## Maps and bots
+
+Maps are data (`ArenaLayout`): boxes, spawns for each side and for Free-for-All, zones and hardpoints. Building helpers (`Steps`, `Room`, `Mirrored...`) keep them symmetric through the centre. Tests check every map: every spawn and zone stands on a floor with room above it, and the bots' navigation grid reaches all of them. The grid is a height map, so a map has one walkable level at any point (roofs above head height are fine) and climbs in 0.3 m steps.
+
+Bots fall back to the nearest walkable spot the threat cannot see (rings of candidates, nearest first, one line check each) when badly hurt or reloading, and share sightings through `TeamSightings`; a bot with nothing to do heads for the freshest sighting, and the first sighting of an enemy is called out in team chat to the people on the team (`GameServer.SayToTeam`), at most every twelve seconds per bot. Private match weapon rules (`WeaponRules`) swap whatever a loadout has that the rule does not allow, and remove slots through the same slot masks Gun Game uses.
 
 ## Sound
 

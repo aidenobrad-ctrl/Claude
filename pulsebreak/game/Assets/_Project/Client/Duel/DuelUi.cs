@@ -62,11 +62,23 @@ namespace Pulsebreak.Client.Duel
         static readonly string[] BotChoices = { "No bots", "Easy bots", "Normal bots", "Hard bots" };
 
         VisualElement _menu, _match, _menuCard;
+        VisualElement _chatBox, _chatLines;
+        TextField _chatField;
+        Label _chatScope;
+        bool _chatTeam;
+        readonly List<Label> _chat = new List<Label>();
+        readonly List<float> _chatAge = new List<float>();
+        const int ChatLinesShown = 8;
+        const float ChatSeconds = 12f;
         Label _medal, _medalLine, _deathTitle, _deathLine;
         VisualElement _death;
         float _medalTimer;
         TextField _nameField, _addressField;
-        DropdownField _modeField, _mapField, _sizeField, _botsField, _limitField;
+        DropdownField _modeField, _mapField, _sizeField, _botsField, _limitField, _timeField, _healthField, _respawnField, _weaponsField;
+        readonly List<float> _times = new List<float>();
+        static readonly int[] HealthChoices = { 50, 100, 150, 200 };
+        static readonly float[] RespawnChoices = { 0f, 2f, 4f, 6f };
+        const string TimeKey = "pb.host.time", HealthKey = "pb.host.health", RespawnKey = "pb.host.respawn", WeaponsKey = "pb.host.weapons";
         Label _modeHint, _menuStatus, _rankedHint, _levelText, _xpText;
         Toggle _rankedToggle;
         VisualElement _profile, _xpFill;
@@ -107,7 +119,9 @@ namespace Pulsebreak.Client.Duel
         public GameModeKind SelectedMode => Modes[Mathf.Clamp(_modeField != null ? _modeField.index : 0, 0, Modes.Length - 1)];
 
         AccountPanel _account;
+        SocialPanel _social;
         GameServices _services;
+        bool _busy;
 
         /// <param name="services">The player's account and loadouts. The menu shows who is signed in and offers the sign-in forms.</param>
         public static DuelUi Create(GameServices services)
@@ -173,6 +187,7 @@ namespace Pulsebreak.Client.Duel
             _menu.AddToClassList("pause");
             Fill(_menu);
             _menu.style.alignItems = Align.Center;
+            _menu.style.flexDirection = FlexDirection.Row;
             _menu.style.justifyContent = Justify.Center;
             _menu.style.backgroundColor = new Color(0.024f, 0.035f, 0.055f, 0.78f);
             root.Add(_menu);
@@ -260,6 +275,16 @@ namespace Pulsebreak.Client.Duel
             _sizeField = Dropdown(_hostOptions, "Players", new List<string>(), 0);
             _limitField = Dropdown(_hostOptions, "Win at", new List<string>(), 0);
             _botsField = Dropdown(_hostOptions, "Empty places", new List<string>(BotChoices), Mathf.Clamp(PlayerPrefs.GetInt(BotsKey, 2), 0, 3));
+            _timeField = Dropdown(_hostOptions, "Time limit", new List<string>(), 0);
+            var healthNames = new List<string>();
+            foreach (int health in HealthChoices) healthNames.Add(health + " health");
+            _healthField = Dropdown(_hostOptions, "Health", healthNames, Mathf.Max(0, Array.IndexOf(HealthChoices, PlayerPrefs.GetInt(HealthKey, 100))));
+            var respawnNames = new List<string>();
+            foreach (float delay in RespawnChoices) respawnNames.Add(delay <= 0f ? "Straight away" : delay + " seconds");
+            _respawnField = Dropdown(_hostOptions, "Respawn after", respawnNames, 0);
+            var weaponNames = new List<string>();
+            foreach (WeaponRule rule in WeaponRules.All) weaponNames.Add(WeaponRules.Title(rule));
+            _weaponsField = Dropdown(_hostOptions, "Weapons", weaponNames, Mathf.Clamp(PlayerPrefs.GetInt(WeaponsKey, 0), 0, WeaponRules.All.Length - 1));
             Label hostHint = Text_("Bots fill any place nobody has taken, and step aside when someone joins. Others join with your address.", 12, Dim);
             hostHint.style.whiteSpace = WhiteSpace.Normal;
             _hostOptions.Add(hostHint);
@@ -318,6 +343,14 @@ namespace Pulsebreak.Client.Duel
             }
             _cancelButton.style.marginLeft = 0;
             card.Add(bottom);
+
+            // Friends and party, to the right of the menu.
+            if (_services != null && _services.Social != null)
+            {
+                _social = new SocialPanel(_menu, _services.Social, _services.Account);
+                _social.Root.style.marginLeft = 6;
+                _services.Social.Changed += OnSocialChanged;
+            }
 
             OnModeChanged();
         }
@@ -424,6 +457,26 @@ namespace Pulsebreak.Client.Duel
             }
             int wanted = PlayerPrefs.GetInt(LimitKey + mode, defaults.RoundBased ? defaults.roundsToWin : defaults.scoreLimit);
             SetChoices(_limitField, limitNames, Mathf.Max(0, _limits.IndexOf(wanted)));
+
+            // Time: a round's length in round modes, the whole match's otherwise.
+            _times.Clear();
+            var timeNames = new List<string>();
+            float[] times = defaults.RoundBased ? new[] { 60f, 90f, 120f, 180f } : new[] { 300f, 600f, 900f, 1200f };
+            foreach (float seconds in times)
+            {
+                _times.Add(seconds);
+                timeNames.Add(defaults.RoundBased ? seconds + " seconds a round" : seconds / 60f + " minutes");
+            }
+            float defaultTime = defaults.RoundBased ? defaults.roundSeconds : defaults.timeLimitSeconds;
+            SetChoices(_timeField, timeNames, Mathf.Max(0, _times.IndexOf(PlayerPrefs.GetFloat(TimeKey + mode, defaultTime))));
+            _timeField.label = defaults.RoundBased ? "Round time" : "Time limit";
+
+            // Respawning only happens in modes that respawn.
+            _respawnField.style.display = defaults.RoundBased ? DisplayStyle.None : DisplayStyle.Flex;
+            _respawnField.index = Mathf.Max(0, Array.IndexOf(RespawnChoices, PlayerPrefs.GetFloat(RespawnKey + mode, defaults.respawnSeconds)));
+            if (Array.IndexOf(RespawnChoices, PlayerPrefs.GetFloat(RespawnKey + mode, defaults.respawnSeconds)) < 0) _respawnField.index = 1;
+            // Gun Game hands out its own weapons.
+            _weaponsField.SetEnabled(mode != GameModeKind.GunGame);
         }
 
         static void SetChoices(DropdownField field, List<string> choices, int index)
@@ -451,6 +504,14 @@ namespace Pulsebreak.Client.Duel
             int bots = Mathf.Clamp(_botsField.index, 0, 3);
             settings.fillWithBots = bots > 0;
             settings.botSkill = Mathf.Max(0, bots - 1);
+            if (_timeField.index >= 0 && _timeField.index < _times.Count)
+            {
+                if (settings.RoundBased) settings.roundSeconds = _times[_timeField.index];
+                else settings.timeLimitSeconds = _times[_timeField.index];
+            }
+            settings.maxHealth = HealthChoices[Mathf.Clamp(_healthField.index, 0, HealthChoices.Length - 1)];
+            if (!settings.RoundBased) settings.respawnSeconds = RespawnChoices[Mathf.Clamp(_respawnField.index, 0, RespawnChoices.Length - 1)];
+            if (mode != GameModeKind.GunGame) settings.weapons = WeaponRules.All[Mathf.Clamp(_weaponsField.index, 0, WeaponRules.All.Length - 1)];
             return settings;
         }
 
@@ -459,6 +520,10 @@ namespace Pulsebreak.Client.Duel
             GameModeKind mode = SelectedMode;
             PlayerPrefs.SetInt(ModeKey, Array.IndexOf(Modes, mode));
             PlayerPrefs.SetInt(BotsKey, _botsField.index);
+            PlayerPrefs.SetInt(HealthKey, HealthChoices[Mathf.Clamp(_healthField.index, 0, HealthChoices.Length - 1)]);
+            PlayerPrefs.SetInt(WeaponsKey, Mathf.Max(0, _weaponsField.index));
+            if (_timeField.index >= 0 && _timeField.index < _times.Count) PlayerPrefs.SetFloat(TimeKey + mode, _times[_timeField.index]);
+            PlayerPrefs.SetFloat(RespawnKey + mode, RespawnChoices[Mathf.Clamp(_respawnField.index, 0, RespawnChoices.Length - 1)]);
             if (_mapField.index >= 0 && _mapField.index < _mapIds.Count) PlayerPrefs.SetString(MapKey + mode, _mapIds[_mapField.index]);
             if (_sizeField.index >= 0 && _sizeField.index < _sizes.Count) PlayerPrefs.SetInt(SizeKey + mode, _sizes[_sizeField.index]);
             if (_limitField.index >= 0 && _limitField.index < _limits.Count) PlayerPrefs.SetInt(LimitKey + mode, _limits[_limitField.index]);
@@ -558,6 +623,8 @@ namespace Pulsebreak.Client.Duel
             medal.Add(_medal);
             medal.Add(_medalLine);
             _match.Add(medal);
+
+            BuildChat();
 
             // Who took us out, low in the middle while we wait to come back.
             _death = new VisualElement { pickingMode = PickingMode.Ignore };
@@ -686,7 +753,29 @@ namespace Pulsebreak.Client.Duel
                 why = "Verify your email address to play ranked.";
                 return false;
             }
+            if (_services.Social != null && _services.Social.InParty)
+            {
+                why = "Ranked is played alone. Leave the party to queue for it.";
+                return false;
+            }
             return true;
+        }
+
+        /// <summary>In a party, only the leader finds matches; everyone else follows.</summary>
+        bool PartyMember => _services != null && _services.Social != null && _services.Social.InParty && !_services.Social.IsLeader;
+
+        void OnSocialChanged()
+        {
+            RefreshRanked();
+            RefreshFind();
+        }
+
+        void RefreshFind()
+        {
+            if (_findButton == null) return;
+            _findButton.SetEnabled(!_busy && !PartyMember);
+            _findButton.text = PartyMember ? "Your party leader finds the match" : _services != null && _services.Social != null && _services.Social.InParty
+                ? "Find match for the party" : "Find match";
         }
 
         void RefreshRanked()
@@ -830,7 +919,8 @@ namespace Pulsebreak.Client.Duel
 
         void SetBusy(bool busy)
         {
-            _findButton.SetEnabled(!busy);
+            _busy = busy;
+            RefreshFind();
             _hostToggle.SetEnabled(!busy);
             _startButton.SetEnabled(!busy);
             _joinButton.SetEnabled(!busy);
@@ -858,6 +948,10 @@ namespace Pulsebreak.Client.Duel
             _match.style.display = visible ? DisplayStyle.Flex : DisplayStyle.None;
             if (visible) return;
             ShowDeath(null, null);
+            CloseChat();
+            foreach (Label line in _chat) line.RemoveFromHierarchy();
+            _chat.Clear();
+            _chatAge.Clear();
             foreach (Label line in _feed) line.RemoveFromHierarchy();
             _feed.Clear();
             _feedAge.Clear();
@@ -1088,8 +1182,142 @@ namespace Pulsebreak.Client.Duel
         void OnDestroy()
         {
             _account?.Dispose();
+            _social?.Dispose();
+            if (_services != null && _services.Social != null) _services.Social.Changed -= OnSocialChanged;
             ProgressionCache.Changed -= RefreshProfile;
             if (_services != null) _services.Account.Changed -= RefreshProfile;
+        }
+
+        // ------------------------------------------------------------------ chat
+
+        /// <summary>Someone typed something to send: the text, and whether it is for the team only.</summary>
+        public event Action<string, bool> ChatSubmitted;
+
+        /// <summary>The chat box is open for typing.</summary>
+        public bool ChatOpen => _chatField != null && _chatField.style.display == DisplayStyle.Flex;
+
+        void BuildChat()
+        {
+            // Bottom left, above the health panel.
+            _chatBox = new VisualElement { pickingMode = PickingMode.Ignore };
+            _chatBox.style.position = Position.Absolute;
+            _chatBox.style.left = 28;
+            _chatBox.style.bottom = 132;
+            _chatBox.style.width = 560;
+            _match.Add(_chatBox);
+
+            _chatLines = new VisualElement { pickingMode = PickingMode.Ignore };
+            _chatBox.Add(_chatLines);
+
+            var row = Row(_chatBox);
+            row.style.alignItems = Align.Center;
+            row.style.marginTop = 4;
+            _chatScope = Text_("ALL", 13, Accent, bold: true, spacing: 2);
+            _chatScope.style.width = 52;
+            row.Add(_chatScope);
+            _chatField = new TextField { maxLength = Shared.Social.ChatText.MaxLength };
+            _chatField.style.flexGrow = 1;
+            _chatField.style.fontSize = 15;
+            _chatField.RegisterCallback<KeyDownEvent>(OnChatKey, TrickleDown.TrickleDown);
+            row.Add(_chatField);
+            _chatScope.style.display = DisplayStyle.None;
+            _chatField.style.display = DisplayStyle.None;
+        }
+
+        /// <summary>Opens the box to type in: to everyone, or to the team.</summary>
+        public void OpenChat(bool team)
+        {
+            if (_chatField == null || ChatOpen) return;
+            _chatTeam = team;
+            _chatScope.text = team ? "TEAM" : "ALL";
+            _chatScope.style.color = team ? (Color)new Color32(96, 190, 255, 255) : Accent;
+            _chatScope.style.display = DisplayStyle.Flex;
+            _chatField.style.display = DisplayStyle.Flex;
+            _chatField.SetValueWithoutNotify("");
+            TextEntry.Active = true;
+            ShowChatLines(true);
+            _chatField.schedule.Execute(() =>
+            {
+                _chatField.SetValueWithoutNotify("");       // the key that opened it is not part of the message
+                _chatField.Focus();
+            }).StartingIn(16);
+        }
+
+        public void CloseChat()
+        {
+            if (_chatField == null) return;
+            _chatField.Blur();
+            _chatField.style.display = DisplayStyle.None;
+            _chatScope.style.display = DisplayStyle.None;
+            ShowChatLines(false);
+            // Let go of the keyboard a frame later, so the Enter that sent the line does not also do something in play.
+            _chatField.schedule.Execute(() => TextEntry.Active = false).StartingIn(16);
+        }
+
+        void OnChatKey(KeyDownEvent e)
+        {
+            if (e.keyCode == KeyCode.Return || e.keyCode == KeyCode.KeypadEnter)
+            {
+                string text = _chatField.value;
+                CloseChat();
+                if (!string.IsNullOrWhiteSpace(text)) ChatSubmitted?.Invoke(text, _chatTeam);
+                e.StopPropagation();
+            }
+            else if (e.keyCode == KeyCode.Escape)
+            {
+                CloseChat();
+                e.StopPropagation();
+            }
+        }
+
+        /// <summary>Adds a line: who said it, coloured by side, and what.</summary>
+        public void AddChat(string speaker, string text, Color speakerColor, bool teamOnly)
+        {
+            if (_chatLines == null) return;
+            var line = new Label { pickingMode = PickingMode.Ignore, enableRichText = false };
+            line.style.whiteSpace = WhiteSpace.Normal;
+            line.style.fontSize = 15;
+            line.style.color = Text;
+            line.style.paddingLeft = line.style.paddingRight = 8;
+            line.style.paddingTop = line.style.paddingBottom = 2;
+            line.style.marginTop = 2;
+            line.style.backgroundColor = new Color(0.03f, 0.04f, 0.06f, 0.5f);
+            Round(line, 4);
+            line.text = (teamOnly ? "[TEAM] " : "") + speaker + ":  " + text;
+            line.style.borderLeftWidth = 3;
+            line.style.borderLeftColor = speakerColor;
+            _chatLines.Add(line);
+            _chat.Add(line);
+            _chatAge.Add(0f);
+            UiMotion.Enter(line);
+            while (_chat.Count > 30)
+            {
+                _chat[0].RemoveFromHierarchy();
+                _chat.RemoveAt(0);
+                _chatAge.RemoveAt(0);
+            }
+            ShowChatLines(ChatOpen);
+        }
+
+        /// <summary>A grey line from the game itself, such as who was muted.</summary>
+        public void AddChatNotice(string text) => AddChat("", text, new Color(1f, 1f, 1f, 0.3f), false);
+
+        void ShowChatLines(bool all)
+        {
+            for (int i = 0; i < _chat.Count; i++)
+            {
+                bool recent = i >= _chat.Count - ChatLinesShown;
+                bool fresh = _chatAge[i] < ChatSeconds;
+                _chat[i].style.display = recent && (all || fresh) ? DisplayStyle.Flex : DisplayStyle.None;
+                _chat[i].style.opacity = all ? 1f : Mathf.Clamp01(ChatSeconds - _chatAge[i]);
+            }
+        }
+
+        void UpdateChat()
+        {
+            if (_chat.Count == 0) return;
+            for (int i = 0; i < _chatAge.Count; i++) _chatAge[i] += Time.unscaledDeltaTime;
+            ShowChatLines(ChatOpen);
         }
 
         /// <summary>A medal under the crosshair: a headshot, a multi-kill, a streak. It shows for a moment and goes.</summary>
@@ -1121,6 +1349,7 @@ namespace Pulsebreak.Client.Duel
 
         void Update()
         {
+            UpdateChat();
             if (_medalTimer > 0f)
             {
                 _medalTimer -= Time.unscaledDeltaTime;

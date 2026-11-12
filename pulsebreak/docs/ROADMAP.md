@@ -14,8 +14,8 @@ The game is built in phases. Each one ends with something you can run and judge,
 | 8 | Progression, challenges and ranked | Built, awaiting your playtest |
 | 8b | Abilities, streaks and more utility | Planned |
 | 9 | UI polish, audio, visual effects and optimization | Built, awaiting your playtest |
-| 9b | More maps and lobby extras | Planned |
-| 10 | Social: friends, parties, reporting | Planned |
+| 9b | More maps, lobby rules and smarter bots | Built, awaiting your playtest |
+| 10 | Social: friends, parties, chat, reporting, ranked seasons | Built, awaiting your playtest |
 | 11 | Store, battle pass, more cosmetics | Planned |
 | 12 | Keybinds, accessibility, anti-cheat hardening, launch readiness | Planned |
 
@@ -199,26 +199,34 @@ You chose: hits on players are bursts of energy in their colour (no blood), and 
 
 **You can test:** play a match against bots with headphones and find them by their footsteps; take fire from behind and follow the arc; throw a grenade near a wall; turn every slider in Settings; try Low and Ultra and watch the frame rate readout.
 
-## Phase 9b: More maps and lobby extras
+## Phase 9b: More maps, lobby rules and smarter bots
 
-- At least three more maps, from duel arenas to medium 5v5 layouts, with clear lanes, cover and height.
-- More private lobby settings: time limit, health, weapon restrictions.
-- Bots that use cover and call out to their team.
-- Real character and weapon models in place of the shapes.
+Built together with Phase 10, at your request.
 
-**You can test:** every mode on every map it supports, alone against bots or in a private lobby with friends.
+- **Three new maps:** Kiln (a small arena for duels and 2v2), Saltworks (four a side: roofed sheds, a square of pans, raised gantries) and Lattice (five a side: a grid of blocks, hollow blocks the centre lane runs through, a raised plaza). Each has spawns for both sides and for Free-for-All; Saltworks and Lattice have Domination zones and hardpoints.
+- **Map rotation:** a matchmade server plays a different map each match, from those that suit the playlist.
+- **Private match rules:** time limit (or round time), health (50 to 200), respawn delay, and weapons: any, sidearms only, snipers only, shotguns only, no explosives, melee only. Whatever a loadout has that the rule does not allow is swapped at spawn.
+- **Bots** fall back to cover when badly hurt or reloading, then peek back out; they share where they saw enemies, so teammates converge; and they call it out to the people on their team in team chat.
+
+**You can test:** every mode on every map it supports, against bots; a private match on snipers only or melee only; a team match with bots on your side, to see their callouts.
 
 ## Phase 10: Social
 
-- Friends list, party invites (queue together), block and report.
-- Seasons for ranked: soft resets and season rewards.
+You chose: ranked stays solo; party and match chat with a word filter; ranked seasons with a soft reset.
 
-**You can test:** add a friend, invite them, and queue together.
+- **Friends:** add by username, accept or decline, remove; see who is online and where (menu, match, range).
+- **Parties** of up to five: invite online friends; the leader searches for everyone, the others follow automatically; the whole party is placed on one side. Leaving, kicking or joining ends a running search. Members whose game stops checking in drop out.
+- **Chat:** party chat in the menu; match chat to everyone (Enter or T) or your team (Y), rate-limited on the server; a filter for strong language (on by default), mute per player, and blocked players hidden.
+- **Block and report:** from the social panel or the Players list in a match. Reports carry a reason, a few words and the player's recent chat, and go to a list for moderators (behind an admin key).
+- **Ranked seasons:** eight weeks each; ratings move halfway back to 1000 at the turn, placements are replayed, each season's finish is kept, and leaderboards show the current season.
+
+**You can test:** two accounts (two copies of the game with different `-profile`s): add each other, form a party, chat, find a casual match together and check you are on the same side; report and block; mute someone in a match.
 
 ## Phase 11: Store, battle pass, more cosmetics
 
 - Cosmetics earned or bought rather than all free: a store selling cosmetics only (nothing that affects gameplay is ever sold), a battle-pass-style reward track, daily and weekly challenges.
-- More to wear: gloves, emotes, victory poses, calling cards, name tags, weapon charms, and real character art in place of the shapes.
+- More to wear: gloves, emotes, victory poses, calling cards, name tags, weapon charms, and real character and weapon models in place of the shapes.
+- Season rewards for ranked: something to show for where you finished.
 
 **You can test:** earn and buy cosmetics, and equip them on the Customize screen.
 

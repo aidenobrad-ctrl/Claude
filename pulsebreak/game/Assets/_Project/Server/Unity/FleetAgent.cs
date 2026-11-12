@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
@@ -141,6 +142,9 @@ namespace Pulsebreak.Server
                 else settings.maxPlayers = playlist.Players;
                 // Casual: whoever does not turn up, or leaves, is replaced by a bot. Ranked is people only.
                 settings.fillWithBots = !playlist.Ranked;
+                // A different map each match, from those that suit the playlist.
+                List<string> maps = ArenaLayout.SupportingIds(settings);
+                if (maps.Count > 0) settings.arenaId = maps[UnityEngine.Random.Range(0, maps.Count)];
                 if (server.Configure(settings, reply.matchId, reply))
                 {
                     _assignedAt = Time.unscaledTime;

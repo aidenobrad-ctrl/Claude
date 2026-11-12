@@ -46,7 +46,7 @@ namespace Pulsebreak.Shared.Net
     public static class NetProtocol
     {
         /// <summary>Changes whenever anything about what goes over the wire changes, so mismatched builds refuse each other.</summary>
-        public const uint Version = 0x50420900u;
+        public const uint Version = 0x50420A00u;
         public const int DefaultPort = 7777;
         /// <summary>The most players in one match: five a side, or a twelve-player free-for-all.</summary>
         public const int MaxPlayers = 12;

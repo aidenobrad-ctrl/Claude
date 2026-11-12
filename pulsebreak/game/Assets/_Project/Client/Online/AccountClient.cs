@@ -188,6 +188,10 @@ namespace Pulsebreak.Client.Online
             return result;
         }
 
+        /// <summary>Any signed-in request to the backend, with the token kept fresh: for the other clients that speak for this account.</summary>
+        public Task<AccountResult<T>> CallAsync<T>(string method, string path, object body = null) where T : class =>
+            SendAsync<T>(method, path, body, authorized: true);
+
         Task<AccountResult<T>> SendOnceAsync<T>(string method, string path, object body, string bearer, bool list = false) where T : class =>
             BackendRequest.SendAsync<T>(_http, method, BaseUrl + path, body, bearer, "account server", list);
 

@@ -38,6 +38,8 @@ namespace Pulsebreak.Client.Online
         public AccountClient Account { get; private set; }
         /// <summary>Finding matches through the backend. Works signed in or not.</summary>
         public MatchmakingClient Matchmaking { get; private set; }
+        /// <summary>Friends, party and party chat. Null while accounts are switched off.</summary>
+        public SocialClient Social { get; private set; }
         public LoadoutLibrary Library { get; private set; }
         /// <summary>How the player looks: suit, headgear, weapon skins.</summary>
         public CosmeticsLibrary Cosmetics { get; private set; }
@@ -100,6 +102,7 @@ namespace Pulsebreak.Client.Online
                 return;
             }
             Account.SignedOutUnexpectedly += reason => Notice?.Invoke(reason);
+            Social = new SocialClient(Account);
 
             LoadoutSync = new LoadoutAccountSync(Account, Library, store, guest,
                 accountId => new LocalFileLoadoutStore(Path.Combine(root, "accounts", Clean(accountId), LocalFileLoadoutStore.FileName)));
@@ -158,6 +161,7 @@ namespace Pulsebreak.Client.Online
         void Update()
         {
             LoadoutSync?.Tick(Time.realtimeSinceStartupAsDouble);
+            Social?.Tick(Time.realtimeSinceStartupAsDouble);
         }
 
         /// <summary>

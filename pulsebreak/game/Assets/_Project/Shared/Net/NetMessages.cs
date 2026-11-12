@@ -21,6 +21,8 @@ namespace Pulsebreak.Shared.Net
         Input = 3,
         /// <summary>Reliable. A new look: suit, headgear, weapon skins. Everyone else is told.</summary>
         Look = 4,
+        /// <summary>Reliable. Something to say, to everyone or to the team.</summary>
+        Chat = 5,
 
         // Server to client.
         Welcome = 16,
@@ -40,6 +42,8 @@ namespace Pulsebreak.Shared.Net
         Rearm = 26,
         /// <summary>Reliable, to the victim only: you took damage, and from where.</summary>
         Hurt = 27,
+        /// <summary>Reliable. A line of chat, to whoever it was for.</summary>
+        ChatLine = 28,
     }
 
     public struct WelcomeMessage
@@ -60,6 +64,17 @@ namespace Pulsebreak.Shared.Net
         public bool Bot;
         /// <summary>How they look. Never null when read.</summary>
         public CharacterLook Look;
+        /// <summary>Their account, when a ticket said who they are; empty for guests, bots and unchecked players. For blocking and reporting.</summary>
+        public string AccountId;
+    }
+
+    /// <summary>A line of chat in a match.</summary>
+    public struct ChatLineMessage
+    {
+        public int PlayerId;
+        /// <summary>Said to their team only.</summary>
+        public bool TeamOnly;
+        public string Text;
     }
 
     public struct SpawnMessage
@@ -405,6 +420,7 @@ namespace Pulsebreak.Shared.Net
             writer.WriteFloat(s.hardpointSeconds);
             writer.WriteBool(s.fillWithBots);
             writer.WriteByte((byte)s.botSkill);
+            writer.WriteByte((byte)s.weapons);
         }
 
         public static MatchSettings ReadSettings(NetReader reader)
@@ -428,7 +444,9 @@ namespace Pulsebreak.Shared.Net
                 hardpointSeconds = reader.ReadFloat(),
                 fillWithBots = reader.ReadBool(),
                 botSkill = reader.ReadByte(),
+                weapons = (WeaponRule)reader.ReadByte(),
             };
+            if (s.weapons > WeaponRule.MeleeOnly) reader.Fail();
             if (s.mode > GameModeKind.GunGame || s.teamSize < 1 || s.teamSize > 5 || s.maxPlayers < 2 || s.maxPlayers > NetProtocol.MaxPlayers) reader.Fail();
             return s;
         }
@@ -442,7 +460,40 @@ namespace Pulsebreak.Shared.Net
             writer.WriteByte((byte)message.Team);
             writer.WriteBool(message.Bot);
             WriteLook(writer, message.Look);
+            writer.WriteString(message.AccountId ?? "");
         }
+
+        /// <summary>The most bytes a line of chat can take: its characters, each up to four bytes of UTF-8.</summary>
+        public const int MaxChatBytes = Social.ChatText.MaxLength * 4;
+
+        /// <summary>From a client: something to say.</summary>
+        public static void WriteChat(NetWriter writer, string text, bool teamOnly)
+        {
+            writer.WriteByte((byte)NetMessage.Chat);
+            writer.WriteBool(teamOnly);
+            writer.WriteLongString(text ?? "", MaxChatBytes);
+        }
+
+        public static void ReadChat(NetReader reader, out string text, out bool teamOnly)
+        {
+            teamOnly = reader.ReadBool();
+            text = reader.ReadLongString(MaxChatBytes);
+        }
+
+        public static void Write(NetWriter writer, in ChatLineMessage message)
+        {
+            writer.WriteByte((byte)NetMessage.ChatLine);
+            writer.WriteByte((byte)message.PlayerId);
+            writer.WriteBool(message.TeamOnly);
+            writer.WriteLongString(message.Text ?? "", MaxChatBytes);
+        }
+
+        public static ChatLineMessage ReadChatLine(NetReader reader) => new ChatLineMessage
+        {
+            PlayerId = reader.ReadByte(),
+            TeamOnly = reader.ReadBool(),
+            Text = reader.ReadLongString(MaxChatBytes),
+        };
 
         public static PlayerInfoMessage ReadPlayerInfo(NetReader reader) => new PlayerInfoMessage
         {
@@ -452,6 +503,7 @@ namespace Pulsebreak.Shared.Net
             Team = reader.ReadByte(),
             Bot = reader.ReadBool(),
             Look = ReadLook(reader),
+            AccountId = reader.ReadString(),
         };
 
         public static void Write(NetWriter writer, in RearmMessage message)

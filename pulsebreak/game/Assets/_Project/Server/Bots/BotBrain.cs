@@ -72,6 +72,14 @@ namespace Pulsebreak.Server.Bots
         bool _hurtFresh;
         int _hurtTick = int.MinValue;
 
+        // Cover: a spot the current threat cannot see, looked for when hurt or reloading.
+        Vector3 _cover;
+        bool _hasCover;
+        int _coverCheckTick, _coverUntil;
+        // Callouts: when this bot last told its team anything, and whom it last reported.
+        int _lastCalloutTick = -1000000;
+        int _calledTarget = -1;
+
         Vector3 _stuckFrom;
         int _stuckCheckTick;
         int _stuckCount;
@@ -101,6 +109,8 @@ namespace Pulsebreak.Server.Bots
             _targetId = -1;
             _targetVisible = false;
             _hurtBy = -1;
+            _hasCover = false;
+            _coverUntil = 0;
             _stuckCount = 0;
             _stuckFrom = self.State.Motor.Position;
             _stuckCheckTick = server.Tick + 45;
@@ -143,7 +153,26 @@ namespace Pulsebreak.Server.Bots
             Vector3 moveDirection = Vector3.zero;
             float moveSpeed = 1f;
 
-            if (engaged)
+            bool covering = WantsCover(self, weapon, engaged, tick);
+            if (covering && target != null && tick >= _coverCheckTick)
+            {
+                _coverCheckTick = tick + Ticks(0.75f);
+                _hasCover = FindCover(server, target.State.Motor.EyePosition, feet, out _cover);
+                if (_hasCover) _coverUntil = Mathf.Max(_coverUntil, tick + Ticks(2.5f));
+            }
+            covering &= _hasCover;
+
+            if (covering)
+            {
+                // Back off to cover, still shooting if there is a shot; once there, crouch and wait it out.
+                moveDirection = FollowPath(server, feet, _cover, tick, 0.4f, out climbing);
+                if (Flat(_cover - feet).magnitude < 0.7f)
+                {
+                    moveDirection = Vector3.zero;
+                    if (!engaged) cmd.Buttons |= InputButtons.Crouch;
+                }
+            }
+            else if (engaged)
             {
                 float preferred = PreferredRange(weaponClass);
                 if (distance > preferred + 4f) moveDirection = FollowPath(server, feet, target.State.Motor.Position, tick, 0.5f, out climbing);
@@ -270,6 +299,7 @@ namespace Pulsebreak.Server.Bots
                     _reactionTick = tick + Ticks(ReactionSeconds[_skill] * (0.8f + _random.NextFloat() * 0.4f));
                     _acquiredTick = tick;
                     _aimErrorTick = tick;
+                    CallOut(server, self, best, tick);
                 }
                 _targetId = best.Id;
                 _targetVisible = true;
@@ -518,6 +548,9 @@ namespace Pulsebreak.Server.Bots
                 if (best >= 0) return Spread(arena.Zones[best], self);
             }
 
+            // Where a teammate last saw someone.
+            if (server.Sightings.Latest(self.Team, tick, Ticks(5f), feet, out Vector3 reported)) return reported;
+
             // Otherwise go looking for the nearest enemy.
             ServerPlayer nearest = null;
             float nearestDistance = float.MaxValue;
@@ -535,6 +568,66 @@ namespace Pulsebreak.Server.Bots
             if (_hasGoal && Flat(_goal - feet).magnitude > 2f) return _goal;
             ArenaSpawn[] spots = arena.FreeSpawns;
             return spots.Length > 0 ? spots[(int)(_random.NextUInt() % (uint)spots.Length)].Position : feet;
+        }
+
+        // ------------------------------------------------------------------ cover and callouts
+
+        /// <summary>Hurt badly, or caught reloading, with someone to hide from: time to find cover. It stays a while once there.</summary>
+        bool WantsCover(ServerPlayer self, WeaponSimulator weapon, bool engaged, int tick)
+        {
+            if (_skill == 0) return false;      // easy bots stand and fight
+            if (tick < _coverUntil) return true;
+            bool recentlyHurt = _hurtTick != int.MinValue && tick - _hurtTick <= Ticks(1.5f);
+            if (!engaged && !recentlyHurt) return false;
+            bool hurt = self.Vitals.Max > 0f && self.Vitals.Current / self.Vitals.Max < 0.4f;
+            bool reloading = weapon.State.Phase == WeaponPhase.Reloading || weapon.State.AmmoInMagazine == 0;
+            return hurt || reloading;
+        }
+
+        /// <summary>
+        /// The nearest walkable spot, a few metres away, that the threat cannot see a standing
+        /// body at. Rings of candidates round the bot, nearest first; the first hidden one wins.
+        /// </summary>
+        bool FindCover(GameServer server, Vector3 threatEye, Vector3 feet, out Vector3 cover)
+        {
+            Vector3 away = Flat(feet - threatEye).normalized;
+            foreach (float radius in CoverRadii)
+            {
+                for (int i = 0; i < 12; i++)
+                {
+                    // Start with the directions away from the threat.
+                    float angle = (i % 2 == 0 ? 1 : -1) * ((i + 1) / 2) * 30f;
+                    Vector3 basis = away.sqrMagnitude > 0.01f ? away : Vector3.forward;
+                    float radians = angle * Mathf.Deg2Rad, cos = Mathf.Cos(radians), sin = Mathf.Sin(radians);
+                    var direction = new Vector3(basis.x * cos + basis.z * sin, 0f, basis.z * cos - basis.x * sin);
+                    Vector3 spot = feet + direction * radius;
+                    if (!server.Nav.TryGetHeight(spot, out float height) || Mathf.Abs(height - feet.y) > 1.5f) continue;
+                    spot.y = height;
+                    if (!Physics.Linecast(threatEye, spot + Vector3.up * 1.2f, GameLayers.WorldMask, QueryTriggerInteraction.Ignore)) continue;
+                    cover = spot;
+                    return true;
+                }
+            }
+            cover = feet;
+            return false;
+        }
+
+        static readonly float[] CoverRadii = { 2.5f, 4f, 6f, 8f };
+
+        /// <summary>
+        /// Tells the team about an enemy just spotted: teammate bots head that way, and people on
+        /// the team get a short line in team chat, at most every so often.
+        /// </summary>
+        void CallOut(GameServer server, ServerPlayer self, ServerPlayer enemy, int tick)
+        {
+            if (!server.Settings.TeamBased) return;
+            Vector3 where = enemy.State.Motor.Position;
+            server.Sightings.Report(self.Team, where, tick);
+            if (enemy.Id == _calledTarget && tick - _lastCalloutTick < Ticks(20f)) return;
+            if (tick - _lastCalloutTick < Ticks(12f)) return;
+            _lastCalloutTick = tick;
+            _calledTarget = enemy.Id;
+            server.SayToTeam(self, "Enemy " + server.Arena.PlaceName(where));
         }
 
         /// <summary>A point inside a zone, different for each bot so they do not all stand on the same spot.</summary>

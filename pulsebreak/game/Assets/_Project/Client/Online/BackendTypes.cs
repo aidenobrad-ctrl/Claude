@@ -235,6 +235,9 @@ namespace Pulsebreak.Client.Online
         public string tier = "";
         public int division;
         public int placementLeft;
+        /// <summary>The highest rating reached this season, and the rank it was.</summary>
+        public int bestRating = 1000;
+        public string bestName = "";
     }
 
     [Serializable]
@@ -261,6 +264,126 @@ namespace Pulsebreak.Client.Online
         public ChallengeData[] challenges = new ChallengeData[0];
         public RankData[] ranks = new RankData[0];
         public LastMatchData lastMatch = new LastMatchData();
+        public SeasonData season = new SeasonData();
+        public SeasonResultData[] pastSeasons = new SeasonResultData[0];
+    }
+
+    /// <summary>A ranked season: its number, and when it began and ends (seconds since 1970).</summary>
+    [Serializable]
+    public sealed class SeasonData
+    {
+        public int number = 1;
+        public long startedAt, endsAt;
+    }
+
+    /// <summary>Where a player finished an earlier season in one playlist.</summary>
+    [Serializable]
+    public sealed class SeasonResultData
+    {
+        public int season;
+        public string playlist = "";
+        public string title = "";
+        public int finalRating, bestRating;
+        public string rankName = "";
+        public int matches, wins;
+    }
+
+    // ------------------------------------------------------------------ social
+
+    /// <summary>Another player as the social list shows them. Status: "offline", "menu", "match" or "range".</summary>
+    [Serializable]
+    public sealed class PersonData
+    {
+        public string accountId = "";
+        public string username = "";
+        public string status = "offline";
+        public bool inParty;
+
+        public bool Online => status != "offline";
+    }
+
+    [Serializable]
+    public sealed class PartyMemberData
+    {
+        public string accountId = "";
+        public string username = "";
+        public bool leader;
+        public string status = "";
+    }
+
+    /// <summary>The search the party leader has running, which every member follows.</summary>
+    [Serializable]
+    public sealed class PartySearchData
+    {
+        public string ticketId = "";
+        public string playlist = "";
+        /// <summary>"searching", or "matched" once the match is found.</summary>
+        public string status = "";
+        /// <summary>When the search began, seconds since 1970.</summary>
+        public long startedAt;
+    }
+
+    [Serializable]
+    public sealed class PartyData
+    {
+        public string id = "";
+        public string leaderId = "";
+        public PartyMemberData[] members = new PartyMemberData[0];
+        /// <summary>Empty ticket id when nothing is being searched for.</summary>
+        public PartySearchData search = new PartySearchData();
+        public int maxSize = 5;
+    }
+
+    [Serializable]
+    public sealed class InviteData
+    {
+        public string partyId = "";
+        public string fromId = "";
+        public string fromName = "";
+        public long sentAt;
+    }
+
+    [Serializable]
+    public sealed class ChatLineData
+    {
+        public long seq;
+        /// <summary>Empty for a line from the party itself ("Ada joined the party.").</summary>
+        public string accountId = "";
+        public string username = "";
+        public string text = "";
+        public long at;
+    }
+
+    /// <summary>Everything about a player's friends and party, as of the last check-in.</summary>
+    [Serializable]
+    public sealed class SocialData
+    {
+        public PersonData[] friends = new PersonData[0];
+        public PersonData[] incoming = new PersonData[0];
+        public PersonData[] outgoing = new PersonData[0];
+        public PersonData[] blocked = new PersonData[0];
+        /// <summary>Not in a party when this is null or has no id.</summary>
+        public PartyData party;
+        public InviteData[] invites = new InviteData[0];
+        public ChatLineData[] chat = new ChatLineData[0];
+        public long chatCursor;
+        public SeasonData season = new SeasonData();
+    }
+
+    [Serializable] sealed class PollBody { public string status; public long chatAfter; }
+    [Serializable] sealed class UsernameBody { public string username; }
+    [Serializable] sealed class AccountIdBody { public string accountId; }
+    [Serializable] sealed class TextBody { public string text; }
+
+    /// <summary>A report of another player. Reason: "cheating", "abusive_chat", "offensive_name", "griefing" or "other".</summary>
+    [Serializable]
+    public sealed class ReportBody
+    {
+        public string accountId = "";
+        public string reason = "";
+        public string details = "";
+        public string matchId = "";
+        public string[] chat = new string[0];
     }
 
     [Serializable]

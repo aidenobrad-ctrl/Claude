@@ -2,7 +2,7 @@
 
 A fast, competitive multiplayer FPS for PC, built in Unity 6. "Pulsebreak" is a working title.
 
-Nine phases are built so far: **movement and a firing range**, **the weapon system with 40 weapons and 21 attachments**, **loadouts**, **online play** on a server that owns the match, **accounts** on a backend of their own, **every game mode, bots and matchmaking**, **character customization with weapon skins**, **progression, challenges and ranked**, and **sound, effects, settings and performance**. Accounts are switched back on; see [Accounts](#accounts). The plan for everything after is in [docs/ROADMAP.md](docs/ROADMAP.md), and how the code is organised is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Eleven phases are built so far: **movement and a firing range**, **the weapon system with 40 weapons and 21 attachments**, **loadouts**, **online play** on a server that owns the match, **accounts** on a backend of their own, **every game mode, bots and matchmaking**, **character customization with weapon skins**, **progression, challenges and ranked**, **sound, effects, settings and performance**, **friends, parties, chat, reports and ranked seasons**, and **three more maps, private-match rules and smarter bots**. Accounts are switched back on; see [Accounts](#accounts). The plan for everything after is in [docs/ROADMAP.md](docs/ROADMAP.md), and how the code is organised is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 > **Not yet run in Unity.** This was written without access to a Unity Editor. The C# was compiled against Unity's reference assemblies. The simulation, the weapon data and the netcode were tested outside the engine, including whole matches between a real server and real clients on a simulated bad connection, every game mode, bots playing full matches, and the game's account and matchmaking code against the real backend. But nothing has been opened or played in Unity itself, so the menus, the HUD and everything else you look at are unverified. Expect to report a few first-run issues; [Troubleshooting](#troubleshooting) covers the likely ones.
 
@@ -30,7 +30,7 @@ The backend has to be running for any of this: see [backend/README.md](backend/R
 Online play is in the duel scene (**Pulsebreak ▸ Open Duel (Main Menu)**), which is also the main menu. Pick a **mode** at the top of the menu, then:
 
 - **Find match** puts you in that mode's queue on the backend, and drops you into a match on a dedicated server when one is found. Tick **Ranked** (Duel and Elimination) to play for rating. See [Matchmaking](#matchmaking) and [Progress and ranked](#progress-and-ranked).
-- **Host a private match** runs the match on your own computer with the rules you pick: map, team size, what wins it, and whether bots take the empty places (and how good they are). With bots on, you can play any mode on your own straight away.
+- **Host a private match** runs the match on your own computer with the rules you pick: map, team size, what wins it, whether bots take the empty places (and how good they are), the time limit (or round time), health, how soon people respawn, and which weapons are allowed (any, sidearms only, snipers only, shotguns only, no explosives, melee only). With bots on, you can play any mode on your own straight away.
 - **Join by address** connects to someone else's private match or to a dedicated server.
 
 ### The modes
@@ -45,13 +45,21 @@ Online play is in the duel scene (**Pulsebreak ▸ Open Duel (Main Menu)**), whi
 | Hardpoint | up to 5 v 5 | Yes | One zone at a time, moving every minute; hold it alone to score |
 | Gun Game | Everyone for themselves | Yes | Every kill hands you the next weapon; a kill with the last one (the knife) wins. Being knifed sets you back one |
 
-Two maps: **Relay Yard**, the small duel arena, and **Crossroads**, 64 × 48 m with three lanes, a central square, raised decks at each end, three Domination zones and three hardpoints. The menu offers only the maps that suit the chosen mode.
+Five maps. The menu offers only the maps that suit the chosen mode, and matchmaking picks a different suitable one each match.
+
+| Map | Size | For | What it is |
+| --- | --- | --- | --- |
+| Relay Yard | 38 × 26 m | Duel, small fights | A walled yard: a block in the middle, two lanes, raised decks at each end |
+| Kiln | 32 × 24 m | Duel, 2v2, small Free-for-All | A pillar ringed by knee-high walls, long walls making two lanes, a ledge with stairs at each start |
+| Saltworks | 50 × 40 m | Up to 4v4, every mode | Two roofed sheds (zones A and C) across a square of shallow pans (B), raised gantries along the north and south walls |
+| Crossroads | 64 × 48 m | Up to 5v5, every mode | Three lanes, a central square, raised decks at each end |
+| Lattice | 66 × 50 m | Up to 5v5, every mode | A grid of tall blocks with streets between; the centre lane runs through two hollow blocks (A and C) to a raised plaza (B) |
 
 Teammates are drawn blue with a marker over their heads; everyone else is red. Teammates cannot hurt each other.
 
 ### Bots
 
-Bots fill any place nobody has taken, and step aside the moment a person joins. They find their way round the map (including up steps and onto ledges), react after a short delay, aim with a little error that settles while they track you, control recoil, strafe at their weapon's best range, reload and switch weapons, throw grenades, and go for the zones in Domination and Hardpoint. Easy, Normal and Hard differ in reaction time, aim and how fast they turn.
+Bots fill any place nobody has taken, and step aside the moment a person joins. They find their way round the map (including up steps and onto ledges), fall back to cover when they are badly hurt or caught reloading and then peek back out, tell their team where they saw an enemy (teammate bots head there, and people on their team see it in team chat: "Enemy on B"), react after a short delay, aim with a little error that settles while they track you, control recoil, strafe at their weapon's best range, reload and switch weapons, throw grenades, and go for the zones in Domination and Hardpoint. Easy, Normal and Hard differ in reaction time, aim and how fast they turn.
 
 ### The quickest test: on your own
 
@@ -129,6 +137,17 @@ To feel the game at a given ping, make your own connection worse on purpose. Eac
 - **Hits.** Whether shots that looked on target count, especially on a moving opponent with simulated lag on.
 - **The other player.** Smooth, or jittery? Do their shots come from their weapon?
 - **Anything on screen** that overlaps, is missing or reads wrong.
+
+## Friends, parties and chat
+
+Signed in, the **Social** panel sits beside the main menu:
+
+- **Add a friend** by their username. They see the request and accept or decline it. Friends show whether they are offline, in the menu, in a match or on the range.
+- **Parties:** invite a friend who is online; they see the invite in their panel and join. Up to five. The leader finds matches for everyone (the button says **Find match for the party**); the others follow the search automatically and land in the same match, on the same side. A party can play any casual mode whose teams are big enough for it (not Duel). **Ranked is played alone.** Cancel, for a member, leaves the party.
+- **Party chat** in the panel, **match chat** in play: **Enter** or **T** to everyone, **Y** to your team. Strong language is shown as asterisks unless you turn **Filter strong language** off (Settings ▸ Gameplay); **Show chat** turns it all off.
+- **Players** in the pause menu during a match lists everyone: **Mute** someone's chat for the match, **Add friend**, **Block** (hides them for good, ends any friendship, and stops their requests and invites) or **Report**: pick a reason, add a few words, and their recent chat goes with it. Reports go to a person to review.
+
+Ranked runs in **seasons** of eight weeks. When one ends, ratings move halfway back to 1000 and the five placement matches are played again; where you finished each season is kept on the Progress screen, and the leaderboards show the current season.
 
 ## Progress and ranked
 
@@ -353,6 +372,11 @@ The backend has its own tests; see [backend/README.md](backend/README.md#tests).
 **The frame rate is low.** Settings → Video: try Medium or Low, or a render scale of 0.8. Tick "Show frame rate" to see the effect.
 
 **Sound seems to come from the wrong side.** Unity's audio follows the camera; make sure no other Audio Listener is active in the scene.
+
+
+**The Social panel says to sign in, or stays empty.** Friends and parties need an account and the backend running. Party members follow the leader's search only while their game is in the main menu.
+
+**A party member did not get into the match.** They follow the search from the menu, and their game checks in every few seconds; if they were in a match or on the range when it started, they wait for the next one. Leaving the party (or Cancel while following) ends the party's search.
 
 ## Layout
 

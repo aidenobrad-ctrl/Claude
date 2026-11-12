@@ -303,6 +303,14 @@ namespace Pulsebreak.Client.UI
 
         void Ranked(ProgressionData data)
         {
+            SeasonData season = data != null && data.season != null ? data.season : new SeasonData();
+            long left = season.endsAt - DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            var head = Section("SEASON " + season.number);
+            Label(head, left > 0
+                ? "Ends in " + (left >= 86400 ? left / 86400 + " day" + (left / 86400 == 1 ? "" : "s") : Math.Max(1, left / 3600) + " hour" + (left / 3600 == 1 ? "" : "s")) +
+                  ". At the start of the next, ratings move halfway back to 1000 and placement matches are played again."
+                : "A new season is starting.", 13, Dim, wrap: true);
+
             foreach (Playlist playlist in Playlists.All)
             {
                 if (!playlist.Ranked) continue;
@@ -314,7 +322,8 @@ namespace Pulsebreak.Client.UI
                 tier.style.width = 260;
                 Label(row, rank.placementLeft > 0
                     ? rank.placementLeft + " placement match(es) left before your rank shows."
-                    : "Rating " + rank.rating + "   ·   " + rank.wins + " won, " + rank.losses + " lost" + (rank.draws > 0 ? ", " + rank.draws + " drawn" : ""), 14, Dim);
+                    : "Rating " + rank.rating + "   ·   " + rank.wins + " won, " + rank.losses + " lost" + (rank.draws > 0 ? ", " + rank.draws + " drawn" : "") +
+                      (rank.bestRating > rank.rating ? "   ·   season best " + rank.bestName + " (" + rank.bestRating + ")" : ""), 14, Dim);
 
                 Label(section, "LEADERBOARD", 12, Dim, bold: true).style.marginTop = 8;
                 if (!_boards.TryGetValue(playlist.Id, out LeaderboardEntryData[] board) || board.Length == 0)
@@ -334,7 +343,19 @@ namespace Pulsebreak.Client.UI
                     Label(line, entry.wins + " / " + entry.matches + " won", 14, Dim);
                 }
             }
-            Label(_body, "Ranked: sign in with a verified email, pick Duel or Elimination and tick Ranked. Matches are full, of people only, " +
+            if (data != null && data.pastSeasons != null && data.pastSeasons.Length > 0)
+            {
+                var past = Section("PAST SEASONS");
+                foreach (SeasonResultData result in data.pastSeasons)
+                {
+                    var line = Row(past);
+                    Label(line, "Season " + result.season, 14, Dim).style.width = 110;
+                    Label(line, result.title, 14, Text).style.width = 220;
+                    Label(line, result.rankName, 14, Accent, bold: true).style.width = 170;
+                    Label(line, "best " + result.bestRating + ", finished " + result.finalRating + "   ·   " + result.wins + " / " + result.matches + " won", 13, Dim);
+                }
+            }
+            Label(_body, "Ranked is played alone: sign in with a verified email, leave any party, pick Duel or Elimination and tick Ranked. Matches are full, of people only, " +
                          "with players near your rating; leaving or not turning up counts as a loss.", 12, Dim, wrap: true);
         }
 

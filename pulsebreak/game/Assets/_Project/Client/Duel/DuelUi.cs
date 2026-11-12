@@ -63,7 +63,7 @@ namespace Pulsebreak.Client.Duel
         TextField _nameField, _addressField;
         DropdownField _modeField, _mapField, _sizeField, _botsField, _limitField;
         Label _modeHint, _menuStatus;
-        Button _findButton, _hostToggle, _startButton, _joinButton, _rangeButton, _quitButton, _cancelButton;
+        Button _findButton, _hostToggle, _startButton, _joinButton, _rangeButton, _customizeButton, _quitButton, _cancelButton;
         VisualElement _hostOptions;
 
         Label _scoreLeft, _scoreRight, _nameLeft, _nameRight, _round, _clock, _status;
@@ -88,6 +88,7 @@ namespace Pulsebreak.Client.Duel
         /// <summary>Argument: the address typed in.</summary>
         public event Action<string> JoinRequested;
         public event Action RangeRequested;
+        public event Action CustomizeRequested;
         public event Action QuitRequested;
         /// <summary>Pressed while searching for a match, or connecting to one.</summary>
         public event Action CancelRequested;
@@ -273,9 +274,11 @@ namespace Pulsebreak.Client.Duel
             bottom.style.justifyContent = Justify.FlexEnd;
             bottom.style.marginTop = 18;
             _cancelButton = MenuButton("Cancel", false, () => CancelRequested?.Invoke());
+            _customizeButton = MenuButton("Customize", false, () => CustomizeRequested?.Invoke());
             _rangeButton = MenuButton("Firing range", false, () => RangeRequested?.Invoke());
             _quitButton = MenuButton("Quit", false, () => QuitRequested?.Invoke());
             bottom.Add(_cancelButton);
+            bottom.Add(_customizeButton);
             bottom.Add(_rangeButton);
             bottom.Add(_quitButton);
             card.Add(bottom);
@@ -636,6 +639,7 @@ namespace Pulsebreak.Client.Duel
             _startButton.SetEnabled(!busy);
             _joinButton.SetEnabled(!busy);
             _rangeButton.SetEnabled(!busy);
+            _customizeButton.SetEnabled(!busy);
             _nameField.SetEnabled(!busy);
             _addressField.SetEnabled(!busy);
             _modeField.SetEnabled(!busy);

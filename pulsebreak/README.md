@@ -2,7 +2,7 @@
 
 A fast, competitive multiplayer FPS for PC, built in Unity 6. "Pulsebreak" is a working title.
 
-Six phases are built so far: **movement and a firing range**, **the weapon system with 40 weapons and 21 attachments**, **loadouts**, **online play** on a server that owns the match, **accounts** on a backend of their own, and **every game mode, bots and matchmaking**. Accounts are switched off in the game for now, at your request; see [Accounts](#accounts). The plan for everything after is in [docs/ROADMAP.md](docs/ROADMAP.md), and how the code is organised is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Seven phases are built so far: **movement and a firing range**, **the weapon system with 40 weapons and 21 attachments**, **loadouts**, **online play** on a server that owns the match, **accounts** on a backend of their own, **every game mode, bots and matchmaking**, and **character customization with weapon skins**. Accounts are switched off in the game for now, at your request; see [Accounts](#accounts). The plan for everything after is in [docs/ROADMAP.md](docs/ROADMAP.md), and how the code is organised is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 > **Not yet run in Unity.** This was written without access to a Unity Editor. The C# was compiled against Unity's reference assemblies. The simulation, the weapon data and the netcode were tested outside the engine, including whole matches between a real server and real clients on a simulated bad connection, every game mode, bots playing full matches, and the game's account and matchmaking code against the real backend. But nothing has been opened or played in Unity itself, so the menus, the HUD and everything else you look at are unverified. Expect to report a few first-run issues; [Troubleshooting](#troubleshooting) covers the likely ones.
 
@@ -133,6 +133,21 @@ To feel the game at a given ping, make your own connection worse on purpose. Eac
 - **The other player.** Smooth, or jittery? Do their shots come from their weapon?
 - **Anything on screen** that overlaps, is missing or reads wrong.
 
+## Customize
+
+**Customize** is on the main menu and in the Esc menu (on the range and in a match). Everything is free to pick for now.
+
+- **Suit** and **Trim**: fifteen colours each. The suit covers your body and legs; the trim your arms, headgear and back item.
+- **Pattern** printed on the suit: Racing Stripes, Chevrons, Honeycomb, Splinter, Pixel Camo, Dotwork, Weave, Tiger or Circuit.
+- **Headgear**: Field Cap, Crest Helm, Halo, Antenna Rig, Horned Helm, Bucket Helm or Wraparound visor.
+- **Visor**: the glow across your face, in seven colours.
+- **Back**: Field Pack, Twin Tanks, Dorsal Fin, Signal Mast, Jet Pack or Long Scarf.
+- **Weapon skins**: twelve (Carbon, Arctic, Woodland, Sandstorm, Tiger, Gilded, Mirror, Neon Grid, Magma, Nebula, Bubblegum, Redline) plus the factory finish. Pick **Every weapon** to skin them all, or a single weapon to give it a skin of its own. You see your skins on your own weapon in first person; others see them in your hands.
+
+The preview in the middle shows the result and turns by itself; drag it to turn it yourself. **Randomize** rolls a new outfit (keeping your weapon skins), and **Reset to default** starts over. Choices are saved as you make them, in `cosmetics.json` beside your loadouts.
+
+In a match everyone sees your look, and a change shows up for them straight away. Bots wear random looks. **Looks never change how anyone plays:** helmets and back items are not part of the body that bullets hit, so everyone is exactly as easy to hit whatever they wear. Coloured shoulder pads on every player (blue for your team, red for the other) keep sides readable whatever the outfit.
+
 ## Controls
 
 | Input | Action |
@@ -180,7 +195,7 @@ Press **Esc** in play to open the loadout screen.
 
 Press **B** in play for the quick swap list: your loadouts, numbered, with each one's primary and secondary. Press the number and you carry it, straight away on the range and from your next spawn in a match.
 
-Loadouts are kept in a file called `loadouts.json` in the game's save folder; **Pulsebreak ▸ Open Saved Loadouts Folder** in the Editor takes you to it. Delete the file to start over. If it ever becomes unreadable, the game keeps it under another name and starts over with one loadout.
+Loadouts are kept in a file called `loadouts.json` in the game's save folder (your look is in `cosmetics.json` beside it); **Pulsebreak ▸ Open Saved Loadouts Folder** in the Editor takes you to it. Delete the file to start over. If it ever becomes unreadable, the game keeps it under another name and starts over with one loadout.
 
 Loadouts are saved on your computer. In a match the server checks the loadout you bring against its own content and replaces anything you could not have.
 
@@ -261,7 +276,7 @@ Removing or renaming content is safe for saved loadouts: anything a save refers 
 
 ## Tests
 
-Open **Window ▸ General ▸ Test Runner**, select **EditMode** and run all. The tests cover fire rate and timing, every fire mode, both reload styles, weapon switching, attachment maths, damage, the movement maths, loadout rules, the utility belt, creating, editing and saving loadouts, the real content assets (including every Gun Game weapon), the netcode's lower layers (packet reading and writing, the connection on a line that drops, reorders and repeats packets, every message), the maps and the modes' shared rules.
+Open **Window ▸ General ▸ Test Runner**, select **EditMode** and run all. The tests cover fire rate and timing, every fire mode, both reload styles, weapon switching, attachment maths, damage, the movement maths, loadout rules, the utility belt, creating, editing and saving loadouts, the real content assets (including every Gun Game weapon), the netcode's lower layers (packet reading and writing, the connection on a line that drops, reorders and repeats packets, every message), the maps and the modes' shared rules, and cosmetics (the catalog, the rules for a look, how it is sent and saved).
 
 The tests that play whole matches (every mode, bots, matchmaking end to end) need a stand-in for Unity's physics, so they live outside the project and were run before each commit. [ARCHITECTURE.md](docs/ARCHITECTURE.md#how-it-is-tested) says what they cover.
 
@@ -310,12 +325,12 @@ pulsebreak/
 └── game/        The Unity project
     └── Assets/_Project/
         ├── Shared/    Gameplay rules: movement, weapons, projectiles, damage, loadouts, maps, match rules,
-        │              playlists, and the network layer. Runs on client and server.
+        │              playlists, the cosmetic catalog, and the network layer. Runs on client and server.
         ├── Server/    The authority for a match: runs every player's inputs, judges every shot, runs the
         │              mode (Modes/) and the bots (Bots/), and offers itself to matchmaking.
         ├── Client/    Input, camera, weapon models, effects, audio, HUD, loadout screen and saves, the firing
-        │              range, online play (menu, prediction, other players, zones, scoreboard), and the
-        │              account and matchmaking clients.
+        │              range, online play (menu, prediction, other players, zones, scoreboard), the
+        │              Customize screen and how looks are drawn, and the account and matchmaking clients.
         ├── Editor/    Project Doctor.
         ├── Content/   Weapons, attachments, utility items, perk sets, default loadouts, movement.
         └── Tests/     Unit tests.

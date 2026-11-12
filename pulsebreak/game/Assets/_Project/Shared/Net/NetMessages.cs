@@ -1,5 +1,6 @@
 using UnityEngine;
 using Pulsebreak.Shared.Combat;
+using Pulsebreak.Shared.Cosmetics;
 using Pulsebreak.Shared.Loadouts;
 using Pulsebreak.Shared.Match;
 using Pulsebreak.Shared.Movement;
@@ -18,6 +19,8 @@ namespace Pulsebreak.Shared.Net
         Loadout = 2,
         /// <summary>Unreliable. The newest input commands, repeated so a lost packet costs nothing.</summary>
         Input = 3,
+        /// <summary>Reliable. A new look: suit, headgear, weapon skins. Everyone else is told.</summary>
+        Look = 4,
 
         // Server to client.
         Welcome = 16,
@@ -53,6 +56,8 @@ namespace Pulsebreak.Shared.Net
         /// <summary>0 or 1, or <see cref="Teams.None"/> in a mode without teams.</summary>
         public int Team;
         public bool Bot;
+        /// <summary>How they look. Never null when read.</summary>
+        public CharacterLook Look;
     }
 
     public struct SpawnMessage
@@ -282,12 +287,64 @@ namespace Pulsebreak.Shared.Net
         }
 
         /// <param name="ticket">The join ticket from the backend, or empty when playing without an account.</param>
-        public static void WriteHello(NetWriter writer, string name, LoadoutData loadout, string ticket = "")
+        public static void WriteHello(NetWriter writer, string name, LoadoutData loadout, string ticket = "", CharacterLook look = null)
         {
             writer.WriteByte((byte)NetMessage.Hello);
             writer.WriteString(name);
             writer.WriteLongString(ticket, GameTicket.MaxLength);
             WriteLoadout(writer, loadout);
+            WriteLook(writer, look);
+        }
+
+        public static void WriteLookChange(NetWriter writer, CharacterLook look)
+        {
+            writer.WriteByte((byte)NetMessage.Look);
+            WriteLook(writer, look);
+        }
+
+        // ------------------------------------------------------------------ looks
+
+        /// <summary>
+        /// A look, compactly: each slot's item by its position in the catalog, then the
+        /// weapons with a skin of their own. At most about a kilobyte, with every weapon
+        /// given its own skin.
+        /// </summary>
+        public static void WriteLook(NetWriter writer, CharacterLook look)
+        {
+            look = LookRules.Sanitize(look);
+            foreach (CosmeticSlot slot in CosmeticCatalog.Slots) writer.WriteByte((byte)look.Item(slot).Index);
+            writer.WriteByte((byte)look.weaponSkins.Length);
+            foreach (WeaponSkinChoice choice in look.weaponSkins)
+            {
+                writer.WriteString(choice.weaponId);
+                writer.WriteByte((byte)CosmeticCatalog.Find(CosmeticSlot.WeaponSkin, choice.skinId).Index);
+            }
+        }
+
+        /// <summary>Reads a look. Items this copy of the game does not have become defaults.</summary>
+        public static CharacterLook ReadLook(NetReader reader)
+        {
+            var look = new CharacterLook();
+            foreach (CosmeticSlot slot in CosmeticCatalog.Slots)
+            {
+                CosmeticItem item = CosmeticCatalog.At(slot, reader.ReadByte());
+                look.Set(slot, (item ?? CosmeticCatalog.Default(slot)).Id);
+            }
+            int count = reader.ReadByte();
+            if (count > LookRules.MaxWeaponSkins)
+            {
+                reader.Fail();
+                return new CharacterLook();
+            }
+            var skins = new WeaponSkinChoice[count];
+            for (int i = 0; i < count; i++)
+            {
+                string weaponId = reader.ReadString();
+                CosmeticItem skin = CosmeticCatalog.At(CosmeticSlot.WeaponSkin, reader.ReadByte());
+                skins[i] = new WeaponSkinChoice { weaponId = weaponId, skinId = skin != null ? skin.Id : "" };
+            }
+            look.weaponSkins = skins;
+            return reader.Failed ? new CharacterLook() : LookRules.Sanitize(look);
         }
 
         public static void WriteLoadoutChange(NetWriter writer, LoadoutData loadout)
@@ -368,6 +425,7 @@ namespace Pulsebreak.Shared.Net
             writer.WriteString(message.Name);
             writer.WriteByte((byte)message.Team);
             writer.WriteBool(message.Bot);
+            WriteLook(writer, message.Look);
         }
 
         public static PlayerInfoMessage ReadPlayerInfo(NetReader reader) => new PlayerInfoMessage
@@ -377,6 +435,7 @@ namespace Pulsebreak.Shared.Net
             Name = reader.ReadString(),
             Team = reader.ReadByte(),
             Bot = reader.ReadBool(),
+            Look = ReadLook(reader),
         };
 
         public static void Write(NetWriter writer, in RearmMessage message)

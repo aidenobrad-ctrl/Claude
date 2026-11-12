@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Pulsebreak.Server.Bots;
+using Pulsebreak.Shared.Cosmetics;
 using Pulsebreak.Shared.Loadouts;
 using Pulsebreak.Shared.Match;
 using Pulsebreak.Shared.Net;
@@ -32,6 +33,12 @@ namespace Pulsebreak.Server
         public bool EmailVerified;
         /// <summary>Has said hello: has a name and a loadout, and takes part in the match. A bot is ready from the start.</summary>
         public bool Ready;
+        /// <summary>How they look. Only ever drawn; it changes nothing about play.</summary>
+        public CharacterLook Look = new CharacterLook();
+        /// <summary>A new look arrived that everyone has not been told about yet.</summary>
+        public bool LookChanged;
+        /// <summary>The tick everyone was last told about their look, to keep a client from flooding everyone with changes.</summary>
+        public int LookSentTick = int.MinValue;
 
         public PlayerSimulation Sim;
         public ICharacterBody Body;

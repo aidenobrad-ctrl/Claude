@@ -1,4 +1,5 @@
 using UnityEngine;
+using Pulsebreak.Client.Cosmetics;
 using Pulsebreak.Shared.Weapons;
 
 namespace Pulsebreak.Client.Weapons
@@ -66,12 +67,31 @@ namespace Pulsebreak.Client.Weapons
             }
         }
 
-        /// <summary>Replaces the model with the one for this weapon and its attachments.</summary>
+        WeaponBuild _shownBuild;
+
+        void OnEnable()
+        {
+            if (CosmeticsLibrary.Local != null) CosmeticsLibrary.Local.Changed += OnLookChanged;
+        }
+
+        void OnDisable()
+        {
+            if (CosmeticsLibrary.Local != null) CosmeticsLibrary.Local.Changed -= OnLookChanged;
+        }
+
+        /// <summary>A new skin chosen while this weapon is out: put it on straight away.</summary>
+        void OnLookChanged()
+        {
+            if (_shownBuild != null) Show(_shownBuild);
+        }
+
+        /// <summary>Replaces the model with the one for this weapon and its attachments, in the player's skin for it.</summary>
         public void Show(WeaponBuild build)
         {
             if (_layout.Root != null) Destroy(_layout.Root.gameObject);
 
-            _layout = ViewModelBuilder.Build(transform, build);
+            _shownBuild = build;
+            _layout = ViewModelBuilder.Build(transform, build, CosmeticsLibrary.SkinFor(build.Weapon.weaponId));
             _kick = _kickVelocity = 0f;
             _swing = 0f;
             _reloadBlend = 0f;

@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using Pulsebreak.Shared.Cosmetics;
 using Pulsebreak.Shared.Loadouts;
 using Pulsebreak.Shared.Match;
 using Pulsebreak.Shared.Movement;
@@ -53,6 +54,8 @@ namespace Pulsebreak.Client.Net
         /// <summary>0 or 1, or <see cref="Teams.None"/> in a mode without teams.</summary>
         public int Team = Teams.None;
         public bool Bot;
+        /// <summary>How they look. A new object each time it changes, so a view can tell by comparing references.</summary>
+        public CharacterLook Look = new CharacterLook();
         /// <summary>Kills, deaths and score, as of the newest snapshot.</summary>
         public PlayerStats Stats;
         public LoadoutData LoadoutData;
@@ -112,6 +115,7 @@ namespace Pulsebreak.Client.Net
         readonly Action<NetReader> _onMessage;
 
         LoadoutData _loadout;
+        CharacterLook _look;
         PlayerSimulation _sim;
         NetConnection _connection;
         NetAddress _server;
@@ -181,8 +185,11 @@ namespace Pulsebreak.Client.Net
 
         /// <param name="salt">Any number that is different each time. 0 picks one.</param>
         /// <param name="ticket">A join ticket from the backend, for servers that only admit signed-in players. Empty otherwise.</param>
-        public ClientSession(INetSocket socket, LoadoutCatalog catalog, string playerName, LoadoutData loadout, uint salt = 0, string ticket = "")
+        /// <param name="look">How this player looks to everyone else. Null for the default look.</param>
+        public ClientSession(INetSocket socket, LoadoutCatalog catalog, string playerName, LoadoutData loadout, uint salt = 0, string ticket = "",
+            CharacterLook look = null)
         {
+            _look = LookRules.Sanitize(look);
             _socket = socket;
             _catalog = catalog;
             _name = playerName ?? "";
@@ -219,6 +226,16 @@ namespace Pulsebreak.Client.Net
             if (Status != ClientStatus.Connected) return;
             _out.Reset();
             NetMessages.WriteLoadoutChange(_out, loadout);
+            _connection.Send(_out, true);
+        }
+
+        /// <summary>Changes how this player looks to everyone else. Takes effect at once, wherever they are.</summary>
+        public void SetLook(CharacterLook look)
+        {
+            _look = LookRules.Sanitize(look);
+            if (Status != ClientStatus.Connected) return;
+            _out.Reset();
+            NetMessages.WriteLookChange(_out, _look);
             _connection.Send(_out, true);
         }
 
@@ -471,7 +488,7 @@ namespace Pulsebreak.Client.Net
                     StatusText = "";
 
                     _out.Reset();
-                    NetMessages.WriteHello(_out, _name, _loadout, _ticket);
+                    NetMessages.WriteHello(_out, _name, _loadout, _ticket, _look);
                     _connection.Send(_out, true);
                     Connected?.Invoke();
                     break;
@@ -535,6 +552,7 @@ namespace Pulsebreak.Client.Net
                     player.Name = message.Name;
                     player.Team = message.Team;
                     player.Bot = message.Bot;
+                    player.Look = message.Look;
                     if (!message.Present)
                     {
                         player.Spawned = player.Alive = false;

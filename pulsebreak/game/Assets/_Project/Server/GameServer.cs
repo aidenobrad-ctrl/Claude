@@ -4,6 +4,7 @@ using UnityEngine;
 using Pulsebreak.Server.Bots;
 using Pulsebreak.Server.Modes;
 using Pulsebreak.Shared.Combat;
+using Pulsebreak.Shared.Cosmetics;
 using Pulsebreak.Shared.Loadouts;
 using Pulsebreak.Shared.Match;
 using Pulsebreak.Shared.Movement;
@@ -286,6 +287,7 @@ namespace Pulsebreak.Server
                 Tick++;
 
                 ReceivePackets();
+                AnnounceLooks();
                 BalanceBots();
                 ThinkBots();
 
@@ -519,6 +521,7 @@ namespace Pulsebreak.Server
                 Name = NextBotName(),
                 Ready = true,
                 Brain = new BotBrain(Settings.botSkill, _botSeed),
+                Look = LookRules.Random(_botSeed),
             };
             bot.PendingLoadout = BotLoadout(_botSeed);
             Admit(bot);
@@ -615,6 +618,32 @@ namespace Pulsebreak.Server
                 case NetMessage.Input:
                     OnInput(player, reader);
                     break;
+                case NetMessage.Look:
+                {
+                    CharacterLook look = NetMessages.ReadLook(reader);
+                    if (reader.Failed || !player.Ready) break;
+                    player.Look = look;
+                    player.LookChanged = true;
+                    break;
+                }
+            }
+        }
+
+        /// <summary>How often, at most, everyone is told about one player's new look.</summary>
+        const int LookIntervalTicks = SimConstants.TickRate / 2;
+
+        /// <summary>
+        /// Passes new looks on to everyone. A player changing their look many times a second
+        /// is only passed on twice a second: the last look always arrives, nothing in between.
+        /// </summary>
+        void AnnounceLooks()
+        {
+            foreach (ServerPlayer player in _players)
+            {
+                if (player == null || !player.LookChanged || Tick - player.LookSentTick < LookIntervalTicks) continue;
+                player.LookChanged = false;
+                player.LookSentTick = Tick;
+                BroadcastPlayerInfo(player);
             }
         }
 
@@ -624,6 +653,7 @@ namespace Pulsebreak.Server
             string name = reader.ReadString();
             string ticket = reader.ReadLongString(GameTicket.MaxLength);
             LoadoutData loadout = NetMessages.ReadLoadout(reader);
+            CharacterLook look = NetMessages.ReadLook(reader);
             if (reader.Failed) return;
 
             if (_ticketKey != null)
@@ -665,6 +695,8 @@ namespace Pulsebreak.Server
             name = LoadoutRules.CleanName(name);
             player.Name = name == LoadoutRules.DefaultName ? "Player " + (player.Id + 1) : name;
             player.PendingLoadout = LoadoutRules.Sanitize(loadout, _catalog);
+            player.Look = look;
+            player.LookSentTick = Tick;
             player.Ready = true;
             _mode.AssignTeam(player);
 
@@ -1001,6 +1033,7 @@ namespace Pulsebreak.Server
                 Name = player.Name,
                 Team = player.Team,
                 Bot = player.IsBot,
+                Look = player.Look,
             });
         }
 

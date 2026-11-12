@@ -1,6 +1,6 @@
 using UnityEngine;
 using Pulsebreak.Client.Visuals;
-using Pulsebreak.Shared.Combat;
+using Pulsebreak.Shared.Cosmetics;
 using Pulsebreak.Shared.Match;
 using Pulsebreak.Shared.Movement;
 using Pulsebreak.Shared.Weapons;
@@ -8,9 +8,10 @@ using Pulsebreak.Shared.Weapons;
 namespace Pulsebreak.Client.Net
 {
     /// <summary>
-    /// Another player, as drawn on this client: a placeholder body made of the same parts
-    /// the server shoots at, holding a block where their weapon would be. Enemies are red;
-    /// teammates are blue, with a marker over their heads so they are easy to pick out.
+    /// Another player, as drawn on this client: a body made of the same parts the server
+    /// shoots at, dressed in the look they chose, holding a block in their weapon's skin.
+    /// Shoulder pads show the side they are on (blue for a teammate, red for anyone else), and
+    /// teammates have a marker over their heads so they are easy to pick out.
     ///
     /// It never simulates anything. Each frame it asks the session where that player was a
     /// moment ago and stands the body there.
@@ -18,23 +19,22 @@ namespace Pulsebreak.Client.Net
     [DefaultExecutionOrder(10)]
     public sealed class RemotePlayerView : MonoBehaviour
     {
-        static readonly Color EnemyBody = new Color(0.9f, 0.32f, 0.24f);
-        static readonly Color EnemyHead = new Color(1f, 0.7f, 0.32f);
-        static readonly Color FriendBody = new Color(0.22f, 0.56f, 0.95f);
-        static readonly Color FriendHead = new Color(0.55f, 0.85f, 1f);
         const float FlashTime = 0.12f;
+        static readonly Color MarkerColor = new Color(0.55f, 0.85f, 1f);
 
         ClientSession _session;
         int _playerId;
         UnityCharacterBody _body;
+        CharacterLookView _look;
         Transform _weapon;
-        Material _bodyMaterial, _headMaterial, _weaponMaterial, _markerMaterial;
+        MeshRenderer _weaponRenderer;
+        Material _weaponMaterial, _markerMaterial;
         Transform _marker;
-        Color _bodyColor = EnemyBody, _headColor = EnemyHead;
         bool _friendly;
         float _flash;
         int _shownSlot = -1;
         byte _shownSpawn;
+        CharacterLook _shownLook;
 
         public int PlayerId => _playerId;
         public bool Visible { get; private set; }
@@ -57,21 +57,14 @@ namespace Pulsebreak.Client.Net
             // Whether a shot really hit is decided on the server.
             _body = new UnityCharacterBody("Remote " + _playerId, movement, withController: false, server: false);
             _body.Root.SetParent(transform, false);
-
-            _bodyMaterial = new Material(GreyboxMaterials.Flat(EnemyBody));
-            _headMaterial = new Material(GreyboxMaterials.Flat(EnemyHead));
-            foreach (UnityCharacterBody.Part part in _body.Parts)
-            {
-                GameObject go = part.Transform.gameObject;
-                go.AddComponent<MeshFilter>().sharedMesh = GreyboxKit.PrimitiveMesh(part.Round ? PrimitiveType.Sphere : PrimitiveType.Cube);
-                go.AddComponent<MeshRenderer>().sharedMaterial = part.Zone == HitZone.Head ? _headMaterial : _bodyMaterial;
-            }
+            _look = new CharacterLookView(_body);
 
             _weaponMaterial = new Material(GreyboxMaterials.Flat(new Color(0.2f, 0.2f, 0.22f)));
-            _weapon = GreyboxKit.Visual(_body.Root, "Weapon", PrimitiveType.Cube, Vector3.zero,
-                new Vector3(0.07f, 0.1f, 0.6f), _weaponMaterial).transform;
+            GameObject weapon = GreyboxKit.Visual(_body.Root, "Weapon", PrimitiveType.Cube, Vector3.zero, new Vector3(0.07f, 0.1f, 0.6f), _weaponMaterial);
+            _weapon = weapon.transform;
+            _weaponRenderer = weapon.GetComponent<MeshRenderer>();
 
-            _markerMaterial = new Material(GreyboxMaterials.Unlit(FriendHead));
+            _markerMaterial = new Material(GreyboxMaterials.Unlit(MarkerColor));
             _marker = GreyboxKit.Visual(_body.Root, "Team Marker", PrimitiveType.Cube, Vector3.zero,
                 new Vector3(0.18f, 0.18f, 0.18f), _markerMaterial, castShadows: false).transform;
             _marker.localRotation = Quaternion.Euler(45f, 0f, 45f);
@@ -90,7 +83,10 @@ namespace Pulsebreak.Client.Net
             if (_body.Root.gameObject.activeSelf != Visible) _body.Root.gameObject.SetActive(Visible);
             if (!Visible) return;
 
+            ClientPlayer player = _session.Players[_playerId];
+            _look.Apply(player.Look);
             _body.SetPose(view.Pose);
+            _look.Follow();
             UpdateSide(view.Pose.EyeHeight);
 
             // The weapon sits at the right shoulder and tips with where they are looking.
@@ -101,51 +97,58 @@ namespace Pulsebreak.Client.Net
             if (_flash > 0f)
             {
                 _flash -= Time.unscaledDeltaTime;
-                float t = Mathf.Clamp01(_flash / FlashTime);
-                GreyboxMaterials.SetColor(_bodyMaterial, Color.Lerp(_bodyColor, Color.white, t));
-                GreyboxMaterials.SetColor(_headMaterial, Color.Lerp(_headColor, Color.white, t));
+                _look.Flash(Mathf.Clamp01(_flash / FlashTime));
+                if (_flash <= 0f) _look.Flash(0f);
             }
         }
 
-        /// <summary>Blue for a teammate, red for anyone else. Checked every frame: teams can change between matches.</summary>
+        /// <summary>
+        /// Pads in the colour of their side, and a marker over teammates. Checked every frame:
+        /// teams can change between matches.
+        /// </summary>
         void UpdateSide(float eyeHeight)
         {
             ClientPlayer local = _session.Local;
             ClientPlayer player = _session.Players[_playerId];
             bool friendly = local != null && _session.Settings.TeamBased && player.Team != Teams.None && player.Team == local.Team;
-            if (friendly != _friendly)
+            if (friendly != _friendly || !_marker.gameObject.activeSelf && friendly)
             {
                 _friendly = friendly;
-                _bodyColor = friendly ? FriendBody : EnemyBody;
-                _headColor = friendly ? FriendHead : EnemyHead;
-                GreyboxMaterials.SetColor(_bodyMaterial, _bodyColor);
-                GreyboxMaterials.SetColor(_headMaterial, _headColor);
                 _marker.gameObject.SetActive(friendly);
             }
-            if (friendly) _marker.localPosition = new Vector3(0f, eyeHeight + 0.55f + Mathf.Sin(Time.time * 3f) * 0.05f, 0f);
+            _look.SetSide(true, friendly);
+            if (friendly) _marker.localPosition = new Vector3(0f, eyeHeight + 0.6f + Mathf.Sin(Time.time * 3f) * 0.05f, 0f);
         }
 
-        /// <summary>Sizes and colours the weapon block to hint at what they are holding.</summary>
+        /// <summary>Sizes the weapon block to hint at what they are holding, in that weapon's skin.</summary>
         void ShowWeapon(int slot)
         {
             ClientPlayer player = _session.Players[_playerId];
-            if (slot == _shownSlot && player.SpawnCount == _shownSpawn) return;
+            if (slot == _shownSlot && player.SpawnCount == _shownSpawn && ReferenceEquals(player.Look, _shownLook)) return;
             _shownSlot = slot;
             _shownSpawn = player.SpawnCount;
+            _shownLook = player.Look;
 
             WeaponBuild build = player.Loadout != null && slot >= 0 && slot < player.Loadout.Weapons.Length ? player.Loadout.Weapons[slot] : null;
             if (build == null) return;
             WeaponViewProfile look = build.Weapon.view;
             float length = Mathf.Clamp(look.bodyLength + look.barrelLength + look.stockLength, 0.2f, 1.1f);
             _weapon.localScale = new Vector3(0.07f, 0.1f, length);
+
+            Material skin = LookMaterials.SkinBody(player.Look.SkinFor(build.Weapon.weaponId));
+            if (skin != null)
+            {
+                _weaponRenderer.sharedMaterial = skin;
+                return;
+            }
             GreyboxMaterials.SetColor(_weaponMaterial, look.bodyColor);
+            _weaponRenderer.sharedMaterial = _weaponMaterial;
         }
 
         void OnDestroy()
         {
             // The body's root is our child and goes with us; the materials are ours to clean up.
-            if (_bodyMaterial != null) Destroy(_bodyMaterial);
-            if (_headMaterial != null) Destroy(_headMaterial);
+            _look?.Destroy();
             if (_weaponMaterial != null) Destroy(_weaponMaterial);
             if (_markerMaterial != null) Destroy(_markerMaterial);
         }

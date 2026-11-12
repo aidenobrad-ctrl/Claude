@@ -97,6 +97,7 @@ game/
     │   ├── Net/              The client's side of a match: connection, prediction,
     │   │                     interpolation; and how the other player is drawn
     │   ├── Duel/             The duel scene: main menu and account forms, hosting and joining, match HUD
+    │   ├── Cosmetics/        The saved look and the Customize screen's preview stage
     │   ├── Online/           The account client, keeping loadouts and settings in step with
     │   │                     the backend, and the services that outlive a scene
     │   ├── Weapons/          First-person weapon models, tracers, projectiles, explosions
@@ -269,6 +270,7 @@ Phase 3 made loadouts local first, with sync in mind. Phase 5 added the sync, an
 | Private lobbies with custom settings | `DuelUi` host options, `MatchSettings` | Map, mode, size, win limit, bots |
 | Casual matchmaking | backend `MatchmakingService`, `MatchmakingClient`, `FleetAgent` | Ranked waits for accounts |
 | Kill feed, health, scores, clock, zones, scoreboard | `DuelUi`, `ZoneMarkers` | |
+| Character customization, cosmetics only | `CosmeticCatalog`, `CustomizeScreen`, `CharacterLookView` | All free for now; never affects play |
 
 ## Networking
 
@@ -414,6 +416,23 @@ The tests that need the stand-in physics world are not in the Unity project, bec
 - **A player's own projectiles appear when the server launches them**, one round trip after the trigger. The shot sound and recoil are immediate.
 - **Players pass through each other.** It keeps prediction independent of where the opponent is.
 - **Sound has no position yet.** Other players' shots are only quieter with distance.
+
+## Cosmetics
+
+A player's look is a `CharacterLook`: the id of the item chosen for each slot (suit colour, trim colour, pattern, headgear, visor, back) and their weapon skins (one for every weapon, plus any weapon with its own). The items are defined in code in `CosmeticCatalog` (`Shared/Cosmetics`), so the server can check a look without loading any content, and `LookRules.Sanitize` turns anything unknown into a default.
+
+| Piece | Where | Job |
+| --- | --- | --- |
+| Catalog and rules | `CosmeticCatalog`, `CharacterLook`, `LookRules` (Shared) | What exists, what a legal look is, random looks for bots |
+| Saved look | `CosmeticsLibrary` (Client/Cosmetics) | `cosmetics.json` beside the loadouts; raises `Changed` |
+| On the wire | `NetMessages.WriteLook`/`ReadLook` | Each slot as its item's position in the catalog (one byte), then the per-weapon skins; at most about a kilobyte. Sent in the hello, in every `PlayerInfo`, and in a `Look` message when it changes |
+| Drawing a character | `CharacterLookView`, `LookMaterials` (Client/Visuals) | Materials on the body parts, headgear and back items from simple shapes on anchors that follow the head and torso, patterns drawn into small textures in code |
+| Weapon skins | `ViewModelBuilder` (first person), `RemotePlayerView` (others) | The skin's materials in place of the weapon's own colours |
+| The screen | `CustomizeScreen` (Client/UI), `CharacterPreview` | Categories, item tiles, and a character on a stage far below the level filmed into a render texture |
+
+Catalog lists are append-only, because the wire format sends positions: add new items at the end and retire old ones by hiding them. The server passes a player's new look on at most twice a second, always ending on the latest.
+
+Nothing cosmetic has a collider. The hitboxes are the same six parts for everyone, so what a player wears cannot make them harder to hit; team-coloured shoulder pads are drawn over every outfit so sides stay readable.
 
 ## Accounts and the backend
 

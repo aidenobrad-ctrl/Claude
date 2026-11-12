@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Threading.Tasks;
 using UnityEngine;
+using Pulsebreak.Client.Cosmetics;
 using Pulsebreak.Client.Loadouts;
 using Pulsebreak.Client.Settings;
 using Pulsebreak.Shared.Loadouts;
@@ -37,6 +38,8 @@ namespace Pulsebreak.Client.Online
         /// <summary>Finding matches through the backend. Works signed in or not.</summary>
         public MatchmakingClient Matchmaking { get; private set; }
         public LoadoutLibrary Library { get; private set; }
+        /// <summary>How the player looks: suit, headgear, weapon skins.</summary>
+        public CosmeticsLibrary Cosmetics { get; private set; }
         /// <summary>Null while accounts are switched off.</summary>
         public LoadoutAccountSync LoadoutSync { get; private set; }
         public string Profile { get; private set; }
@@ -50,7 +53,11 @@ namespace Pulsebreak.Client.Online
         public event Action ResumeFinished;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        static void ResetStatics() => _instance = null;
+        static void ResetStatics()
+        {
+            _instance = null;
+            CosmeticsLibrary.Local = null;
+        }
 
         /// <param name="backendUrl">Used only by whichever scene creates the services first. -backend URL on the command line wins over it.</param>
         public static GameServices Get(LoadoutCatalog catalog, string backendUrl = DefaultBackendUrl)
@@ -76,6 +83,8 @@ namespace Pulsebreak.Client.Online
             Library = new LoadoutLibrary(catalog, store);
             // The game lists only the player's own loadouts; a first run starts with one.
             Library.EnsureOwnLoadout();
+            Cosmetics = new CosmeticsLibrary();
+            CosmeticsLibrary.Local = Cosmetics;
 
             var http = new UnityHttpTransport();
             Account = new AccountClient(http, backendUrl,

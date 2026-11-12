@@ -1,5 +1,6 @@
 using UnityEngine;
 using Pulsebreak.Client.Visuals;
+using Pulsebreak.Shared.Cosmetics;
 using Pulsebreak.Shared.Weapons;
 
 namespace Pulsebreak.Client.Weapons
@@ -25,7 +26,29 @@ namespace Pulsebreak.Client.Weapons
     /// </summary>
     public static class ViewModelBuilder
     {
-        public static ViewModelLayout Build(Transform parent, WeaponBuild build)
+        // The skin of the model being built. Building happens all at once on the main thread,
+        // so it is set for the length of one Build call.
+        static CosmeticItem _skin;
+
+        /// <param name="skin">The weapon skin to wear, or null (or the factory skin) for the weapon's own colours.</param>
+        public static ViewModelLayout Build(Transform parent, WeaponBuild build, CosmeticItem skin = null)
+        {
+            _skin = skin;
+            try
+            {
+                return BuildModel(parent, build);
+            }
+            finally
+            {
+                _skin = null;
+            }
+        }
+
+        static Material BodyMaterial(WeaponViewProfile p) => LookMaterials.SkinBody(_skin) ?? GreyboxMaterials.Flat(p.bodyColor);
+        static Material DarkMaterial(WeaponViewProfile p) => LookMaterials.SkinDark(_skin) ?? GreyboxMaterials.Flat(Darken(p.bodyColor));
+        static Material AccentMaterial(WeaponViewProfile p) => LookMaterials.SkinAccent(_skin) ?? GreyboxMaterials.Unlit(p.accentColor);
+
+        static ViewModelLayout BuildModel(Transform parent, WeaponBuild build)
         {
             var root = new GameObject("Model " + build.Weapon.weaponId).transform;
             root.SetParent(parent, false);
@@ -49,9 +72,9 @@ namespace Pulsebreak.Client.Weapons
         {
             Transform root = layout.Root;
             float b = p.bulk, length = p.bodyLength;
-            Material body = GreyboxMaterials.Flat(p.bodyColor);
-            Material dark = GreyboxMaterials.Flat(Darken(p.bodyColor));
-            Material accent = GreyboxMaterials.Unlit(p.accentColor);
+            Material body = BodyMaterial(p);
+            Material dark = DarkMaterial(p);
+            Material accent = AccentMaterial(p);
 
             AttachmentVisual barrel = VisualOf(build, AttachmentSlot.Barrel);
             AttachmentVisual magazine = VisualOf(build, AttachmentSlot.Magazine);
@@ -210,9 +233,9 @@ namespace Pulsebreak.Client.Weapons
         {
             Transform root = layout.Root;
             float b = p.bulk, length = p.bodyLength;
-            Material body = GreyboxMaterials.Flat(p.bodyColor);
-            Material dark = GreyboxMaterials.Flat(Darken(p.bodyColor));
-            Material accent = GreyboxMaterials.Unlit(p.accentColor);
+            Material body = BodyMaterial(p);
+            Material dark = DarkMaterial(p);
+            Material accent = AccentMaterial(p);
 
             Part(root, "Tube", Vector3.zero, new Vector3(0.11f * b, 0.11f * b, length), body);
             Part(root, "Mouth", new Vector3(0f, 0f, length * 0.5f), new Vector3(0.135f * b, 0.135f * b, 0.05f), dark);
@@ -233,9 +256,9 @@ namespace Pulsebreak.Client.Weapons
             Transform root = layout.Root;
             float length = p.bodyLength;
 
-            Part(root, "Handle", Vector3.zero, new Vector3(0.028f, 0.032f, 0.15f), GreyboxMaterials.Flat(Darken(p.bodyColor)));
-            Part(root, "Guard", new Vector3(0f, 0f, 0.08f), new Vector3(0.012f, 0.075f, 0.012f), GreyboxMaterials.Unlit(p.accentColor));
-            Part(root, "Blade", new Vector3(0f, 0f, 0.085f + length * 0.5f), new Vector3(0.006f, 0.036f * p.bulk, length), GreyboxMaterials.Flat(p.bodyColor));
+            Part(root, "Handle", Vector3.zero, new Vector3(0.028f, 0.032f, 0.15f), DarkMaterial(p));
+            Part(root, "Guard", new Vector3(0f, 0f, 0.08f), new Vector3(0.012f, 0.075f, 0.012f), AccentMaterial(p));
+            Part(root, "Blade", new Vector3(0f, 0f, 0.085f + length * 0.5f), new Vector3(0.006f, 0.036f * p.bulk, length), BodyMaterial(p));
 
             layout.Muzzle = Anchor(root, "Tip", new Vector3(0f, 0f, 0.085f + length));
             layout.HipPosition = new Vector3(0.2f, -0.2f, 0.3f);
@@ -248,9 +271,9 @@ namespace Pulsebreak.Client.Weapons
             Transform root = layout.Root;
             float length = p.bodyLength;
 
-            Part(root, "Handle", Vector3.zero, new Vector3(0.018f, 0.024f, 0.09f), GreyboxMaterials.Flat(Darken(p.bodyColor)));
-            Part(root, "Blade", new Vector3(0f, 0f, 0.045f + length * 0.5f), new Vector3(0.005f, 0.03f, length), GreyboxMaterials.Flat(p.bodyColor));
-            Part(root, "Ring", new Vector3(0f, 0f, -0.05f), new Vector3(0.006f, 0.022f, 0.012f), GreyboxMaterials.Unlit(p.accentColor));
+            Part(root, "Handle", Vector3.zero, new Vector3(0.018f, 0.024f, 0.09f), DarkMaterial(p));
+            Part(root, "Blade", new Vector3(0f, 0f, 0.045f + length * 0.5f), new Vector3(0.005f, 0.03f, length), BodyMaterial(p));
+            Part(root, "Ring", new Vector3(0f, 0f, -0.05f), new Vector3(0.006f, 0.022f, 0.012f), AccentMaterial(p));
 
             layout.Muzzle = Anchor(root, "Tip", new Vector3(0f, 0f, 0.045f + length));
             layout.HipPosition = new Vector3(0.19f, -0.13f, 0.36f);

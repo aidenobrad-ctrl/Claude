@@ -134,6 +134,7 @@
                 <ui:Toggle name="set-toggle-sprint" label="Toggle sprint" />
                 <ui:VisualElement class="pause-buttons">
                     <ui:Button name="btn-resume" class="pause-button primary" text="Resume" />
+                    <ui:Button name="btn-customize" class="pause-button" text="Customize" />
                     <ui:Button name="btn-reset" class="pause-button" text="Reset stats" />
                     <ui:Button name="btn-quit" class="pause-button" text="Quit" />
                 </ui:VisualElement>

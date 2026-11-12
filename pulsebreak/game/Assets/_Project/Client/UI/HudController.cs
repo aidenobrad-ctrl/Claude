@@ -277,6 +277,8 @@ namespace Pulsebreak.Client.UI
             }
 
             _root.Q<Button>("btn-resume").clicked += () => SetPaused(false);
+            Button customize = _root.Q<Button>("btn-customize");
+            if (customize != null) customize.clicked += () => CustomizeScreen.Open(Cosmetics.CosmeticsLibrary.Local, _library);
             _root.Q<Button>("btn-reset").clicked += () => ResetStatsRequested?.Invoke();
             _root.Q<Button>("btn-quit").clicked += Quit;
         }
@@ -535,7 +537,9 @@ namespace Pulsebreak.Client.UI
             {
                 if (keyboard.escapeKey.wasPressedThisFrame)
                 {
-                    if (IsQuickSwapOpen) SetQuickSwapOpen(false);
+                    // The Customize screen, open over the pause menu, takes Esc for itself.
+                    if (CustomizeScreen.IsOpen) { }
+                    else if (IsQuickSwapOpen) SetQuickSwapOpen(false);
                     else SetPaused(!IsPaused);
                 }
                 // The rest are ignored while the pause menu is up, where the same keys are typed into the name box.

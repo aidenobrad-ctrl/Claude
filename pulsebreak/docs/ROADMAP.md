@@ -10,11 +10,12 @@ The game is built in phases. Each one ends with something you can run and judge,
 | 4 | Netcode and online 1v1 duels | Built, awaiting your playtest |
 | 5 | Accounts, backend and synced loadouts | Built; switched off in the game for now |
 | 6 | Every game mode, bots and matchmaking | Built, awaiting your playtest |
-| 7 | Progression and unlocks | Planned |
+| 7 | Character customization and cosmetics | Built, awaiting your playtest |
+| 7b | Progression and unlocks | Planned |
 | 8 | Abilities, streaks and more utility | Planned |
 | 9 | More maps, lobby extras, parties | Planned |
 | 10 | Ranked and social | Planned |
-| 11 | Customization, store, battle pass | Planned |
+| 11 | Store, battle pass, more cosmetics | Planned |
 | 12 | Settings, polish, anti-cheat hardening, launch readiness | Planned |
 
 ## Phase 1: Movement, one weapon, firing range
@@ -144,7 +145,20 @@ Still to come from the original Phase 6 plan: parties queuing together, results 
 
 **You can test:** every mode against bots from **Host a private match**; two copies of the game in one match; and with the backend and a dedicated server running, **Find match**.
 
-## Phase 7: Progression and unlocks
+## Phase 7: Character customization and cosmetics
+
+You asked for this next, ahead of progression, with everything free to pick for now.
+
+- **A look of your own:** suit and trim colours, a pattern printed on the suit, headgear, a visor glow and a back item, all original designs built from simple shapes and patterns drawn in code.
+- **Weapon skins:** twelve skins plus the factory finish, one for every weapon or one per weapon. They show on your first-person weapon and in your hands to others.
+- **The Customize screen** from the main menu and the Esc menu, with a live preview that turns, and Randomize and Reset.
+- **Seen online:** your look travels with you into a match and changes there straight away; the server passes on at most two changes a second per player. Bots wear random looks.
+- **Fair by construction:** cosmetics have no colliders and never touch the hitboxes, and team-coloured shoulder pads sit on every outfit.
+- Saved on your computer (`cosmetics.json`). With accounts on, it would follow the account like loadouts do; that wiring is for when accounts are switched on.
+
+**You can test:** open Customize, dress up, check your weapon skin in first person on the range, then join a match (two copies, or bots) and see each other's looks.
+
+## Phase 7b: Progression and unlocks
 
 - Player level and XP; weapon levels.
 - Unlock rules enforced: weapons, attachments, utility items and perk sets become available at the levels already set in their assets.
@@ -180,14 +194,12 @@ Still to come from the original Phase 6 plan: parties queuing together, results 
 
 **You can test:** play ranked matches and watch rating and tier move; add a friend and invite them.
 
-## Phase 11: Customization, store, battle pass
+## Phase 11: Store, battle pass, more cosmetics
 
-- Operators, outfits, helmets, gloves, colours, emotes, victory poses, calling cards, name tags, with a rotating 3D preview.
-- Weapon camos and charms.
-- Battle-pass-style reward track, daily and weekly challenges.
-- Store selling cosmetics only. Nothing that affects gameplay is ever sold.
+- Cosmetics earned or bought rather than all free: a store selling cosmetics only (nothing that affects gameplay is ever sold), a battle-pass-style reward track, daily and weekly challenges.
+- More to wear: gloves, emotes, victory poses, calling cards, name tags, weapon charms, and real character art in place of the shapes.
 
-**You can test:** earn and equip cosmetics and see them on your character in a match.
+**You can test:** earn and buy cosmetics, and equip them on the Customize screen.
 
 ## Phase 12: Settings, polish, anti-cheat hardening, launch readiness
 

@@ -166,6 +166,8 @@ namespace Pulsebreak.Client.Duel
             _ui.JoinRequested += Join;
             _ui.CancelRequested += () => Leave("");
             _ui.RangeRequested += () => SceneManager.LoadScene(RangeScene);
+            _ui.CustomizeRequested += () => CustomizeScreen.Open(_services.Cosmetics, _library, movement);
+            _services.Cosmetics.Changed += OnLookChanged;
             _ui.QuitRequested += Quit;
 
             string connect = ArgText(args, "-connect");
@@ -198,6 +200,7 @@ namespace Pulsebreak.Client.Duel
         void OnDestroy()
         {
             if (_library != null) _library.EquippedChanged -= OnEquippedChanged;
+            if (_services != null && _services.Cosmetics != null) _services.Cosmetics.Changed -= OnLookChanged;
             TearDownMatch();
             StopServer();
         }
@@ -360,7 +363,7 @@ namespace Pulsebreak.Client.Duel
 
             // Signed in, a player goes by their account's name everywhere. (On a server that checks
             // tickets, the name comes from the ticket whatever is sent here.)
-            _session = new ClientSession(socket, catalog, PlayerName(), _library.Equipped, ticket: ticket);
+            _session = new ClientSession(socket, catalog, PlayerName(), _library.Equipped, ticket: ticket, look: _services.Cosmetics.Look);
             _session.Connected += EnterMatch;
             _session.PlayerChanged += OnPlayerChanged;
             _session.PlayerSpawned += OnPlayerSpawned;
@@ -807,6 +810,12 @@ namespace Pulsebreak.Client.Duel
             _ui.SetNotice(build != null ? "NEW WEAPON: " + build.Weapon.displayName.ToUpperInvariant() : "");
             _noticeTimer = 2f;
             _rig.Sfx.Play(Sfx.Swap, 1f);
+        }
+
+        /// <summary>A new look chosen mid-match: everyone else sees it straight away.</summary>
+        void OnLookChanged()
+        {
+            if (_session != null && _session.Status == ClientStatus.Connected) _session.SetLook(_services.Cosmetics.Look);
         }
 
         void OnEquippedChanged()

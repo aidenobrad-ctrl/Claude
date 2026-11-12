@@ -117,6 +117,8 @@ namespace Pulsebreak.Client.UI
             card.style.paddingLeft = card.style.paddingRight = 28;
             card.style.paddingTop = card.style.paddingBottom = 22;
             root.Add(card);
+            UiMotion.Enter(card);
+            Audio.UiSounds.Attach(root);
 
             var header = Row(card);
             header.style.alignItems = Align.Center;

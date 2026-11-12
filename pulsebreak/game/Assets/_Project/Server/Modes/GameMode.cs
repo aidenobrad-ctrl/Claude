@@ -74,7 +74,7 @@ namespace Pulsebreak.Server.Modes
 
         protected MatchSettings Settings => Server.Settings;
         protected int Tick => Server.Tick;
-        protected IReadOnlyList<ServerPlayer> Players => Server.Players;
+        protected PlayerList Players => Server.Players;
         protected static int Ticks(float seconds) => Mathf.CeilToInt(seconds * SimConstants.TickRate);
 
         // ------------------------------------------------------------------ people coming and going

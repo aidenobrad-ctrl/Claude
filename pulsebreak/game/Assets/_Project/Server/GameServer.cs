@@ -130,7 +130,7 @@ namespace Pulsebreak.Server
         }
 
         public int Tick { get; private set; }
-        public IReadOnlyList<ServerPlayer> Players => _players;
+        public PlayerList Players => new PlayerList(_players);
         public MatchSettings Settings { get; private set; }
         public GameMode Mode => _mode;
         public MatchState Match => _mode.State;
@@ -1023,6 +1023,7 @@ namespace Pulsebreak.Server
             if (victim == null) return;
             ServerPlayer attacker = info.Attacker is PlayerVitals from ? _players[from.PlayerId] : null;
             if (attacker != null && attacker != victim) victim.Brain?.HurtBy(attacker.Id);
+            SendHurt(victim, attacker, info, result);
             if (!result.Killed) return;
 
             Kill(victim, attacker, info.WeaponId, info.Zone == HitZone.Head);
@@ -1220,6 +1221,23 @@ namespace Pulsebreak.Server
                 Point = report.Point,
             });
             attacker.Connection.Send(_out, true);
+        }
+
+        /// <summary>Tells a person they were hurt and from where. A shot's source is back along its path; an explosion's is its centre.</summary>
+        void SendHurt(ServerPlayer victim, ServerPlayer attacker, in DamageInfo info, in DamageResult result)
+        {
+            if (victim.IsBot || (result.Applied <= 0f && !result.Killed)) return;
+            Vector3 source = info.Direction.sqrMagnitude > 0.0001f ? info.Point - info.Direction.normalized * info.Distance : info.Point;
+            _out.Reset();
+            NetMessages.Write(_out, new HurtMessage
+            {
+                Attacker = attacker != null ? attacker.Id : HurtMessage.NoAttacker,
+                Damage = result.Applied,
+                Zone = info.Zone,
+                Killed = result.Killed,
+                Source = source,
+            });
+            victim.Connection.Send(_out, true);
         }
 
         void SendShot(ServerPlayer shooter, int slot, in ShotEvent shot, Vector3 origin, Vector3 end, Vector3 normal, bool hitWorld)

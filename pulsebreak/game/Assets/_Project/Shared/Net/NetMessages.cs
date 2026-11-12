@@ -38,6 +38,8 @@ namespace Pulsebreak.Shared.Net
         ProjectileEnd = 25,
         /// <summary>Reliable. A player's weapons were swapped where they stand (Gun Game).</summary>
         Rearm = 26,
+        /// <summary>Reliable, to the victim only: you took damage, and from where.</summary>
+        Hurt = 27,
     }
 
     public struct WelcomeMessage
@@ -104,6 +106,20 @@ namespace Pulsebreak.Shared.Net
         public HitZone Zone;
         public bool Killed;
         public Vector3 Point;
+    }
+
+    /// <summary>Damage the receiver took: how much, and where it came from, for the hurt indicator.</summary>
+    public struct HurtMessage
+    {
+        public const int NoAttacker = 255;
+
+        /// <summary>Who dealt it, or <see cref="NoAttacker"/>.</summary>
+        public int Attacker;
+        public float Damage;
+        public HitZone Zone;
+        public bool Killed;
+        /// <summary>Where it came from: the shooter's muzzle, or an explosion's centre.</summary>
+        public Vector3 Source;
     }
 
     public struct ShotMessage
@@ -551,6 +567,25 @@ namespace Pulsebreak.Shared.Net
             Point = reader.ReadVector3(),
         };
 
+        public static void Write(NetWriter writer, in HurtMessage message)
+        {
+            writer.WriteByte((byte)NetMessage.Hurt);
+            writer.WriteByte((byte)message.Attacker);
+            writer.WriteFloat(message.Damage);
+            writer.WriteByte((byte)message.Zone);
+            writer.WriteBool(message.Killed);
+            writer.WriteVector3(message.Source);
+        }
+
+        public static HurtMessage ReadHurt(NetReader reader) => new HurtMessage
+        {
+            Attacker = reader.ReadByte(),
+            Damage = reader.ReadFloat(),
+            Zone = (HitZone)reader.ReadByte(),
+            Killed = reader.ReadBool(),
+            Source = reader.ReadVector3(),
+        };
+
         public static void Write(NetWriter writer, in ShotMessage message)
         {
             writer.WriteByte((byte)NetMessage.Shot);
@@ -668,11 +703,14 @@ namespace Pulsebreak.Shared.Net
                                     (motor.Sprinting ? 8 : 0) | (own != null ? 16 : 0)));
             writer.WriteByte(spawnCount);
             writer.WriteFloat(health);
+            // Exact position; the rest only draws the player, so it is sent more coarsely.
             writer.WriteVector3(motor.Position);
-            writer.WriteVector3(motor.Velocity);
-            writer.WriteFloat(motor.Yaw);
-            writer.WriteFloat(motor.Pitch);
-            writer.WriteFloat(motor.EyeHeight);
+            writer.WriteCentis(motor.Velocity.x);
+            writer.WriteCentis(motor.Velocity.y);
+            writer.WriteCentis(motor.Velocity.z);
+            writer.WriteAngle(motor.Yaw);
+            writer.WriteCentis(motor.Pitch);
+            writer.WriteCentis(motor.EyeHeight);
             writer.WriteByte((byte)motor.Stance);
             writer.WriteByte((byte)activeSlot);
             writer.WriteByte((byte)stats.Team);
@@ -697,10 +735,10 @@ namespace Pulsebreak.Shared.Net
             into.SpawnCount = reader.ReadByte();
             into.Health = reader.ReadFloat();
             into.Position = reader.ReadVector3();
-            into.Velocity = reader.ReadVector3();
-            into.Yaw = reader.ReadFloat();
-            into.Pitch = reader.ReadFloat();
-            into.EyeHeight = reader.ReadFloat();
+            into.Velocity = new Vector3(reader.ReadCentis(), reader.ReadCentis(), reader.ReadCentis());
+            into.Yaw = reader.ReadAngle();
+            into.Pitch = reader.ReadCentis();
+            into.EyeHeight = reader.ReadCentis();
             into.Stance = (Stance)reader.ReadByte();
             into.ActiveSlot = reader.ReadByte();
             into.Stats = new PlayerStats
@@ -722,14 +760,17 @@ namespace Pulsebreak.Shared.Net
             writer.WriteByte((byte)state.ActiveSlot);
             writer.WriteByte((byte)(sbyte)state.PendingSlot);
             for (int i = 0; i < state.Weapons.Length; i++) WriteWeapon(writer, state.Weapons[i]);
-            for (int i = 0; i < state.Utilities.Length; i++)
+            float[] floats = Scratch;
+            int count = Mathf.Min(state.Utilities.Length, 15);
+            for (int i = 0; i < count; i++)
             {
                 writer.WriteByte((byte)state.Utilities[i].Charges);
-                writer.WriteFloat(state.Utilities[i].Cooldown);
-                writer.WriteFloat(state.Utilities[i].RechargeTimer);
+                floats[i * 2] = state.Utilities[i].Cooldown;
+                floats[i * 2 + 1] = state.Utilities[i].RechargeTimer;
             }
+            floats[count * 2] = state.ThrowTimer;
+            writer.WriteSparseFloats(floats, count * 2 + 1);
             writer.WriteByte((byte)(sbyte)state.ThrowingSlot);
-            writer.WriteFloat(state.ThrowTimer);
             writer.WriteUShort((ushort)state.BeltButtons);
         }
 
@@ -739,48 +780,79 @@ namespace Pulsebreak.Shared.Net
             state.ActiveSlot = reader.ReadByte();
             state.PendingSlot = (sbyte)reader.ReadByte();
             for (int i = 0; i < state.Weapons.Length; i++) state.Weapons[i] = ReadWeapon(reader);
-            for (int i = 0; i < state.Utilities.Length; i++)
+            float[] floats = Scratch;
+            int count = Mathf.Min(state.Utilities.Length, 15);
+            for (int i = 0; i < count; i++) state.Utilities[i].Charges = reader.ReadByte();
+            reader.ReadSparseFloats(floats, count * 2 + 1);
+            for (int i = 0; i < count; i++)
             {
-                state.Utilities[i].Charges = reader.ReadByte();
-                state.Utilities[i].Cooldown = reader.ReadFloat();
-                state.Utilities[i].RechargeTimer = reader.ReadFloat();
+                state.Utilities[i].Cooldown = floats[i * 2];
+                state.Utilities[i].RechargeTimer = floats[i * 2 + 1];
             }
+            state.ThrowTimer = floats[count * 2];
             state.ThrowingSlot = (sbyte)reader.ReadByte();
-            state.ThrowTimer = reader.ReadFloat();
             state.BeltButtons = (InputButtons)reader.ReadUShort();
         }
 
+        /// <summary>
+        /// Somewhere to gather a group of floats before writing them in one go. One per thread:
+        /// a host's server and client take turns on the same one, never at the same time.
+        /// </summary>
+        [System.ThreadStatic] static float[] _scratch;
+        static float[] Scratch => _scratch ?? (_scratch = new float[32]);
+
+        // The player's own state goes out exactly, because the client checks its prediction
+        // against it, but packed: timers and offsets that are zero cost one bit each.
+
         static void WriteMotor(NetWriter writer, in MotorState s)
         {
-            writer.WriteVector3(s.Position);
-            writer.WriteVector3(s.Velocity);
-            writer.WriteFloat(s.Yaw);
-            writer.WriteFloat(s.Pitch);
+            float[] f = Scratch;
+            Put(f, 0, s.Position);
+            Put(f, 3, s.Velocity);
+            f[6] = s.Yaw;
+            f[7] = s.Pitch;
+            Put(f, 8, s.GroundNormal);
+            f[11] = s.EyeHeight;
+            f[12] = s.CoyoteTimer;
+            f[13] = s.JumpBufferTimer;
+            f[14] = s.SlideTimer;
+            f[15] = s.SlideCooldown;
+            f[16] = s.TimeSinceSprint;
+            f[17] = s.MantleTimer;
+            f[18] = s.MantleDuration;
+            f[19] = s.MantleCooldown;
+            Put(f, 20, s.MantleFrom);
+            Put(f, 23, s.MantleTo);
+            writer.WriteSparseFloats(f, MotorFloats);
             writer.WriteByte((byte)s.Stance);
             writer.WriteByte((byte)((s.Grounded ? 1 : 0) | (s.Sprinting ? 2 : 0) | (s.Mantling ? 4 : 0) | (s.JustLanded ? 8 : 0)));
-            writer.WriteVector3(s.GroundNormal);
-            writer.WriteFloat(s.EyeHeight);
-            writer.WriteFloat(s.CoyoteTimer);
-            writer.WriteFloat(s.JumpBufferTimer);
-            writer.WriteFloat(s.SlideTimer);
-            writer.WriteFloat(s.SlideCooldown);
-            writer.WriteFloat(s.TimeSinceSprint);
-            writer.WriteFloat(s.MantleTimer);
-            writer.WriteFloat(s.MantleDuration);
-            writer.WriteFloat(s.MantleCooldown);
-            writer.WriteVector3(s.MantleFrom);
-            writer.WriteVector3(s.MantleTo);
-            writer.WriteUShort((ushort)s.PrevButtons);
+            writer.WriteVarUInt((ushort)s.PrevButtons);
         }
+
+        const int MotorFloats = 26, WeaponFloats = 15;
 
         static MotorState ReadMotor(NetReader reader)
         {
+            float[] f = Scratch;
+            reader.ReadSparseFloats(f, MotorFloats);
             var s = new MotorState
             {
-                Position = reader.ReadVector3(),
-                Velocity = reader.ReadVector3(),
-                Yaw = reader.ReadFloat(),
-                Pitch = reader.ReadFloat(),
+                Position = Get(f, 0),
+                Velocity = Get(f, 3),
+                Yaw = f[6],
+                Pitch = f[7],
+                GroundNormal = Get(f, 8),
+                EyeHeight = f[11],
+                CoyoteTimer = f[12],
+                JumpBufferTimer = f[13],
+                SlideTimer = f[14],
+                SlideCooldown = f[15],
+                TimeSinceSprint = f[16],
+                MantleTimer = f[17],
+                MantleDuration = f[18],
+                MantleCooldown = f[19],
+                MantleFrom = Get(f, 20),
+                MantleTo = Get(f, 23),
                 Stance = (Stance)reader.ReadByte(),
             };
             int flags = reader.ReadByte();
@@ -788,76 +860,79 @@ namespace Pulsebreak.Shared.Net
             s.Sprinting = (flags & 2) != 0;
             s.Mantling = (flags & 4) != 0;
             s.JustLanded = (flags & 8) != 0;
-            s.GroundNormal = reader.ReadVector3();
-            s.EyeHeight = reader.ReadFloat();
-            s.CoyoteTimer = reader.ReadFloat();
-            s.JumpBufferTimer = reader.ReadFloat();
-            s.SlideTimer = reader.ReadFloat();
-            s.SlideCooldown = reader.ReadFloat();
-            s.TimeSinceSprint = reader.ReadFloat();
-            s.MantleTimer = reader.ReadFloat();
-            s.MantleDuration = reader.ReadFloat();
-            s.MantleCooldown = reader.ReadFloat();
-            s.MantleFrom = reader.ReadVector3();
-            s.MantleTo = reader.ReadVector3();
-            s.PrevButtons = (InputButtons)reader.ReadUShort();
+            s.PrevButtons = (InputButtons)(ushort)reader.ReadVarUInt();
             if (s.Stance > Stance.Sliding) reader.Fail();
             return s;
         }
 
         static void WriteWeapon(NetWriter writer, in WeaponState s)
         {
-            writer.WriteByte((byte)s.Phase);
-            writer.WriteFloat(s.PhaseTimer);
-            writer.WriteFloat(s.PhaseDuration);
-            writer.WriteFloat(s.ReloadElapsed);
-            writer.WriteFloat(s.ReloadTotal);
-            writer.WriteInt(s.AmmoInMagazine);
-            writer.WriteInt(s.AmmoReserve);
-            writer.WriteFloat(s.FireCooldown);
-            writer.WriteFloat(s.TriggerBuffer);
-            writer.WriteInt(s.BurstShotsRemaining);
-            writer.WriteFloat(s.ChargeAmount);
-            writer.WriteBool(s.MeleePending);
-            writer.WriteFloat(s.MeleeTimer);
-            writer.WriteFloat(s.AdsAmount);
-            writer.WriteFloat(s.Bloom);
-            writer.WriteInt(s.SprayIndex);
-            writer.WriteFloat(s.TimeSinceLastShot);
-            writer.WriteVector2(s.RecoilTarget);
-            writer.WriteVector2(s.RecoilCurrent);
-            writer.WriteUInt(s.ShotCounter);
-            writer.WriteUShort((ushort)s.PrevButtons);
+            float[] f = Scratch;
+            f[0] = s.PhaseTimer;
+            f[1] = s.PhaseDuration;
+            f[2] = s.ReloadElapsed;
+            f[3] = s.ReloadTotal;
+            f[4] = s.FireCooldown;
+            f[5] = s.TriggerBuffer;
+            f[6] = s.ChargeAmount;
+            f[7] = s.MeleeTimer;
+            f[8] = s.AdsAmount;
+            f[9] = s.Bloom;
+            f[10] = s.TimeSinceLastShot;
+            f[11] = s.RecoilTarget.x;
+            f[12] = s.RecoilTarget.y;
+            f[13] = s.RecoilCurrent.x;
+            f[14] = s.RecoilCurrent.y;
+            writer.WriteSparseFloats(f, WeaponFloats);
+            writer.WriteByte((byte)((byte)s.Phase | (s.MeleePending ? 0x80 : 0)));
+            writer.WriteVarInt(s.AmmoInMagazine);
+            writer.WriteVarInt(s.AmmoReserve);
+            writer.WriteVarInt(s.BurstShotsRemaining);
+            writer.WriteVarInt(s.SprayIndex);
+            writer.WriteVarUInt(s.ShotCounter);
+            writer.WriteVarUInt((ushort)s.PrevButtons);
         }
 
         static WeaponState ReadWeapon(NetReader reader)
         {
+            float[] f = Scratch;
+            reader.ReadSparseFloats(f, WeaponFloats);
+            int phase = reader.ReadByte();
             var s = new WeaponState
             {
-                Phase = (WeaponPhase)reader.ReadByte(),
-                PhaseTimer = reader.ReadFloat(),
-                PhaseDuration = reader.ReadFloat(),
-                ReloadElapsed = reader.ReadFloat(),
-                ReloadTotal = reader.ReadFloat(),
-                AmmoInMagazine = reader.ReadInt(),
-                AmmoReserve = reader.ReadInt(),
-                FireCooldown = reader.ReadFloat(),
-                TriggerBuffer = reader.ReadFloat(),
-                BurstShotsRemaining = reader.ReadInt(),
-                ChargeAmount = reader.ReadFloat(),
-                MeleePending = reader.ReadBool(),
-                MeleeTimer = reader.ReadFloat(),
-                AdsAmount = reader.ReadFloat(),
-                Bloom = reader.ReadFloat(),
-                SprayIndex = reader.ReadInt(),
-                TimeSinceLastShot = reader.ReadFloat(),
-                RecoilTarget = reader.ReadVector2(),
-                RecoilCurrent = reader.ReadVector2(),
-                ShotCounter = reader.ReadUInt(),
-                PrevButtons = (InputButtons)reader.ReadUShort(),
+                PhaseTimer = f[0],
+                PhaseDuration = f[1],
+                ReloadElapsed = f[2],
+                ReloadTotal = f[3],
+                FireCooldown = f[4],
+                TriggerBuffer = f[5],
+                ChargeAmount = f[6],
+                MeleeTimer = f[7],
+                AdsAmount = f[8],
+                Bloom = f[9],
+                TimeSinceLastShot = f[10],
+                RecoilTarget = new Vector2(f[11], f[12]),
+                RecoilCurrent = new Vector2(f[13], f[14]),
+                Phase = (WeaponPhase)(phase & 0x7F),
+                MeleePending = (phase & 0x80) != 0,
+                AmmoInMagazine = reader.ReadVarInt(),
+                AmmoReserve = reader.ReadVarInt(),
+                BurstShotsRemaining = reader.ReadVarInt(),
+                SprayIndex = reader.ReadVarInt(),
+                ShotCounter = reader.ReadVarUInt(),
+                PrevButtons = (InputButtons)(ushort)reader.ReadVarUInt(),
             };
             if (s.Phase > WeaponPhase.Holstering) reader.Fail();
             return s;
         }
+
+        static void Put(float[] into, int at, Vector3 v)
+        {
+            into[at] = v.x;
+            into[at + 1] = v.y;
+            into[at + 2] = v.z;
+        }
+
+        static Vector3 Get(float[] from, int at) => new Vector3(from[at], from[at + 1], from[at + 2]);
     }
 }

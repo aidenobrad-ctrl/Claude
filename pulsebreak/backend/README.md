@@ -61,7 +61,7 @@ All requests and replies are JSON. Errors always look like
 | `GET /v1/me` | yes | The account and its profile (level, XP, currency, rating) |
 | `GET /v1/loadouts` | yes | The account's loadouts |
 | `POST /v1/loadouts/sync` | yes | Send every loadout you have; get back the merged set |
-| `GET /v1/settings`, `PUT /v1/settings` | yes | The player's settings; the newest save wins |
+| `GET /v1/settings`, `PUT /v1/settings` | yes | The player's settings (sensitivity, field of view, damage numbers, toggle sprint, and the master, effects, music and interface volumes); the newest save wins. Fields added later have defaults, so older saves still read |
 | `POST /v1/game/tickets` | yes | A join ticket for a game server. `mode` is `casual` or `ranked`; ranked needs a verified email |
 | `POST /v1/matchmaking/guest` | | A guest pass for matchmaking without an account: `name` |
 | `GET /v1/matchmaking/playlists` | | The modes on offer and how many are searching for each |

@@ -29,6 +29,9 @@ namespace Pulsebreak.Client.Player
     /// </summary>
     public static class PlayerRigFactory
     {
+        /// <summary>The colour of hits on practice targets.</summary>
+        static readonly Color TargetColor = new Color(1f, 0.55f, 0.15f);
+
         /// <param name="loadout">What the player carries: weapons, utility and perk set.</param>
         /// <param name="projectiles">The world's projectile simulation, which this player's weapons fire into.</param>
         /// <param name="session">The connection to play through, or null to play offline.</param>
@@ -70,9 +73,16 @@ namespace Pulsebreak.Client.Player
             player.UtilityThrowStarted += _ => sfx.Play(Sfx.Throw, 0.7f, 0.06f);
             player.HitConfirmed += hit =>
             {
-                if (hit.Killed) sfx.Play(Sfx.Kill, 0.9f);
+                if (hit.Killed)
+                {
+                    sfx.Play(Sfx.Kill, 0.9f);
+                    if (hit.Zone == HitZone.Head) sfx.Play(Sfx.KillHeadshot, 0.8f);
+                }
                 else if (hit.Zone == HitZone.Head) sfx.Play(Sfx.Headshot, 0.9f);
                 else sfx.Play(Sfx.Hit, 0.8f, 0.03f);
+
+                // Online, the match draws the burst in the colour of whoever was hit.
+                if (session == null) fx.PlayBodyHit(hit.Point, hit.Point - cameraObject.transform.position, TargetColor, hit.Zone == HitZone.Head);
             };
             player.ActiveWeaponChanged += _ => sfx.Play(Sfx.Swap, 0.7f, 0.05f);
             player.ReloadStarted += () => sfx.Play(Sfx.ReloadStart, 0.8f);
@@ -83,9 +93,19 @@ namespace Pulsebreak.Client.Player
             projectiles.Happened += projectileEvent =>
             {
                 fx.OnProjectileEvent(projectileEvent);
-                if (projectileEvent.Kind == ProjectileEventKind.Explosion) sfx.Play(Sfx.Explosion, 1f, 0.06f);
-                else if (projectileEvent.Kind == ProjectileEventKind.Bounce) sfx.Play(Sfx.Bounce, 0.5f, 0.1f);
+                if (projectileEvent.Kind == ProjectileEventKind.Explosion) sfx.PlayAt(Sfx.Explosion, projectileEvent.Point, 1f, 0.06f, 6f);
+                else if (projectileEvent.Kind == ProjectileEventKind.Bounce) sfx.PlayAt(Sfx.Bounce, projectileEvent.Point, 0.5f, 0.1f, 1.5f, 25f);
             };
+
+            // An explosion shakes the view, more the closer it is.
+            fx.Exploded += (point, radius) =>
+            {
+                float distance = Vector3.Distance(cameraObject.transform.position, point);
+                playerCamera.AddShake(Mathf.Clamp01(1f - distance / (radius * 4f)) * 0.85f);
+            };
+
+            var steps = cameraObject.AddComponent<OwnFootsteps>();
+            steps.Begin(player, sfx);
 
             player.Jumped += () => sfx.Play(Sfx.Jump, 0.5f, 0.05f);
             player.Landed += impact =>
@@ -104,6 +124,28 @@ namespace Pulsebreak.Client.Player
                 Fx = fx,
                 Sfx = sfx,
             };
+        }
+    }
+
+    /// <summary>Our own footsteps: quiet, so we hear other people's over them.</summary>
+    public sealed class OwnFootsteps : MonoBehaviour
+    {
+        readonly FootstepTimer _timer = new FootstepTimer();
+        LocalPlayerController _player;
+        SfxPlayer _sfx;
+
+        public void Begin(LocalPlayerController player, SfxPlayer sfx)
+        {
+            _player = player;
+            _sfx = sfx;
+        }
+
+        void Update()
+        {
+            if (_player == null || _sfx == null) return;
+            MotorState motor = _player.MotorState;
+            float loudness = _timer.Advance(motor.Velocity, motor.Grounded, motor.Stance, Time.deltaTime);
+            if (loudness > 0f) _sfx.Play(Sfx.Footstep, loudness * 0.4f, 0.06f);
         }
     }
 }

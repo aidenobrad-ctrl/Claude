@@ -511,11 +511,66 @@ namespace Pulsebreak.Tests
             Assert.That(player.Id, Is.EqualTo(1));
             Assert.That(player.Alive, Is.False);
             Assert.That(player.HasOwn, Is.False, "nobody is sent an opponent's ammunition or cooldowns");
-            Assert.That(player.Position, Is.EqualTo(motor.Position));
+            Assert.That(player.Position, Is.EqualTo(motor.Position), "where they stand is exact");
+            Assert.That(player.Yaw, Is.EqualTo(90f).Within(0.01f), "what only draws them is close enough");
+            Assert.That(player.Pitch, Is.EqualTo(5f).Within(0.01f));
+            Assert.That(player.EyeHeight, Is.EqualTo(1.62f).Within(0.01f));
+            Assert.That(player.Velocity.x, Is.EqualTo(1f).Within(0.01f));
             Assert.That(player.ActiveSlot, Is.EqualTo(2));
             Assert.That(reader.Failed, Is.False);
             Assert.That(reader.Remaining, Is.EqualTo(0));
-            Assert.That(otherBytes, Is.LessThan(ownerBytes / 4));
+            Assert.That(otherBytes, Is.LessThanOrEqualTo(40), "another player is a few dozen bytes");
+            Assert.That(otherBytes, Is.LessThan(ownerBytes / 2));
+        }
+
+        [Test]
+        public void PackedNumbers_ComeBackExactly()
+        {
+            Writer.Reset();
+            Writer.WriteByte((byte)NetMessage.Snapshot);
+            uint[] whole = { 0, 1, 127, 128, 16383, 16384, 3000000000u, uint.MaxValue };
+            int[] signed = { 0, -1, 1, -64, 63, -1000000, int.MinValue, int.MaxValue };
+            foreach (uint value in whole) Writer.WriteVarUInt(value);
+            foreach (int value in signed) Writer.WriteVarInt(value);
+            var floats = new float[32];
+            floats[0] = 1.5f; floats[3] = -0f; floats[17] = 1e-30f; floats[31] = -123456.789f;
+            Writer.WriteSparseFloats(floats, 32);
+            int sparseStart = Writer.Length;
+            Writer.WriteSparseFloats(new float[5], 5);
+            Assert.That(Writer.Length - sparseStart, Is.EqualTo(1), "five zeros cost one byte");
+            Writer.WriteAngle(-90f);
+            Writer.WriteCentis(-3.14159f);
+
+            NetReader reader = Written(NetMessage.Snapshot);
+            foreach (uint value in whole) Assert.That(reader.ReadVarUInt(), Is.EqualTo(value));
+            foreach (int value in signed) Assert.That(reader.ReadVarInt(), Is.EqualTo(value));
+            var back = new float[32];
+            reader.ReadSparseFloats(back, 32);
+            for (int i = 0; i < 32; i++)
+                Assert.That(BitConverter.SingleToInt32Bits(back[i]), Is.EqualTo(BitConverter.SingleToInt32Bits(floats[i])), "float " + i);
+            reader.ReadSparseFloats(back, 5);
+            Assert.That(reader.ReadAngle(), Is.EqualTo(270f).Within(0.01f));
+            Assert.That(reader.ReadCentis(), Is.EqualTo(-3.14f).Within(0.001f));
+            Assert.That(reader.Failed, Is.False);
+            Assert.That(reader.Remaining, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void PackedNumbers_ThatAreBroken_FailTheRead()
+        {
+            Writer.Reset();
+            Writer.WriteByte((byte)NetMessage.Snapshot);
+            for (int i = 0; i < 6; i++) Writer.WriteByte(0xFF);     // a number that never ends
+            NetReader reader = Written(NetMessage.Snapshot);
+            reader.ReadVarUInt();
+            Assert.That(reader.Failed, Is.True);
+
+            Writer.Reset();
+            Writer.WriteByte((byte)NetMessage.Snapshot);
+            Writer.WriteVarUInt(1u << 9);                           // says float 9 follows, of 5
+            reader = Written(NetMessage.Snapshot);
+            reader.ReadSparseFloats(new float[5], 5);
+            Assert.That(reader.Failed, Is.True);
         }
 
         [Test]

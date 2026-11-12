@@ -413,10 +413,37 @@ The tests that need the stand-in physics world are not in the Unity project, bec
 - **No NAT traversal or relay.** To host a private match over the internet the host forwards a UDP port. Matchmade games run on dedicated servers on public addresses and do not have this problem.
 - **A fixed fleet.** Dedicated servers are started by hand and offered to matchmaking; nothing starts more when they are all busy yet.
 - **IPv4 only.**
-- **Snapshots are sent whole**, sixty times a second: about 0.6 KB with twelve players, inside one packet. Delta compression and a lower rate would cut that for larger matches.
+- **Snapshots are sent whole**, sixty times a second, but packed: about 300 kbit/s for each player in a twelve-player match. A player's own state goes exactly, with zero values left out (`NetWriter.WriteSparseFloats`) and small whole numbers in a byte or two (`WriteVarInt`); other players' speeds, angles and eye height go to a hundredth, since they only draw them. Delta compression against acknowledged snapshots would cut it further for larger matches.
 - **A player's own projectiles appear when the server launches them**, one round trip after the trigger. The shot sound and recoil are immediate.
 - **Players pass through each other.** It keeps prediction independent of where the opponent is.
-- **Sound has no position yet.** Other players' shots are only quieter with distance.
+
+
+## Sound
+
+Every sound is generated in code when the game starts (`SfxSynth`), so the project carries no audio files and every sound is the game's own. `SoundBank` makes and keeps the clips; its `Sfx` list is the catalogue.
+
+| Piece | Job |
+| --- | --- |
+| `SfxPlayer` | On the player's camera. Flat voices for our own sounds; twenty voices out in the world for everyone else's, each with distance falloff and a low-pass filter that closes with distance and much further when a wall is in the way (one line check per sound) |
+| `FootstepTimer` | Steps from speed, stance and whether a body is on the ground: longer strides and louder steps the faster it goes, almost nothing crouched. Used for us (quietly) and for every other player (`RemotePlayerView`) |
+| `UiSounds` | Menu clicks and hovers (`Attach` hooks a whole screen), countdowns, objective chimes. Its own object, kept across scenes |
+| `MusicSynth`, `MusicPlayer` | The menu piece, rendered on the audio thread as it plays (`OnAudioFilterRead`), fading in and out; stingers on their own source |
+| Volumes | Master through the listener; effects, music and interface multiplied in as each sound starts (`SoundBank.Volume`) |
+
+## Effects and the picture
+
+Effects are drawn with one small shader of the game's own (`Resources/Shaders/PulsebreakEffect.shader`: unlit, vertex colour, additive or see-through) and textures painted in code (`FxResources`). Particle colours are eight-bit, so the additive material carries a brightness above white that lets fire and sparks catch the bloom.
+
+| Piece | Job |
+| --- | --- |
+| `FxParticles` | One particle system per kind (sparks, dust, smoke, fire, energy), told where to put particles with `Emit`; one system serves every effect of its kind at once |
+| `FxQuads`, `FxLights` | Pools of flat squares (bullet holes, scorch marks, shock rings) and point lights (flashes), lent out in turn |
+| `WeaponFx` | Muzzle flashes (a mesh of crossed flames and a star), tracers, impacts, energy bursts on players, the body coming apart on a kill, the arrival shimmer, projectile trails, explosions. Raises `Exploded` for the camera shake |
+| `ScreenEffects` | A global post-processing volume made in code: bloom, tonemapping, colour, vignette, colour fringing; red edges when hurt or low, grey when out |
+| `GraphicsSetup` | Video settings into the engine: quality presets on the pipeline asset (put back as they were when play stops in the Editor), camera anti-aliasing, frame cap, VSync, window mode |
+| `FirstPersonCamera` | Explosion shake and the flinch when hit; only the picture moves, never the aim |
+
+When the server applies damage to a person it sends them a `HurtMessage`: how much, the zone, and where it came from (back along the shot, or an explosion's centre). The HUD turns it into an arc round the crosshair that keeps pointing at the source as you turn.
 
 ## Cosmetics
 

@@ -194,8 +194,19 @@ namespace Pulsebreak.Client.Online
             SettingsDocument remote = result.Value;
             if (remote.data != null && remote.updatedAt > GameSettings.UpdatedAt)
             {
-                GameSettings.Adopt(remote.data.sensitivity, remote.data.adsSensitivityMultiplier, remote.data.fieldOfView,
-                    remote.data.showDamageNumbers, remote.data.masterVolume, remote.updatedAt);
+                SettingsValues data = remote.data;
+                GameSettings.Adopt(new GameSettings.Synced
+                {
+                    Sensitivity = data.sensitivity,
+                    AdsMultiplier = data.adsSensitivityMultiplier,
+                    FieldOfView = data.fieldOfView,
+                    DamageNumbers = data.showDamageNumbers,
+                    ToggleSprint = data.toggleSprint,
+                    Master = data.masterVolume,
+                    Effects = data.effectsVolume,
+                    Music = data.musicVolume,
+                    Interface = data.interfaceVolume,
+                }, remote.updatedAt);
             }
             else if (GameSettings.UpdatedAt > remote.updatedAt)
             {
@@ -215,7 +226,11 @@ namespace Pulsebreak.Client.Online
                     adsSensitivityMultiplier = GameSettings.AdsSensitivityMultiplier,
                     fieldOfView = GameSettings.FieldOfView,
                     showDamageNumbers = GameSettings.ShowDamageNumbers,
+                    toggleSprint = GameSettings.ToggleSprint,
                     masterVolume = GameSettings.MasterVolume,
+                    effectsVolume = GameSettings.EffectsVolume,
+                    musicVolume = GameSettings.MusicVolume,
+                    interfaceVolume = GameSettings.InterfaceVolume,
                 },
             });
         }

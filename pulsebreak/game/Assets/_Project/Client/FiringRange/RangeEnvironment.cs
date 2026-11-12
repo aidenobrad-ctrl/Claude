@@ -42,6 +42,7 @@ namespace Pulsebreak.Client.FiringRange
             // Use the scene's skybox when it has one, otherwise a flat sky colour.
             camera.clearFlags = RenderSettings.skybox != null ? CameraClearFlags.Skybox : CameraClearFlags.SolidColor;
             camera.backgroundColor = Sky;
+            Visuals.GraphicsSetup.ConfigureCamera(camera);
         }
     }
 }

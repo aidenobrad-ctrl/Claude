@@ -11,15 +11,32 @@ using Pulsebreak.Shared.Net;
 
 namespace Pulsebreak.Api.Endpoints;
 
-/// <summary>The settings that follow a player between machines. Out-of-range values are pulled back into range rather than refused.</summary>
-public sealed record SettingsData(float Sensitivity, float AdsSensitivityMultiplier, float FieldOfView, bool ShowDamageNumbers, float MasterVolume)
+/// <summary>
+/// The settings that follow a player between machines. Out-of-range values are pulled back
+/// into range rather than refused. Settings added later have defaults, so copies saved before
+/// they existed (and older games that do not send them) still read.
+/// </summary>
+public sealed record SettingsData(
+    float Sensitivity,
+    float AdsSensitivityMultiplier,
+    float FieldOfView,
+    bool ShowDamageNumbers,
+    float MasterVolume,
+    float EffectsVolume = 1f,
+    float MusicVolume = 0.6f,
+    float InterfaceVolume = 0.8f,
+    bool ToggleSprint = false)
 {
     public SettingsData Clamped() => new(
         Math.Clamp(Sensitivity, 0.2f, 8f),
         Math.Clamp(AdsSensitivityMultiplier, 0.3f, 1.5f),
         Math.Clamp(FieldOfView, 70f, 120f),
         ShowDamageNumbers,
-        Math.Clamp(MasterVolume, 0f, 1f));
+        Math.Clamp(MasterVolume, 0f, 1f),
+        Math.Clamp(EffectsVolume, 0f, 1f),
+        Math.Clamp(MusicVolume, 0f, 1f),
+        Math.Clamp(InterfaceVolume, 0f, 1f),
+        ToggleSprint);
 }
 
 /// <param name="Data">Null if the player has never saved settings.</param>

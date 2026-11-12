@@ -1,4 +1,5 @@
 using UnityEngine;
+using Pulsebreak.Client.Audio;
 using Pulsebreak.Client.Visuals;
 using Pulsebreak.Shared.Cosmetics;
 using Pulsebreak.Shared.Match;
@@ -32,6 +33,10 @@ namespace Pulsebreak.Client.Net
         Transform _marker;
         bool _friendly;
         float _flash;
+        readonly FootstepTimer _steps = new FootstepTimer();
+        float _lastFallSpeed;
+        Stance _lastStance;
+        bool _wasVisible;
         int _shownSlot = -1;
         byte _shownSpawn;
         CharacterLook _shownLook;
@@ -41,6 +46,13 @@ namespace Pulsebreak.Client.Net
 
         /// <summary>The front of the weapon block, where tracers start.</summary>
         public Vector3 Muzzle => _weapon.TransformPoint(new Vector3(0f, 0f, 0.5f));
+
+        /// <summary>Where they stand, as last drawn.</summary>
+        public Vector3 Feet => _body.Root.position;
+
+        /// <summary>Whether a point is on or close to their body, as last drawn.</summary>
+        public bool Covers(Vector3 point) =>
+            Visible && new Vector2(point.x - Feet.x, point.z - Feet.z).sqrMagnitude < 0.6f * 0.6f && point.y > Feet.y - 0.2f && point.y < Feet.y + 2.1f;
 
         public static RemotePlayerView Create(ClientSession session, int playerId, MovementConfig movement)
         {
@@ -81,7 +93,12 @@ namespace Pulsebreak.Client.Net
             RemoteView view = default;
             Visible = _session != null && _session.TryGetView(_playerId, out view);
             if (_body.Root.gameObject.activeSelf != Visible) _body.Root.gameObject.SetActive(Visible);
-            if (!Visible) return;
+            if (!Visible)
+            {
+                _wasVisible = false;
+                return;
+            }
+            PlayMovementSounds(view);
 
             ClientPlayer player = _session.Players[_playerId];
             _look.Apply(player.Look);
@@ -100,6 +117,29 @@ namespace Pulsebreak.Client.Net
                 _look.Flash(Mathf.Clamp01(_flash / FlashTime));
                 if (_flash <= 0f) _look.Flash(0f);
             }
+        }
+
+        /// <summary>Their footsteps, jumps, landings and slides, from where they are.</summary>
+        void PlayMovementSounds(in RemoteView view)
+        {
+            SfxPlayer sfx = SfxPlayer.Current;
+            Vector3 velocity = view.Velocity;
+            Vector3 feet = view.Pose.Position;
+            if (sfx != null)
+            {
+                bool grounded = Mathf.Abs(velocity.y) < 0.6f;
+                float loudness = _steps.Advance(velocity, grounded, view.Stance, Time.deltaTime);
+                if (loudness > 0f) sfx.PlayAt(Sfx.Footstep, feet, loudness, 0.08f, 1.5f, 34f);
+                if (_wasVisible)
+                {
+                    if (velocity.y > 3f && _lastFallSpeed > -1f && _lastFallSpeed < 1f) sfx.PlayAt(Sfx.Jump, feet, 0.6f, 0.05f, 1.5f, 25f);
+                    if (_lastFallSpeed < -4f && velocity.y > -1f) sfx.PlayAt(Sfx.Land, feet, Mathf.Clamp01(-_lastFallSpeed / 12f), 0.05f, 1.5f, 30f);
+                    if (view.Stance == Stance.Sliding && _lastStance != Stance.Sliding) sfx.PlayAt(Sfx.Slide, feet, 0.8f, 0.05f, 1.5f, 30f);
+                }
+            }
+            _lastFallSpeed = velocity.y;
+            _lastStance = view.Stance;
+            _wasVisible = true;
         }
 
         /// <summary>

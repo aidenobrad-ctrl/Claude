@@ -13,10 +13,11 @@ The game is built in phases. Each one ends with something you can run and judge,
 | 7 | Character customization and cosmetics | Built, awaiting your playtest |
 | 8 | Progression, challenges and ranked | Built, awaiting your playtest |
 | 8b | Abilities, streaks and more utility | Planned |
-| 9 | More maps, lobby extras, parties | Planned |
+| 9 | UI polish, audio, visual effects and optimization | Built, awaiting your playtest |
+| 9b | More maps and lobby extras | Planned |
 | 10 | Social: friends, parties, reporting | Planned |
 | 11 | Store, battle pass, more cosmetics | Planned |
-| 12 | Settings, polish, anti-cheat hardening, launch readiness | Planned |
+| 12 | Keybinds, accessibility, anti-cheat hardening, launch readiness | Planned |
 
 ## Phase 1: Movement, one weapon, firing range
 
@@ -181,12 +182,29 @@ You chose: accounts back on, unlocks enforced except in private matches and on t
 
 **You can test:** a match where streaks, utility and movement tools all come into play.
 
-## Phase 9: More maps, lobby extras, parties
+## Phase 9: UI polish, audio, visual effects and optimization
+
+You chose: hits on players are bursts of energy in their colour (no blood), and music in the menus only, plus short stingers for the big moments.
+
+- **Sound you can place.** Other players' shots, footsteps, jumps, landings, slides, throws and explosions play from where they happened: quieter and duller with distance, muffled behind walls. Footsteps tell you who is near: sprinting is loud, running is clear, crouch-walking is nearly silent. Bullets that pass close crack past your head.
+- **More sounds**, all generated in code: footsteps, being hit (a heavier one to the head), going down, a heartbeat on low health, arriving, a headshot kill, countdown beeps, zone captured and lost, the hardpoint moving, Gun Game promotions, match found, a finished challenge, and clicks for every menu.
+- **Music:** a synth piece in the menus, made as it plays, that fades out when a match starts; stingers for the match start, a round won or lost, victory, defeat and a level up.
+- **Four volume sliders:** master, effects, music, interface. They follow your account.
+- **Effects:** muzzle flashes (now for other players too), glowing tracers, bullet holes with sparks and dust, energy bursts where shots land on players, a body coming apart into light when a player goes down and a shimmer when one arrives, rockets trailing smoke and energy shots trailing light, and explosions with fire, smoke, sparks, a shock ring, a scorch mark and a flash.
+- **The picture:** bloom, a neutral tone curve, a little contrast and a vignette. When you are hit the screen edges flash red and a red arc points to where it came from; on low health the edges stay red and the colour drains; when you are out it goes grey. Explosions shake the view and hits make it flinch (both can be turned off).
+- **Interface:** a Settings screen (gameplay, video, audio) from the menu and the pause menu, which is now a short column of buttons; buttons, tabs and screens ease in and out; announcements punch in; medals for headshots, multi-kills and streaks; an "eliminated by" line saying who got you, with what, and how much health they had left; the camera drifts slowly over the arena behind the main menu.
+- **Video settings:** quality preset (Low, Medium, High, Ultra), display mode, frame rate limit, VSync, render scale, and a frame rate readout.
+- **Optimization, measured:** in a twelve-player match each player now downloads about 300 kbit/s instead of 510 (own state packed without losing anything, other players' angles and speeds sent to a hundredth), the server allocates no garbage of its own walking the player list, and each arena is drawn in a handful of batches instead of one draw call per block. A test holds these numbers.
+- **A hurt message.** The server tells a player how much damage they took and where it came from, which the arcs and the flinch use.
+
+**You can test:** play a match against bots with headphones and find them by their footsteps; take fire from behind and follow the arc; throw a grenade near a wall; turn every slider in Settings; try Low and Ultra and watch the frame rate readout.
+
+## Phase 9b: More maps and lobby extras
 
 - At least three more maps, from duel arenas to medium 5v5 layouts, with clear lanes, cover and height.
 - More private lobby settings: time limit, health, weapon restrictions.
-- Parties: invite friends and queue together.
 - Bots that use cover and call out to their team.
+- Real character and weapon models in place of the shapes.
 
 **You can test:** every mode on every map it supports, alone against bots or in a private lobby with friends.
 
@@ -204,10 +222,9 @@ You chose: accounts back on, unlocks enforced except in private matches and on t
 
 **You can test:** earn and buy cosmetics, and equip them on the Customize screen.
 
-## Phase 12: Settings, polish, anti-cheat hardening, launch readiness
+## Phase 12: Keybinds, accessibility, anti-cheat hardening, launch readiness
 
-- Full settings: keybinds, graphics, audio, crosshair editor, colourblind modes.
-- Proper audio and visual effects, real weapon models, performance work.
+- The rest of the settings: keybinds, a crosshair editor, colourblind modes, subtitles for sound cues. (Graphics and audio settings were built in Phase 9.)
 - Server-side anomaly detection on top of the built-in validation, and a decision on client-side anti-cheat for what a server cannot see (wallhacks, aim assistance).
 - Build pipeline, server deployment, monitoring.
 

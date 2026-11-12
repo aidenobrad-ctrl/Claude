@@ -5,8 +5,9 @@ using Pulsebreak.Shared.Weapons;
 namespace Pulsebreak.Client.Audio
 {
     /// <summary>
-    /// Generates short placeholder sound effects from noise and sine waves. They are stand-ins:
-    /// good enough to feel a shot land or a reload finish, and trivially replaced by real clips.
+    /// Generates the game's sound effects from noise and sine waves when they are first needed,
+    /// so the project carries no audio files and every sound is our own. Recorded clips could
+    /// replace any of them later without touching the code that plays them.
     /// </summary>
     public static class SfxSynth
     {
@@ -189,15 +190,203 @@ namespace Pulsebreak.Client.Audio
             });
         }
 
+        // ------------------------------------------------------------------ bodies and movement
+
+        /// <summary>A shoe on a hard floor: a heel knock and a short scrape. Variants differ in pitch and grit.</summary>
+        public static AudioClip Footstep(int variant)
+        {
+            var random = new System.Random(41 + variant * 7);
+            float lowpassed = 0f, bandpassed = 0f, phase = 0f;
+            float pitch = 1f + (variant - 1.5f) * 0.07f;
+            return Build("Footstep" + variant, 0.13f, t =>
+            {
+                float noise = (float)random.NextDouble() * 2f - 1f;
+                lowpassed += (noise - lowpassed) * 0.22f;
+                bandpassed += (lowpassed - bandpassed) * 0.5f;
+                float knock = (lowpassed - bandpassed) * 3.2f * Mathf.Exp(-t * 70f);
+                phase += Tau * Mathf.Max(60f, 140f * pitch - 500f * t) / SampleRate;
+                float body = Mathf.Sin(phase) * Mathf.Exp(-t * 45f) * 0.55f;
+                float scrape = t > 0.025f ? noise * 0.12f * Mathf.Exp(-(t - 0.025f) * 55f) : 0f;
+                return SoftClip((knock + body + scrape) * 0.9f);
+            });
+        }
+
+        /// <summary>Taking a hit: a dull thud with a short ringing edge.</summary>
+        public static AudioClip Hurt(bool head)
+        {
+            var random = new System.Random(head ? 43 : 47);
+            float lowpassed = 0f, phase = 0f;
+            return Build(head ? "HurtHead" : "Hurt", head ? 0.32f : 0.24f, t =>
+            {
+                float noise = (float)random.NextDouble() * 2f - 1f;
+                lowpassed += (noise - lowpassed) * 0.1f;
+                phase += Tau * Mathf.Max(50f, 120f - 200f * t) / SampleRate;
+                float thud = (Mathf.Sin(phase) * 0.9f + lowpassed * 2.5f) * Mathf.Exp(-t * 22f);
+                float ring = head ? Mathf.Sin(Tau * 2900f * t) * 0.25f * Mathf.Exp(-t * 14f) : 0f;
+                return SoftClip((thud + ring) * 1.1f);
+            });
+        }
+
+        /// <summary>Going down: a heavy hit, then the world dropping away.</summary>
+        public static AudioClip Death()
+        {
+            var random = new System.Random(53);
+            float lowpassed = 0f, phase = 0f;
+            return Build("Death", 1.1f, t =>
+            {
+                float noise = (float)random.NextDouble() * 2f - 1f;
+                lowpassed += (noise - lowpassed) * Mathf.Lerp(0.3f, 0.02f, t);
+                phase += Tau * Mathf.Lerp(220f, 40f, Mathf.Sqrt(t)) / SampleRate;
+                float fall = Mathf.Sin(phase) * Mathf.Exp(-t * 2.5f) * 0.6f;
+                float hit = lowpassed * 3f * Mathf.Exp(-t * 6f);
+                return SoftClip(fall + hit);
+            });
+        }
+
+        /// <summary>A heartbeat: lub-dub.</summary>
+        public static AudioClip Heartbeat() =>
+            Build("Heartbeat", 0.5f, t =>
+            {
+                float lub = Mathf.Sin(Tau * 55f * t) * Mathf.Exp(-t * 28f);
+                float dt = t - 0.16f;
+                float dub = dt > 0f ? Mathf.Sin(Tau * 48f * dt) * Mathf.Exp(-dt * 34f) * 0.75f : 0f;
+                return SoftClip((lub + dub) * 1.6f);
+            });
+
+        /// <summary>A bullet passing close by: a short hiss that drops in pitch as it goes.</summary>
+        public static AudioClip Whiz()
+        {
+            var random = new System.Random(59);
+            float a = 0f, b = 0f;
+            return Build("Whiz", 0.22f, t =>
+            {
+                float noise = (float)random.NextDouble() * 2f - 1f;
+                float cut = Mathf.Lerp(0.55f, 0.12f, t / 0.22f);
+                a += (noise - a) * cut;
+                b += (a - b) * cut;
+                float envelope = Mathf.Sin(Mathf.Clamp01(t / 0.22f) * Mathf.PI);
+                return (a - b) * 3f * envelope * envelope;
+            });
+        }
+
+        /// <summary>Arriving: a rising shimmer.</summary>
+        public static AudioClip Spawn() =>
+            Build("Spawn", 0.6f, t =>
+            {
+                float progress = t / 0.6f;
+                float frequency = Mathf.Lerp(380f, 1150f, progress * progress);
+                float shimmer = Mathf.Sin(Tau * frequency * t) * (0.6f + 0.4f * Mathf.Sin(Tau * 18f * t));
+                float envelope = Mathf.Sin(progress * Mathf.PI) * 0.35f;
+                return shimmer * envelope + Mathf.Sin(Tau * frequency * 1.5f * t) * envelope * 0.3f;
+            });
+
+        // ------------------------------------------------------------------ signals
+
+        /// <summary>A short beep, for countdowns.</summary>
+        public static AudioClip Beep(string name, float frequency, float seconds, float volume) =>
+            Build(name, seconds, t =>
+            {
+                float attack = Mathf.Clamp01(t / 0.004f);
+                return (Mathf.Sin(Tau * frequency * t) + 0.25f * Mathf.Sin(Tau * frequency * 2f * t)) * attack * Mathf.Exp(-t * 6f / seconds) * volume;
+            });
+
+        /// <summary>Two or three notes one after another, as a chime.</summary>
+        public static AudioClip Chime(string name, float step, float ring, float volume, params float[] notes)
+        {
+            float seconds = step * (notes.Length - 1) + ring;
+            return Build(name, seconds, t =>
+            {
+                float sum = 0f;
+                for (int i = 0; i < notes.Length; i++)
+                {
+                    float local = t - i * step;
+                    if (local < 0f) break;
+                    float f = notes[i];
+                    sum += (Mathf.Sin(Tau * f * local) + 0.3f * Mathf.Sin(Tau * f * 2f * local) + 0.12f * Mathf.Sin(Tau * f * 3.01f * local))
+                           * Mathf.Exp(-local * 4.5f / ring) * Mathf.Clamp01(local / 0.003f);
+                }
+                return SoftClip(sum * volume);
+            });
+        }
+
+        /// <summary>A soft interface tick.</summary>
+        public static AudioClip Tick(string name, float frequency, float seconds, float volume) =>
+            Build(name, seconds, t => Mathf.Sin(Tau * frequency * t) * Mathf.Exp(-t * 5f / seconds) * Mathf.Clamp01(t / 0.002f) * volume);
+
+        /// <summary>A buzz for something that cannot be done.</summary>
+        public static AudioClip Buzz(string name) =>
+            Build(name, 0.18f, t =>
+            {
+                float square = Mathf.Sign(Mathf.Sin(Tau * 140f * t)) * 0.5f + Mathf.Sin(Tau * 280f * t) * 0.3f;
+                return square * Mathf.Exp(-t * 12f) * 0.25f;
+            });
+
+        // ------------------------------------------------------------------ music stingers
+
+        /// <summary>A short musical phrase for a moment in a match, on the music volume.</summary>
+        public static AudioClip Stinger(Stinger kind)
+        {
+            switch (kind)
+            {
+                case Audio.Stinger.MatchStart:
+                    return Phrase("StingerMatchStart", 1.5f, 1f, (0f, -7, 1.3f), (0f, 0, 1.3f), (0f, 5, 1.3f), (0f, 8, 1.3f), (0.02f, 17, 0.5f));
+                case Audio.Stinger.RoundWon:
+                    return Phrase("StingerRoundWon", 1.1f, 0f, (0f, 0, 0.6f), (0.12f, 5, 0.6f), (0.24f, 12, 0.8f));
+                case Audio.Stinger.RoundLost:
+                    return Phrase("StingerRoundLost", 1.2f, 0f, (0f, 0, 0.6f), (0.15f, -4, 0.6f), (0.3f, -7, 0.9f));
+                case Audio.Stinger.Victory:
+                    return Phrase("StingerVictory", 2.6f, 0.8f, (0f, -7, 0.5f), (0.1f, -3, 0.5f), (0.2f, 0, 0.5f), (0.3f, 5, 0.6f),
+                        (0.45f, 5, 2f), (0.45f, 9, 2f), (0.45f, 12, 2f), (0.45f, 17, 1.6f));
+                case Audio.Stinger.Defeat:
+                    return Phrase("StingerDefeat", 2.4f, 0.5f, (0f, -7, 0.7f), (0.25f, -9, 0.7f), (0.5f, -11, 0.8f), (0.75f, -12, 1.6f), (0.75f, -24, 1.8f));
+                case Audio.Stinger.LevelUp:
+                    return Phrase("StingerLevelUp", 1.6f, 0f, (0f, 3, 0.5f), (0.05f, 7, 0.5f), (0.1f, 10, 0.5f), (0.15f, 15, 0.6f),
+                        (0.2f, 19, 0.7f), (0.25f, 22, 1.1f), (0.25f, 27, 1.1f));
+                default:
+                    return null;
+            }
+        }
+
+        /// <summary>Notes (start in seconds, semitones from A4, how long they ring), with an optional low boom under the first.</summary>
+        static AudioClip Phrase(string name, float seconds, float boom, params (float Start, int Semitones, float Ring)[] notes)
+        {
+            float boomPhase = 0f;
+            return Build(name, seconds, t =>
+            {
+                float sum = 0f;
+                for (int i = 0; i < notes.Length; i++)
+                {
+                    float local = t - notes[i].Start;
+                    if (local < 0f) continue;
+                    float f = Note(notes[i].Semitones);
+                    float vibrato = 1f + 0.003f * Mathf.Sin(Tau * 5f * local) * Mathf.Clamp01(local * 2f);
+                    float tone = Mathf.Sin(Tau * f * vibrato * local) + 0.35f * Mathf.Sin(Tau * f * 2f * local) + 0.12f * Mathf.Sin(Tau * f * 3f * local);
+                    sum += tone * Mathf.Clamp01(local / 0.006f) * Mathf.Exp(-local * 3f / notes[i].Ring);
+                }
+                float low = 0f;
+                if (boom > 0f)
+                {
+                    boomPhase += Tau * Mathf.Max(38f, 90f - 140f * t) / SampleRate;
+                    low = Mathf.Sin(boomPhase) * Mathf.Exp(-t * 4f) * boom;
+                }
+                return SoftClip(sum * 0.22f + low * 0.7f);
+            });
+        }
+
+        // ------------------------------------------------------------------ helpers
+
+        public static float Note(int semitonesFromA4) => 440f * Mathf.Pow(2f, semitonesFromA4 / 12f);
+
         static float ClickSample(System.Random random, float frequency, float t)
         {
             float noise = (float)random.NextDouble() * 2f - 1f;
             return noise * Mathf.Exp(-t * 300f) * 0.6f + Mathf.Sin(Tau * frequency * t) * Mathf.Exp(-t * 80f) * 0.5f;
         }
 
-        static float SoftClip(float x) => x / (1f + Mathf.Abs(x));
+        public static float SoftClip(float x) => x / (1f + Mathf.Abs(x));
 
-        static AudioClip Build(string name, float seconds, Func<float, float> sampleAt)
+        /// <summary>Renders a mono clip from a function of time in seconds.</summary>
+        public static AudioClip Build(string name, float seconds, Func<float, float> sampleAt)
         {
             int count = Mathf.Max(1, Mathf.RoundToInt(seconds * SampleRate));
             var samples = new float[count];

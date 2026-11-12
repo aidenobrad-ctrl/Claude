@@ -100,6 +100,14 @@ namespace Pulsebreak.Client.Duel
         int _attempt;
         float _noticeTimer, _fightTimer, _textTimer;
 
+        // What has already been announced, so each sound and medal plays once.
+        readonly ZoneState[] _heardZones = new ZoneState[NetMessages.MaxZones];
+        int _heardZoneCount = -1, _heardActiveZone = -1, _heardCountdown = -1;
+        bool _heardGo, _heardMatchStart;
+        float _heartbeatTimer, _lastKillTime = -10f;
+        int _streak, _multiKill;
+        Vector3 _menuFocus, _menuOffset;
+
         void Awake()
         {
             if (movement == null)
@@ -153,6 +161,9 @@ namespace Pulsebreak.Client.Duel
 
             GameSettings.Load();
             RangeEnvironment.Apply(createSunLight);
+            GraphicsSetup.Initialize();
+            SoundBank.Prewarm();
+            MusicPlayer.SetMenu(true);
             _services = GameServices.Get(catalog, backendUrl);
             _library = _services.Library;
             _library.EquippedChanged += OnEquippedChanged;
@@ -327,6 +338,7 @@ namespace Pulsebreak.Client.Duel
             }
             _joinHint = "";
             _matchmadeId = ticket.matchId;
+            UiSounds.Play(Sfx.MatchFound);
             ConnectWithTicket(target, ticket.joinTicket);
         }
 
@@ -380,6 +392,7 @@ namespace Pulsebreak.Client.Duel
             _session.RemoteShot += OnRemoteShot;
             _session.ProjectileSpawned += OnProjectileSpawned;
             _session.ProjectileEnded += OnProjectileEnded;
+            _session.Hurt += OnHurt;
 
             _session.Connect(target, Time.realtimeSinceStartupAsDouble);
             _ui.ShowConnecting(_session.StatusText);
@@ -408,6 +421,12 @@ namespace Pulsebreak.Client.Duel
             _ui.SetNotice("");
             _ui.SetStatus("");
             _deadSince = -1f;
+
+            MusicPlayer.SetMenu(false);
+            ScreenEffects.Calm();
+            _heardZoneCount = _heardActiveZone = _heardCountdown = -1;
+            _heardGo = _heardMatchStart = false;
+            _streak = _multiKill = 0;
         }
 
         /// <summary>
@@ -440,6 +459,8 @@ namespace Pulsebreak.Client.Duel
                 if (progression != null && progression.lastMatch.matchId == matchId)
                 {
                     _ui.ShowMenuResult(Summary(progression));
+                    if (progression.lastMatch.levelAfter > progression.lastMatch.levelBefore) MusicPlayer.Play(Stinger.LevelUp);
+                    else if (progression.lastMatch.challengesCompleted.Length > 0) UiSounds.Play(Sfx.ChallengeDone);
                     return;
                 }
                 await System.Threading.Tasks.Task.Delay(1000);
@@ -471,6 +492,9 @@ namespace Pulsebreak.Client.Duel
             StopServer();
             _ui.ShowMatch(false);
             _ui.ShowMenu(reason);
+            MusicPlayer.SetMenu(true);
+            ScreenEffects.Calm();
+            if (!string.IsNullOrEmpty(reason)) UiSounds.Play(Sfx.UiError);
         }
 
         void TearDownMatch()
@@ -518,6 +542,7 @@ namespace Pulsebreak.Client.Duel
 
         void Update()
         {
+            DriftMenuCamera();
             if (_session == null) return;
             double now = Time.realtimeSinceStartupAsDouble;
 
@@ -548,7 +573,9 @@ namespace Pulsebreak.Client.Duel
             // The pause menu and the loadout swap belong to the HUD underneath; get out of their way.
             _ui.SetMatchHidden(_hud != null && (_hud.IsPaused || _hud.IsQuickSwapOpen));
             _ui.SetHealth(_session.Local != null ? _session.Local.Health : 0f, _session.Settings.maxHealth);
+            UpdateHealthEffects();
             UpdateBanner();
+            UpdateObjectiveSounds();
 
             // Hold Tab for the scoreboard. It also comes up by itself when the match ends.
             bool board = (keyboard != null && keyboard.tabKey.isPressed) || _session.Match.Phase == MatchPhase.MatchEnd;
@@ -775,8 +802,19 @@ namespace Pulsebreak.Client.Duel
                     // decides when we can move: the number hits zero as our controls come alive.
                     float left = (float)(match.PhaseEndTick - _session.CommandArrivalTick) * SimConstants.TickDelta;
                     string what = MatchSettings.Title(rules.mode) + "   ·   " + (rules.RoundBased ? "Round " + match.Round + "   ·   " : "") + Objective(rules);
-                    if (left <= 0f) _ui.SetBanner("FIGHT", "");
-                    else _ui.SetBanner(Mathf.Clamp(Mathf.CeilToInt(left), 1, 9).ToString(), what);
+                    if (left <= 0f)
+                    {
+                        _ui.SetBanner("FIGHT", "");
+                        PlayGo();
+                    }
+                    else
+                    {
+                        int count = Mathf.Clamp(Mathf.CeilToInt(left), 1, 9);
+                        _ui.SetBanner(count.ToString(), what);
+                        if (count != _heardCountdown && count <= 3) UiSounds.Play(Sfx.CountdownTick);
+                        _heardCountdown = count;
+                        _heardGo = false;
+                    }
                     break;
                 }
 
@@ -825,10 +863,42 @@ namespace Pulsebreak.Client.Duel
 
         void OnMatchChanged(MatchState previous, MatchState state)
         {
-            if (state.Phase == MatchPhase.Live && previous.Phase != MatchPhase.Live) _fightTimer = 1f;
+            if (state.Phase == MatchPhase.Live && previous.Phase != MatchPhase.Live)
+            {
+                _fightTimer = 1f;
+                PlayGo();
+            }
 
-            // A new round starts with a clean sky.
-            if (state.Phase == MatchPhase.Countdown || state.Phase == MatchPhase.Waiting) _projectiles?.Clear();
+            // A new round starts with a clean sky, and clean walls.
+            if (state.Phase == MatchPhase.Countdown || state.Phase == MatchPhase.Waiting)
+            {
+                _projectiles?.Clear();
+                if (_rig != null) _rig.Fx.ClearWorld();
+                _heardCountdown = -1;
+            }
+            if (state.Phase == MatchPhase.Waiting) _heardMatchStart = false;
+
+            int ourTeam = _session.Local != null ? _session.Local.Team : Teams.None;
+            if (state.Phase == MatchPhase.RoundEnd && previous.Phase != MatchPhase.RoundEnd && state.RoundWinner != MatchState.Nobody)
+                MusicPlayer.Play(state.RoundWinner == ourTeam ? Stinger.RoundWon : Stinger.RoundLost);
+            if (state.Phase == MatchPhase.MatchEnd && previous.Phase != MatchPhase.MatchEnd && state.MatchWinner != MatchState.Nobody)
+            {
+                bool won = _session.Settings.TeamBased ? state.MatchWinner == ourTeam : state.MatchWinner == _session.PlayerId;
+                MusicPlayer.Play(won ? Stinger.Victory : Stinger.Defeat);
+            }
+        }
+
+        /// <summary>The countdown reached zero: a bright tone, and at the start of a match a musical sting.</summary>
+        void PlayGo()
+        {
+            if (_heardGo) return;
+            _heardGo = true;
+            if (!_heardMatchStart)
+            {
+                _heardMatchStart = true;
+                MusicPlayer.Play(Stinger.MatchStart);
+            }
+            UiSounds.Play(Sfx.CountdownGo);
         }
 
         void OnPlayerChanged(ClientPlayer player)
@@ -846,9 +916,18 @@ namespace Pulsebreak.Client.Duel
                 _deadSince = -1f;
                 _noticeTimer = 0f;
                 _ui.SetNotice("");
+                _ui.ShowDeath(null, null);
+                ScreenEffects.Calm();
+                if (_rig != null) _rig.Sfx.Play(Sfx.Spawn, 0.6f);
                 return;
             }
             if (_remotes[player.Id] == null) _remotes[player.Id] = RemotePlayerView.Create(_session, player.Id, movement);
+            // Someone arriving mid-fight shimmers in; everyone appearing for a new round does not.
+            if (_rig != null && _session.Match.Phase == MatchPhase.Live)
+            {
+                _rig.Fx.PlaySpawn(spawn.Position, TrimOf(player.Id));
+                _rig.Sfx.PlayAt(Sfx.Spawn, spawn.Position, 0.7f, 0.05f, 2f, 40f);
+            }
         }
 
         void OnPlayerRearmed(ClientPlayer player, RearmMessage rearm)
@@ -859,6 +938,7 @@ namespace Pulsebreak.Client.Duel
             _ui.SetNotice(build != null ? "NEW WEAPON: " + build.Weapon.displayName.ToUpperInvariant() : "");
             _noticeTimer = 2f;
             _rig.Sfx.Play(Sfx.Swap, 1f);
+            UiSounds.Play(Sfx.Promote);
         }
 
         /// <summary>A new look chosen mid-match: everyone else sees it straight away.</summary>
@@ -882,11 +962,22 @@ namespace Pulsebreak.Client.Duel
         {
             ClientPlayer victimPlayer = _session.Players[kill.Victim];
             string victim = victimPlayer.Name;
+            bool byUs = kill.Killer == _session.PlayerId && kill.Victim != _session.PlayerId;
             if (kill.Victim == _session.PlayerId)
             {
                 _deadSince = Time.unscaledTime;
-                if (_rig != null) _rig.Sfx.Play(Sfx.Land, 0.9f);
+                _streak = 0;
+                if (_rig != null) _rig.Sfx.Play(Sfx.Death, 0.9f);
+                ShowWhoGotUs(kill);
             }
+            else
+            {
+                // Their body comes apart where it stood.
+                RemotePlayerView view = _remotes[kill.Victim];
+                if (_rig != null && view != null && view.Visible)
+                    _rig.Fx.PlayDerez(view.Feet, 1.8f, SuitOf(kill.Victim), TrimOf(kill.Victim));
+            }
+            if (byUs) AwardMedal(kill, victim);
 
             if (kill.Killer == KillMessage.NoKiller || kill.Killer >= _session.Players.Length)
             {
@@ -923,6 +1014,110 @@ namespace Pulsebreak.Client.Duel
         void OnHitConfirmed(HitMessage hit)
         {
             if (hit.Victim < _remotes.Length && _remotes[hit.Victim] != null) _remotes[hit.Victim].Flash();
+            if (_rig != null && hit.Victim < _session.Players.Length)
+                _rig.Fx.PlayBodyHit(hit.Point, hit.Point - _rig.Camera.transform.position, TrimOf(hit.Victim), hit.Zone == Shared.Combat.HitZone.Head);
+        }
+
+        /// <summary>We were hurt: a sound, an arc pointing at the source, a red edge and a flinch.</summary>
+        void OnHurt(HurtMessage hurt)
+        {
+            if (_rig == null) return;
+            float share = Mathf.Clamp01(hurt.Damage / Mathf.Max(1f, _session.Settings.maxHealth));
+            bool head = hurt.Zone == Shared.Combat.HitZone.Head;
+            _rig.Sfx.Play(head ? Sfx.HurtHead : Sfx.Hurt, Mathf.Lerp(0.55f, 1f, share * 3f), 0.05f);
+            ScreenEffects.Hurt(share);
+            Transform eye = _rig.Camera.transform;
+            Vector3 toward = hurt.Source - eye.position;
+            bool fromAway = toward.sqrMagnitude > 0.25f;
+            if (fromAway && _hud != null) _hud.ShowHurt(hurt.Source, share * 3f);
+            if (fromAway) _rig.Camera.AddFlinch(Mathf.Clamp01(share * 2.5f), Vector3.Dot(eye.right, toward.normalized));
+        }
+
+        /// <summary>Who took us out, with what, and what they had left.</summary>
+        void ShowWhoGotUs(KillMessage kill)
+        {
+            if (kill.Killer == KillMessage.NoKiller || kill.Killer >= _session.Players.Length)
+            {
+                _ui.ShowDeath("OUT OF THE ARENA", "");
+                return;
+            }
+            if (kill.Killer == kill.Victim)
+            {
+                _ui.ShowDeath("YOUR OWN " + DisplayName(kill.WeaponId).ToUpperInvariant(), "");
+                return;
+            }
+            ClientPlayer killer = _session.Players[kill.Killer];
+            string line = DisplayName(kill.WeaponId) + (kill.Headshot ? "   ·   headshot" : "");
+            if (killer.Alive) line += "   ·   they had " + Mathf.CeilToInt(Mathf.Max(0f, killer.Health)) + " health left";
+            _ui.ShowDeath("ELIMINATED BY  " + killer.Name.ToUpperInvariant(), line);
+        }
+
+        /// <summary>A medal for a kill of ours: several in quick succession, a streak, or a headshot.</summary>
+        void AwardMedal(KillMessage kill, string victim)
+        {
+            float now = Time.unscaledTime;
+            _multiKill = now - _lastKillTime < 4f ? _multiKill + 1 : 1;
+            _lastKillTime = now;
+            _streak++;
+
+            string title = _multiKill >= 4 ? "MULTI KILL" : _multiKill == 3 ? "TRIPLE KILL" : _multiKill == 2 ? "DOUBLE KILL"
+                : _streak == 15 ? "LEGENDARY" : _streak == 10 ? "UNSTOPPABLE" : _streak == 5 ? "ON A ROLL"
+                : kill.Headshot ? "HEADSHOT" : "ELIMINATED";
+            string line = victim.ToUpperInvariant() + (_streak >= 3 ? "   ·   " + _streak + " IN A ROW" : "");
+            _ui.ShowMedal(title, line);
+        }
+
+        /// <summary>Red edges and a heartbeat on low health; grey while out.</summary>
+        void UpdateHealthEffects()
+        {
+            ClientPlayer me = _session.Local;
+            if (me == null) return;
+            bool inPlay = me.Spawned && _session.LocalAlive;
+            float max = Mathf.Max(1f, _session.Settings.maxHealth);
+            float fraction = inPlay ? Mathf.Clamp01(me.Health / max) : 1f;
+            ScreenEffects.SetHealth(fraction, inPlay || _deadSince < 0f);
+
+            if (!inPlay || fraction >= 0.3f)
+            {
+                _heartbeatTimer = 0f;
+                return;
+            }
+            _heartbeatTimer -= Time.unscaledDeltaTime;
+            if (_heartbeatTimer > 0f) return;
+            _heartbeatTimer = Mathf.Lerp(0.55f, 0.95f, fraction / 0.3f);
+            _rig?.Sfx.Play(Sfx.Heartbeat, 0.75f);
+        }
+
+        /// <summary>Chimes when a zone changes hands, and when the hardpoint moves.</summary>
+        void UpdateObjectiveSounds()
+        {
+            int count = _session.ZoneCount;
+            int active = _session.Match.ActiveZone;
+            int ourTeam = _session.Local != null ? _session.Local.Team : Teams.None;
+            bool fresh = count != _heardZoneCount;
+            for (int i = 0; i < count; i++)
+            {
+                int owner = _session.Zones[i].Owner;
+                if (!fresh && owner != _heardZones[i].Owner && owner != Teams.None && ourTeam != Teams.None)
+                    UiSounds.Play(owner == ourTeam ? Sfx.ZoneCaptured : Sfx.ZoneLost);
+                _heardZones[i] = _session.Zones[i];
+            }
+            if (!fresh && _session.Settings.mode == GameModeKind.Hardpoint && active != _heardActiveZone && active >= 0 && _heardActiveZone >= 0)
+                UiSounds.Play(Sfx.ZoneMoved);
+            _heardZoneCount = count;
+            _heardActiveZone = active;
+        }
+
+        Color SuitOf(int playerId)
+        {
+            ClientPlayer player = _session.Players[playerId];
+            return player.Look != null ? player.Look.Item(Shared.Cosmetics.CosmeticSlot.SuitColor).Color : Color.gray;
+        }
+
+        Color TrimOf(int playerId)
+        {
+            ClientPlayer player = _session.Players[playerId];
+            return player.Look != null ? player.Look.Item(Shared.Cosmetics.CosmeticSlot.TrimColor).Color : new Color(0.55f, 0.85f, 1f);
         }
 
         /// <summary>The other player fired: draw the tracer from their weapon and play the shot, quieter with distance.</summary>
@@ -932,10 +1127,11 @@ namespace Pulsebreak.Client.Duel
             WeaponBuild build = BuildOf(shot.Shooter, shot.Slot);
             if (build == null) return;
 
+            RemotePlayerView view = _remotes[shot.Shooter];
+            bool seen = view != null && view.Visible;
+            Vector3 from = seen ? view.Muzzle : shot.Origin;
             if (shot.Kind == ShotKind.Bullet)
             {
-                RemotePlayerView view = _remotes[shot.Shooter];
-                Vector3 from = view != null && view.Visible ? view.Muzzle : shot.Origin;
                 _rig.Fx.PlayTracer(new ShotPresentation
                 {
                     Origin = shot.Origin,
@@ -944,8 +1140,42 @@ namespace Pulsebreak.Client.Duel
                     HitWorld = shot.HitWorld,
                     Build = build,
                 }, from);
+                if (!shot.HitWorld) BurstOnWhoeverWasHit(shot);
+                Whiz(shot);
             }
-            if (shot.First) _rig.Sfx.PlayShot(build, Loudness(shot.Origin));
+            if (shot.First)
+            {
+                _rig.Sfx.PlayShotAt(build, shot.Origin);
+                if (seen && shot.Kind == ShotKind.Bullet) _rig.Fx.PlayRemoteMuzzle(from, shot.End - shot.Origin, build);
+            }
+        }
+
+        /// <summary>Someone else's bullet stopped on a third player: draw the burst there.</summary>
+        void BurstOnWhoeverWasHit(in ShotMessage shot)
+        {
+            for (int i = 0; i < _remotes.Length; i++)
+            {
+                RemotePlayerView view = _remotes[i];
+                if (view == null || i == shot.Shooter || !view.Covers(shot.End)) continue;
+                _rig.Fx.PlayBodyHit(shot.End, shot.End - shot.Origin, TrimOf(i), false);
+                return;
+            }
+        }
+
+        /// <summary>A bullet that passed close to our head, without hitting us, cracks past.</summary>
+        void Whiz(in ShotMessage shot)
+        {
+            Vector3 ear = _rig.Camera.transform.position;
+            Vector3 path = shot.End - shot.Origin;
+            float length = path.magnitude;
+            if (length < 0.01f) return;
+            Vector3 along = path / length;
+            float t = Vector3.Dot(ear - shot.Origin, along);
+            if (t < 3f || t > length + 0.5f) return;       // not past us yet, or stopped short of us
+            Vector3 closest = shot.Origin + along * t;
+            float miss = Vector3.Distance(closest, ear);
+            if (miss < 0.35f || miss > 2.2f) return;        // a hit, or nowhere near
+            _rig.Sfx.PlayAt(Sfx.Whiz, closest, Mathf.Lerp(1f, 0.35f, miss / 2.2f), 0.12f, 1f, 10f);
         }
 
         /// <summary>The server launched a projectile: start drawing our own picture of it.</summary>
@@ -967,7 +1197,7 @@ namespace Pulsebreak.Client.Duel
                 stats = item.projectile;
                 id = item.utilityId;
                 body = accent = item.color;
-                if (!ours) _rig.Sfx.Play(Sfx.Throw, 0.6f * Loudness(spawn.Origin), 0.06f);
+                if (!ours) _rig.Sfx.PlayAt(Sfx.Throw, spawn.Origin, 0.7f, 0.06f, 1.5f, 30f);
             }
             else
             {
@@ -977,7 +1207,7 @@ namespace Pulsebreak.Client.Duel
                 id = build.Weapon.weaponId;
                 body = build.Weapon.view.bodyColor;
                 accent = build.Weapon.view.accentColor;
-                if (!ours) _rig.Sfx.PlayShot(build, Loudness(spawn.Origin));
+                if (!ours) _rig.Sfx.PlayShotAt(build, spawn.Origin);
             }
 
             _projectiles.Spawn(spawn.Origin, spawn.Direction, stats, id, 1f, null, spawn.Id);
@@ -1001,20 +1231,13 @@ namespace Pulsebreak.Client.Duel
                 Radius = end.Radius,
                 HitTarget = end.HitTarget,
             });
-            if (end.Kind == ProjectileEventKind.Explosion) _rig.Sfx.Play(Sfx.Explosion, Loudness(end.Point), 0.06f);
+            if (end.Kind == ProjectileEventKind.Explosion) _rig.Sfx.PlayAt(Sfx.Explosion, end.Point, 1f, 0.06f, 6f);
         }
 
         WeaponBuild BuildOf(int playerId, int slot)
         {
             Loadout loadout = _session.Players[playerId].Loadout;
             return loadout != null && slot >= 0 && slot < loadout.Weapons.Length ? loadout.Weapons[slot] : null;
-        }
-
-        /// <summary>Sound has no position yet, so distance just turns it down.</summary>
-        float Loudness(Vector3 source)
-        {
-            float distance = Vector3.Distance(_rig.Camera.transform.position, source);
-            return Mathf.Lerp(1f, 0.25f, Mathf.Clamp01(distance / 45f));
         }
 
         // ------------------------------------------------------------------ the scene
@@ -1043,6 +1266,9 @@ namespace Pulsebreak.Client.Duel
                     : AccentColor;
                 GreyboxKit.Box(root, "Block", box.Center, box.Size, color, solid: false);
             }
+            // The arena never moves: merge its blocks into a few big meshes, so it costs a
+            // handful of draw calls instead of one per block.
+            StaticBatchingUtility.Combine(root.gameObject);
             return layout;
         }
 
@@ -1065,6 +1291,21 @@ namespace Pulsebreak.Client.Duel
             foreach (ArenaBox box in layout.Boxes) size = Mathf.Max(size, Mathf.Max(box.Size.x, box.Size.z));
             float scale = Mathf.Max(1f, size / 40f);
             _menuCamera.transform.SetPositionAndRotation(new Vector3(-6f, 19f, -27f) * scale, Quaternion.Euler(36f, 12f, 0f));
+
+            // Where that view meets the ground: the camera sways slowly round it.
+            Vector3 forward = _menuCamera.transform.forward;
+            float down = Mathf.Max(0.1f, -forward.y);
+            _menuFocus = _menuCamera.transform.position + forward * (_menuCamera.transform.position.y / down);
+            _menuOffset = _menuCamera.transform.position - _menuFocus;
+        }
+
+        /// <summary>Behind the menu, the camera drifts gently back and forth over the arena.</summary>
+        void DriftMenuCamera()
+        {
+            if (_menuCamera == null || !_menuCamera.gameObject.activeSelf || _menuOffset == Vector3.zero) return;
+            float angle = Mathf.Sin(Time.unscaledTime * 0.06f) * 14f;
+            Vector3 position = _menuFocus + Quaternion.Euler(0f, angle, 0f) * _menuOffset;
+            _menuCamera.transform.SetPositionAndRotation(position, Quaternion.LookRotation(_menuFocus - position));
         }
 
         // ------------------------------------------------------------------ helpers

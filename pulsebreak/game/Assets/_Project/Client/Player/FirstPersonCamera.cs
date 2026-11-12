@@ -17,8 +17,8 @@ namespace Pulsebreak.Client.Player
 
     /// <summary>
     /// The first-person view. It only presents: position and angles come from the player
-    /// controller each frame, and this adds the cosmetic layer on top (zoom,
-    /// landing dip, speed-based field of view).
+    /// controller each frame, and this adds the cosmetic layer on top (zoom, landing dip,
+    /// speed-based field of view, shake from explosions and a flinch when hit).
     /// </summary>
     [RequireComponent(typeof(Camera))]
     public sealed class FirstPersonCamera : MonoBehaviour
@@ -27,8 +27,13 @@ namespace Pulsebreak.Client.Player
         const float SprintFovKick = 3f;
         const float SlideFovKick = 6f;
 
+        /// <summary>How far the view can be thrown at full shake, in degrees: yaw, pitch, roll.</summary>
+        static readonly Vector3 MaxShake = new Vector3(2.2f, 1.8f, 3f);
+
         Camera _camera;
         float _dip, _dipVelocity, _fovKick;
+        float _trauma, _shakeTime;
+        Vector2 _flinch, _flinchVelocity;
 
         public Camera Camera => _camera;
 
@@ -43,6 +48,23 @@ namespace Pulsebreak.Client.Player
             _dipVelocity -= Mathf.Clamp(impactSpeed * 0.16f, 0f, 2.4f);
         }
 
+        /// <summary>
+        /// Shakes the view, for an explosion nearby. 0 to 1; shakes add up and die away over
+        /// about a second. Only the picture moves: where the gun points is untouched.
+        /// </summary>
+        public void AddShake(float amount)
+        {
+            if (!GameSettings.CameraShake) return;
+            _trauma = Mathf.Clamp01(_trauma + amount);
+        }
+
+        /// <summary>Knocks the view a little away from where a hit came from. <paramref name="fromRight"/> is -1 (left) to 1 (right).</summary>
+        public void AddFlinch(float strength, float fromRight)
+        {
+            if (!GameSettings.CameraShake) return;
+            _flinchVelocity += new Vector2(-fromRight, 1f) * Mathf.Clamp01(strength) * 22f;
+        }
+
         public void Apply(in CameraPose pose, float deltaTime)
         {
             float dt = Mathf.Min(deltaTime, 1f / 30f);
@@ -52,9 +74,26 @@ namespace Pulsebreak.Client.Player
             _dipVelocity += (-stiffness * _dip - damping * _dipVelocity) * dt;
             _dip = Mathf.Clamp(_dip + _dipVelocity * dt, -0.3f, 0.1f);
 
+            // The same kind of spring for a flinch, in degrees.
+            _flinchVelocity += (-260f * _flinch - 24f * _flinchVelocity) * dt;
+            _flinch += _flinchVelocity * dt;
+
+            // Shake: smooth noise, scaled by trauma squared so small knocks stay small.
+            Vector3 shake = Vector3.zero;
+            if (_trauma > 0f)
+            {
+                _shakeTime += dt * 22f;
+                float power = _trauma * _trauma;
+                shake = new Vector3(
+                    (Mathf.PerlinNoise(_shakeTime, 0.3f) * 2f - 1f) * MaxShake.x,
+                    (Mathf.PerlinNoise(1.7f, _shakeTime) * 2f - 1f) * MaxShake.y,
+                    (Mathf.PerlinNoise(_shakeTime, 4.1f) * 2f - 1f) * MaxShake.z) * power;
+                _trauma = Mathf.Max(0f, _trauma - dt * 1.4f);
+            }
+
             transform.SetPositionAndRotation(
                 pose.EyePosition + Vector3.up * _dip,
-                Quaternion.Euler(pose.Pitch, pose.Yaw, 0f));
+                Quaternion.Euler(pose.Pitch + shake.y - _flinch.y, pose.Yaw + shake.x + _flinch.x, shake.z));
 
             // The setting is a horizontal angle at 16:9. Holding the vertical angle fixed
             // means wider screens see more to the sides, never less.

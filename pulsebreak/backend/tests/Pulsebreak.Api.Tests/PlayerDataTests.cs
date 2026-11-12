@@ -251,6 +251,11 @@ public class SettingsAndTicketTests
         Assert.That(onLaptop.GetProperty("data").GetProperty("fieldOfView").GetSingle(), Is.EqualTo(110f));
         Assert.That(onLaptop.GetProperty("data").GetProperty("showDamageNumbers").GetBoolean(), Is.False);
         Assert.That(onLaptop.GetProperty("updatedAt").GetInt64(), Is.EqualTo(now - 50));
+        // Saved by a game from before the sound channels existed: they come back at their defaults.
+        Assert.That(onLaptop.GetProperty("data").GetProperty("effectsVolume").GetSingle(), Is.EqualTo(1f));
+        Assert.That(onLaptop.GetProperty("data").GetProperty("musicVolume").GetSingle(), Is.EqualTo(0.6f));
+        Assert.That(onLaptop.GetProperty("data").GetProperty("interfaceVolume").GetSingle(), Is.EqualTo(0.8f));
+        Assert.That(onLaptop.GetProperty("data").GetProperty("toggleSprint").GetBoolean(), Is.False);
 
         // An older save from the laptop does not overwrite it; the reply tells the laptop what is current.
         var stale = new { data = new { sensitivity = 1f, adsSensitivityMultiplier = 1f, fieldOfView = 90f, showDamageNumbers = true, masterVolume = 1f }, updatedAt = now - 500 };
@@ -266,6 +271,15 @@ public class SettingsAndTicketTests
         Assert.That(clamped.GetProperty("masterVolume").GetSingle(), Is.EqualTo(1f));
 
         Assert.That((int)(await laptop.Http.PutAsJsonAsync("/v1/settings", new { updatedAt = now })).StatusCode, Is.EqualTo(422));
+
+        // The sound channels and toggle sprint travel too.
+        var sound = new { data = new { sensitivity = 2f, adsSensitivityMultiplier = 1f, fieldOfView = 100f, showDamageNumbers = true, masterVolume = 0.9f,
+            effectsVolume = 0.7f, musicVolume = 0f, interfaceVolume = 3f, toggleSprint = true }, updatedAt = now + 1 };
+        JsonElement saved = (await (await laptop.Http.PutAsJsonAsync("/v1/settings", sound)).JsonAsync()).GetProperty("data");
+        Assert.That(saved.GetProperty("effectsVolume").GetSingle(), Is.EqualTo(0.7f));
+        Assert.That(saved.GetProperty("musicVolume").GetSingle(), Is.EqualTo(0f));
+        Assert.That(saved.GetProperty("interfaceVolume").GetSingle(), Is.EqualTo(1f));
+        Assert.That(saved.GetProperty("toggleSprint").GetBoolean(), Is.True);
     }
 
     [Test]

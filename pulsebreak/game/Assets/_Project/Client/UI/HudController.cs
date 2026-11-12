@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UIElements;
 using Pulsebreak.Client.FiringRange;
+using Pulsebreak.Client.Audio;
 using Pulsebreak.Client.Loadouts;
 using Pulsebreak.Client.Player;
 using Pulsebreak.Client.Settings;
@@ -85,6 +86,23 @@ namespace Pulsebreak.Client.UI
 
         readonly DamageNumber[] _numbers = new DamageNumber[DamageNumberCount];
         int _nextNumber;
+
+        const int HurtCount = 6;
+        const float HurtLife = 1.3f;
+
+        struct HurtArc
+        {
+            public VisualElement Pivot, Bar;
+            public Vector3 Source;
+            public float Age, Strength;
+            public bool Active;
+        }
+
+        readonly HurtArc[] _hurts = new HurtArc[HurtCount];
+        int _nextHurt;
+        Label _fps;
+        float _fpsSmoothed;
+        string _shownFps;
 
         float _gap = 12f;
         float _hitTimer, _hitDuration = HitMarkerTime, _hitScale = 1f;
@@ -213,70 +231,34 @@ namespace Pulsebreak.Client.UI
                 _numbers[i].Label = label;
             }
 
+            // Hurt arcs: each a pivot at the screen centre, turned to face where a hit came
+            // from, with a red bar out at the edge of a circle round the crosshair.
+            VisualElement hurtLayer = _root.Q<VisualElement>("hurt-layer");
+            for (int i = 0; i < HurtCount; i++)
+            {
+                var pivot = new VisualElement { pickingMode = PickingMode.Ignore };
+                pivot.AddToClassList("hurt-pivot");
+                var bar = new VisualElement { pickingMode = PickingMode.Ignore };
+                bar.AddToClassList("hurt-bar");
+                pivot.Add(bar);
+                hurtLayer.Add(pivot);
+                pivot.style.display = DisplayStyle.None;
+                _hurts[i].Pivot = pivot;
+                _hurts[i].Bar = bar;
+            }
+            _fps = _root.Q<Label>("fps");
+            UiSounds.Attach(_pause);
+            UiSounds.Attach(_quick);
+
             BindSettings();
             _ready = true;
         }
 
         void BindSettings()
         {
-            var sensitivity = _root.Q<Slider>("set-sensitivity");
-            sensitivity.lowValue = GameSettings.MinSensitivity;
-            sensitivity.highValue = GameSettings.MaxSensitivity;
-            sensitivity.SetValueWithoutNotify(GameSettings.Sensitivity);
-            sensitivity.RegisterValueChangedCallback(e =>
-            {
-                GameSettings.Sensitivity = e.newValue;
-                GameSettings.Apply();
-            });
-
-            var ads = _root.Q<Slider>("set-ads");
-            ads.lowValue = GameSettings.MinAdsMultiplier;
-            ads.highValue = GameSettings.MaxAdsMultiplier;
-            ads.SetValueWithoutNotify(GameSettings.AdsSensitivityMultiplier);
-            ads.RegisterValueChangedCallback(e =>
-            {
-                GameSettings.AdsSensitivityMultiplier = e.newValue;
-                GameSettings.Apply();
-            });
-
-            var fov = _root.Q<SliderInt>("set-fov");
-            fov.lowValue = Mathf.RoundToInt(GameSettings.MinFieldOfView);
-            fov.highValue = Mathf.RoundToInt(GameSettings.MaxFieldOfView);
-            fov.SetValueWithoutNotify(Mathf.RoundToInt(GameSettings.FieldOfView));
-            fov.RegisterValueChangedCallback(e =>
-            {
-                GameSettings.FieldOfView = e.newValue;
-                GameSettings.Apply();
-            });
-
-            var volume = _root.Q<Slider>("set-volume");
-            volume.SetValueWithoutNotify(GameSettings.MasterVolume);
-            volume.RegisterValueChangedCallback(e =>
-            {
-                GameSettings.MasterVolume = e.newValue;
-                GameSettings.Apply();
-            });
-
-            var damageNumbers = _root.Q<Toggle>("set-damage-numbers");
-            damageNumbers.SetValueWithoutNotify(GameSettings.ShowDamageNumbers);
-            damageNumbers.RegisterValueChangedCallback(e =>
-            {
-                GameSettings.ShowDamageNumbers = e.newValue;
-                GameSettings.Apply();
-            });
-
-            var toggleSprint = _root.Q<Toggle>("set-toggle-sprint");
-            if (toggleSprint != null)
-            {
-                toggleSprint.SetValueWithoutNotify(GameSettings.ToggleSprint);
-                toggleSprint.RegisterValueChangedCallback(e =>
-                {
-                    GameSettings.ToggleSprint = e.newValue;
-                    GameSettings.Apply();
-                });
-            }
-
             _root.Q<Button>("btn-resume").clicked += () => SetPaused(false);
+            Button settings = _root.Q<Button>("btn-settings");
+            if (settings != null) settings.clicked += () => SettingsScreen.Open();
             Button customize = _root.Q<Button>("btn-customize");
             if (customize != null) customize.clicked += () => CustomizeScreen.Open(Cosmetics.CosmeticsLibrary.Local, _library);
             _root.Q<Button>("btn-reset").clicked += () => ResetStatsRequested?.Invoke();
@@ -323,6 +305,10 @@ namespace Pulsebreak.Client.UI
             Cursor.visible = paused;
             if (_ready) _pause.style.display = paused ? DisplayStyle.Flex : DisplayStyle.None;
 
+            if (paused && !wasPaused && _ready)
+            {
+                foreach (VisualElement card in _pause.Children()) UiMotion.Enter(card);
+            }
             if (paused)
             {
                 SetQuickSwapOpen(false);
@@ -538,7 +524,7 @@ namespace Pulsebreak.Client.UI
                 if (keyboard.escapeKey.wasPressedThisFrame)
                 {
                     // The Customize screen, open over the pause menu, takes Esc for itself.
-                    if (CustomizeScreen.IsOpen) { }
+                    if (CustomizeScreen.IsOpen || SettingsScreen.IsOpen) { }
                     else if (IsQuickSwapOpen) SetQuickSwapOpen(false);
                     else SetPaused(!IsPaused);
                 }
@@ -563,6 +549,8 @@ namespace Pulsebreak.Client.UI
             UpdateSights(inHand, weapon, dt);
             UpdateHitMarker(dt);
             UpdateDamageNumbers(dt);
+            UpdateHurt(Time.unscaledDeltaTime);
+            if (Time.unscaledDeltaTime > 0f) _fpsSmoothed = Mathf.Lerp(_fpsSmoothed <= 0f ? 60f : _fpsSmoothed, 1f / Time.unscaledDeltaTime, 0.05f);
             UpdateWeaponPanel(inHand, weapon);
             UpdateUtilities();
 
@@ -572,9 +560,70 @@ namespace Pulsebreak.Client.UI
                 _slowTimer = SlowRefreshInterval;
                 UpdateMovementPanel(motor);
                 UpdateRangefinder();
+                UpdateFps();
             }
 
             if (_stats != null && _stats.Version != _shownStatsVersion) UpdateStatsPanel();
+        }
+
+        /// <summary>
+        /// A red arc round the crosshair pointing to where a hit came from. It keeps pointing
+        /// there as you turn, and fades over a second or so.
+        /// </summary>
+        public void ShowHurt(Vector3 source, float strength)
+        {
+            if (!_ready) return;
+            // A hit from the same direction as one already showing refreshes it.
+            for (int i = 0; i < HurtCount; i++)
+            {
+                ref HurtArc arc = ref _hurts[i];
+                if (!arc.Active || (arc.Source - source).sqrMagnitude > 1f) continue;
+                arc.Age = 0f;
+                arc.Strength = Mathf.Clamp01(Mathf.Max(arc.Strength, strength));
+                return;
+            }
+            ref HurtArc fresh = ref _hurts[_nextHurt];
+            _nextHurt = (_nextHurt + 1) % HurtCount;
+            fresh.Source = source;
+            fresh.Age = 0f;
+            fresh.Strength = Mathf.Clamp01(strength);
+            fresh.Active = true;
+            fresh.Pivot.style.display = DisplayStyle.Flex;
+        }
+
+        void UpdateHurt(float dt)
+        {
+            if (_camera == null) return;
+            Vector3 forward = _camera.transform.forward;
+            forward.y = 0f;
+            for (int i = 0; i < HurtCount; i++)
+            {
+                ref HurtArc arc = ref _hurts[i];
+                if (!arc.Active) continue;
+                arc.Age += dt;
+                if (arc.Age >= HurtLife)
+                {
+                    arc.Active = false;
+                    arc.Pivot.style.display = DisplayStyle.None;
+                    continue;
+                }
+                Vector3 toward = arc.Source - _camera.transform.position;
+                toward.y = 0f;
+                float angle = toward.sqrMagnitude > 0.01f && forward.sqrMagnitude > 0.0001f ? Vector3.SignedAngle(forward, toward, Vector3.up) : 0f;
+                arc.Pivot.style.rotate = new Rotate(new Angle(angle, AngleUnit.Degree));
+                float fade = 1f - arc.Age / HurtLife;
+                arc.Bar.style.opacity = Mathf.Clamp01(fade * 1.6f) * Mathf.Lerp(0.55f, 1f, arc.Strength);
+                arc.Bar.style.width = Mathf.Lerp(70f, 130f, arc.Strength);
+            }
+        }
+
+        void UpdateFps()
+        {
+            if (_fps == null) return;
+            string text = GameSettings.ShowFps ? Mathf.RoundToInt(_fpsSmoothed) + " FPS   " + (1000f / Mathf.Max(1f, _fpsSmoothed)).ToString("0.0") + " ms" : "";
+            if (text == _shownFps) return;
+            _shownFps = text;
+            _fps.text = text;
         }
 
         void HandleQuickSwapKeys(Keyboard keyboard)

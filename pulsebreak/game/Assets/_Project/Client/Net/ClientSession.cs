@@ -177,6 +177,8 @@ namespace Pulsebreak.Client.Net
         public event Action<KillMessage> Killed;
         /// <summary>A shot of ours did damage.</summary>
         public event Action<HitMessage> HitConfirmed;
+        /// <summary>We took damage.</summary>
+        public event Action<HurtMessage> Hurt;
         public event Action<ShotMessage> RemoteShot;
         public event Action<ProjectileSpawnMessage> ProjectileSpawned;
         public event Action<ProjectileEndMessage> ProjectileEnded;
@@ -613,6 +615,13 @@ namespace Pulsebreak.Client.Net
                 {
                     HitMessage message = NetMessages.ReadHit(reader);
                     if (!reader.Failed) HitConfirmed?.Invoke(message);
+                    break;
+                }
+
+                case NetMessage.Hurt:
+                {
+                    HurtMessage message = NetMessages.ReadHurt(reader);
+                    if (!reader.Failed) Hurt?.Invoke(message);
                     break;
                 }
 

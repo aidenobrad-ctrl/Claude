@@ -85,7 +85,12 @@ namespace Pulsebreak.Client.Online
         public float adsSensitivityMultiplier;
         public float fieldOfView;
         public bool showDamageNumbers;
-        public float masterVolume;
+        public bool toggleSprint;
+        public float masterVolume = 0.8f;
+        // Added later: a copy saved before these existed comes back with the defaults.
+        public float effectsVolume = 1f;
+        public float musicVolume = 0.6f;
+        public float interfaceVolume = 0.8f;
     }
 
     [Serializable]

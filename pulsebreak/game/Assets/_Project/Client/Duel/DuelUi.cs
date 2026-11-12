@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UIElements;
+using Pulsebreak.Client.Audio;
 using Pulsebreak.Client.Online;
 using Pulsebreak.Client.UI;
 using Pulsebreak.Shared.Match;
@@ -60,7 +61,10 @@ namespace Pulsebreak.Client.Duel
 
         static readonly string[] BotChoices = { "No bots", "Easy bots", "Normal bots", "Hard bots" };
 
-        VisualElement _menu, _match;
+        VisualElement _menu, _match, _menuCard;
+        Label _medal, _medalLine, _deathTitle, _deathLine;
+        VisualElement _death;
+        float _medalTimer;
         TextField _nameField, _addressField;
         DropdownField _modeField, _mapField, _sizeField, _botsField, _limitField;
         Label _modeHint, _menuStatus, _rankedHint, _levelText, _xpText;
@@ -158,6 +162,7 @@ namespace Pulsebreak.Client.Duel
 
             BuildMatch(root);
             BuildMenu(root);
+            UiSounds.Attach(root);
             ShowMatch(false);
             ShowMenu("");
         }
@@ -179,6 +184,7 @@ namespace Pulsebreak.Client.Duel
             card.style.paddingTop = card.style.paddingBottom = 26;
             card.style.backgroundColor = new Color(0.07f, 0.09f, 0.125f, 1f);
             _menu.Add(card);
+            _menuCard = card;
 
             card.Add(Text_("PULSEBREAK", 30, Text, bold: true, spacing: 6, className: "pause-title"));
             Label subtitle = Text_("PLAY ONLINE", 13, Accent, bold: true, spacing: 3);
@@ -299,12 +305,18 @@ namespace Pulsebreak.Client.Duel
             bottom.style.marginTop = 18;
             _cancelButton = MenuButton("Cancel", false, () => CancelRequested?.Invoke());
             _customizeButton = MenuButton("Customize", false, () => CustomizeRequested?.Invoke());
+            Button settings = MenuButton("Settings", false, () => SettingsScreen.Open());
             _rangeButton = MenuButton("Firing range", false, () => RangeRequested?.Invoke());
             _quitButton = MenuButton("Quit", false, () => QuitRequested?.Invoke());
-            bottom.Add(_cancelButton);
-            bottom.Add(_customizeButton);
-            bottom.Add(_rangeButton);
-            bottom.Add(_quitButton);
+            foreach (Button button in new[] { _cancelButton, _customizeButton, settings, _rangeButton, _quitButton })
+            {
+                // Five to a row: share it out evenly.
+                button.style.minWidth = 0;
+                button.style.flexGrow = 1;
+                button.style.marginLeft = 6;
+                bottom.Add(button);
+            }
+            _cancelButton.style.marginLeft = 0;
             card.Add(bottom);
 
             OnModeChanged();
@@ -526,6 +538,7 @@ namespace Pulsebreak.Client.Duel
             banner.style.right = 0;
             banner.style.alignItems = Align.Center;
             _bannerTitle = Text_("", 64, Text, bold: true, spacing: 8);
+            _bannerTitle.AddToClassList("banner-pop");
             _bannerSub = Text_("", 20, Dim);
             _notice = Text_("", 15, Accent);
             _notice.style.marginTop = 10;
@@ -533,6 +546,32 @@ namespace Pulsebreak.Client.Duel
             banner.Add(_bannerSub);
             banner.Add(_notice);
             _match.Add(banner);
+
+            // Medals, under the crosshair.
+            var medal = new VisualElement { pickingMode = PickingMode.Ignore };
+            medal.AddToClassList("medal");
+            medal.AddToClassList("medal--hidden");
+            _medal = Text_("", 26, new Color32(255, 214, 92, 255), bold: true, spacing: 4);
+            _medalLine = Text_("", 15, Text, spacing: 2);
+            _medal.style.unityTextAlign = TextAnchor.MiddleCenter;
+            _medalLine.style.unityTextAlign = TextAnchor.MiddleCenter;
+            medal.Add(_medal);
+            medal.Add(_medalLine);
+            _match.Add(medal);
+
+            // Who took us out, low in the middle while we wait to come back.
+            _death = new VisualElement { pickingMode = PickingMode.Ignore };
+            _death.style.position = Position.Absolute;
+            _death.style.bottom = 170;
+            _death.style.left = 0;
+            _death.style.right = 0;
+            _death.style.alignItems = Align.Center;
+            _deathTitle = Text_("", 24, Bad, bold: true, spacing: 3);
+            _deathLine = Text_("", 15, Text);
+            _death.Add(_deathTitle);
+            _death.Add(_deathLine);
+            _death.style.display = DisplayStyle.None;
+            _match.Add(_death);
 
             // A line for respawns and Gun Game, above the weapons along the bottom centre.
             _status = Text_("", 15, Accent, bold: true, spacing: 1);
@@ -753,6 +792,7 @@ namespace Pulsebreak.Client.Duel
         public void ShowMenu(string status)
         {
             if (_menu == null) return;
+            if (_menu.style.display == DisplayStyle.None) UiMotion.Enter(_menuCard);
             _menu.style.display = DisplayStyle.Flex;
             _menuStatus.text = status ?? "";
             _menuStatus.style.color = Bad;
@@ -817,6 +857,7 @@ namespace Pulsebreak.Client.Duel
             if (_match == null) return;
             _match.style.display = visible ? DisplayStyle.Flex : DisplayStyle.None;
             if (visible) return;
+            ShowDeath(null, null);
             foreach (Label line in _feed) line.RemoveFromHierarchy();
             _feed.Clear();
             _feedAge.Clear();
@@ -931,6 +972,7 @@ namespace Pulsebreak.Client.Duel
         public void SetBanner(string title, string subtitle, bool good = true)
         {
             if (_match == null) return;
+            if (!string.IsNullOrEmpty(title) && title != _bannerTitle.text) UiMotion.Pop(_bannerTitle, "banner-pop--start");
             _bannerTitle.text = title ?? "";
             _bannerTitle.style.color = good ? Text : Bad;
             _bannerSub.text = subtitle ?? "";
@@ -959,6 +1001,7 @@ namespace Pulsebreak.Client.Duel
             line.style.backgroundColor = Panel;
             Round(line, 4);
             _feedBox.Add(line);
+            UiMotion.Enter(line);
             _feed.Add(line);
             _feedAge.Add(0f);
 
@@ -1049,8 +1092,41 @@ namespace Pulsebreak.Client.Duel
             if (_services != null) _services.Account.Changed -= RefreshProfile;
         }
 
+        /// <summary>A medal under the crosshair: a headshot, a multi-kill, a streak. It shows for a moment and goes.</summary>
+        public void ShowMedal(string title, string line = "")
+        {
+            if (_match == null) return;
+            _medal.text = title ?? "";
+            _medalLine.text = line ?? "";
+            VisualElement box = _medal.parent;
+            box.RemoveFromClassList("medal--hidden");
+            UiMotion.Pop(box, "medal--hidden");
+            _medalTimer = 1.8f;
+        }
+
+        /// <summary>Who took us out, with what, and how much health they had left. Null hides it.</summary>
+        public void ShowDeath(string title, string line)
+        {
+            if (_match == null) return;
+            if (title == null)
+            {
+                _death.style.display = DisplayStyle.None;
+                return;
+            }
+            _deathTitle.text = title;
+            _deathLine.text = line ?? "";
+            _death.style.display = DisplayStyle.Flex;
+            UiMotion.Enter(_death);
+        }
+
         void Update()
         {
+            if (_medalTimer > 0f)
+            {
+                _medalTimer -= Time.unscaledDeltaTime;
+                if (_medalTimer <= 0f && _medal != null) _medal.parent.AddToClassList("medal--hidden");
+            }
+
             // Kill feed lines fade out and go.
             for (int i = _feed.Count - 1; i >= 0; i--)
             {

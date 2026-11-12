@@ -8,6 +8,8 @@
         </ui:VisualElement>
 
         <ui:VisualElement name="damage-layer" class="layer" picking-mode="Ignore" />
+        <ui:VisualElement name="hurt-layer" class="layer" picking-mode="Ignore" />
+        <ui:Label name="fps" class="fps" text="" picking-mode="Ignore" />
 
         <ui:VisualElement name="crosshair" class="crosshair" picking-mode="Ignore">
             <ui:VisualElement name="ch-top" class="ch-line" picking-mode="Ignore" />
@@ -126,17 +128,12 @@
 
             <ui:VisualElement class="pause-card settings-card">
                 <ui:Label class="pause-title" text="PAUSED" />
-                <ui:Slider name="set-sensitivity" label="Sensitivity" low-value="0.2" high-value="8" show-input-field="true" />
-                <ui:Slider name="set-ads" label="Aim sensitivity" low-value="0.3" high-value="1.5" show-input-field="true" />
-                <ui:SliderInt name="set-fov" label="Field of view" low-value="70" high-value="120" show-input-field="true" />
-                <ui:Slider name="set-volume" label="Volume" low-value="0" high-value="1" show-input-field="true" />
-                <ui:Toggle name="set-damage-numbers" label="Damage numbers" />
-                <ui:Toggle name="set-toggle-sprint" label="Toggle sprint" />
-                <ui:VisualElement class="pause-buttons">
-                    <ui:Button name="btn-resume" class="pause-button primary" text="Resume" />
-                    <ui:Button name="btn-customize" class="pause-button" text="Customize" />
-                    <ui:Button name="btn-reset" class="pause-button" text="Reset stats" />
-                    <ui:Button name="btn-quit" class="pause-button" text="Quit" />
+                <ui:VisualElement class="pause-menu">
+                    <ui:Button name="btn-resume" class="pause-button menu-button primary" text="Resume" />
+                    <ui:Button name="btn-settings" class="pause-button menu-button" text="Settings" />
+                    <ui:Button name="btn-customize" class="pause-button menu-button" text="Customize" />
+                    <ui:Button name="btn-reset" class="pause-button menu-button" text="Reset stats" />
+                    <ui:Button name="btn-quit" class="pause-button menu-button" text="Quit" />
                 </ui:VisualElement>
             </ui:VisualElement>
         </ui:VisualElement>

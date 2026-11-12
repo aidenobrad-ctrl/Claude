@@ -52,6 +52,10 @@ namespace Pulsebreak.Client.FiringRange
             GameSettings.Load();
             GameLayers.ConfigureCollisionMatrix();
             RangeEnvironment.Apply(createSunLight);
+            Visuals.GraphicsSetup.Initialize();
+            Audio.SoundBank.Prewarm();
+            Audio.MusicPlayer.SetMenu(false);
+            Visuals.ScreenEffects.Calm();
 
             RangeLayout layout = RangeLayout.Build(transform);
 

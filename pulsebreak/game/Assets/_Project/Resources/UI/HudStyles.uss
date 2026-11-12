@@ -798,3 +798,132 @@
     height: 46px;
     font-size: 18px;
 }
+
+/* ---------------------------------------------------------------- Phase 9: motion and feedback */
+
+/* Buttons and tabs ease between states instead of snapping, and give a little when pressed. */
+.pause-button, .armory-tab, .menu-button, .unity-button {
+    transition-property: background-color, color, scale, translate;
+    transition-duration: 0.12s, 0.12s, 0.08s, 0.12s;
+    transition-timing-function: ease-out;
+}
+
+.pause-button:hover, .armory-tab:hover {
+    translate: 0 -1px;
+}
+
+.pause-button:active, .armory-tab:active, .unity-button:active {
+    scale: 0.96 0.96;
+}
+
+.armory-tab:hover {
+    background-color: rgb(56, 66, 84);
+}
+
+.armory-tab--active:hover {
+    background-color: rgb(120, 232, 255);
+}
+
+/* The weapon cards slide when one is picked. */
+.slot {
+    transition-property: translate, background-color, border-top-color;
+    transition-duration: 0.12s;
+    transition-timing-function: ease-out;
+}
+
+/* Cards and screens fade and rise in: add "enter", then take it away a frame later. */
+.pause-card, .screen-panel {
+    transition-property: opacity, translate;
+    transition-duration: 0.22s;
+    transition-timing-function: ease-out-cubic;
+}
+
+.enter {
+    opacity: 0;
+    translate: 0 18px;
+}
+
+/* The pause menu: one column of wide buttons. */
+.pause-menu {
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.menu-button {
+    margin-left: 0;
+    margin-top: 8px;
+    height: 46px;
+    font-size: 17px;
+    letter-spacing: 1px;
+}
+
+/* Hurt arcs: a pivot at the screen centre, turned towards the hit, with a red bar 150px out. */
+.hurt-pivot {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 0;
+    height: 0;
+    align-items: center;
+}
+
+.hurt-bar {
+    position: absolute;
+    top: -158px;
+    width: 100px;
+    height: 12px;
+    translate: -50% 0;
+    border-radius: 6px;
+    background-color: rgba(255, 52, 40, 0.9);
+    border-bottom-width: 2px;
+    border-bottom-color: rgba(255, 190, 170, 0.9);
+}
+
+.fps {
+    position: absolute;
+    right: 18px;
+    top: 12px;
+    font-size: 14px;
+    color: rgba(240, 244, 250, 0.75);
+    -unity-text-align: upper-right;
+}
+
+/* Announcements punch in. */
+.banner-pop {
+    transition-property: scale, opacity;
+    transition-duration: 0.25s;
+    transition-timing-function: ease-out-back;
+}
+
+.banner-pop--start {
+    scale: 1.5 1.5;
+    opacity: 0;
+}
+
+/* Medals: a short line under the crosshair for a headshot, a multi-kill or a streak. */
+.medal {
+    position: absolute;
+    top: 58%;
+    left: 0;
+    right: 0;
+    -unity-text-align: middle-center;
+    font-size: 26px;
+    letter-spacing: 4px;
+    -unity-font-style: bold;
+    color: rgb(255, 214, 92);
+    text-shadow: 0 2px 6px rgba(0, 0, 0, 0.8);
+    transition-property: scale, opacity;
+    transition-duration: 0.2s;
+    transition-timing-function: ease-out-back;
+}
+
+.medal--hidden {
+    opacity: 0;
+    scale: 0.6 0.6;
+}
+
+.medal-points {
+    font-size: 18px;
+    color: rgb(240, 244, 250);
+    letter-spacing: 2px;
+}

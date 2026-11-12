@@ -98,6 +98,45 @@ namespace Pulsebreak.Shared.Net
             Buffer.BlockCopy(source, offset, _data, _length, count);
             _length += count;
         }
+
+        /// <summary>A whole number in one byte if it is below 128, two below 16384, and so on.</summary>
+        public void WriteVarUInt(uint value)
+        {
+            while (value >= 0x80)
+            {
+                WriteByte((byte)(value | 0x80));
+                value >>= 7;
+            }
+            WriteByte((byte)value);
+        }
+
+        /// <summary>Like <see cref="WriteVarUInt"/>, with small negative numbers kept small too.</summary>
+        public void WriteVarInt(int value) => WriteVarUInt((uint)((value << 1) ^ (value >> 31)));
+
+        /// <summary>
+        /// Up to 32 floats, exactly, leaving out the ones that are zero: a mask of which are
+        /// there, then those. Much of a player's state is zero most of the time.
+        /// </summary>
+        public void WriteSparseFloats(float[] values, int count)
+        {
+            if (count > 32) throw new ArgumentOutOfRangeException(nameof(count));
+            uint mask = 0;
+            for (int i = 0; i < count; i++)
+            {
+                if (BitConverter.SingleToInt32Bits(values[i]) != 0) mask |= 1u << i;
+            }
+            WriteVarUInt(mask);
+            for (int i = 0; i < count; i++)
+            {
+                if ((mask & (1u << i)) != 0) WriteFloat(values[i]);
+            }
+        }
+
+        /// <summary>An angle in two bytes, to about a two-hundredth of a degree.</summary>
+        public void WriteAngle(float degrees) => WriteUShort((ushort)Mathf.RoundToInt(Mathf.Repeat(degrees, 360f) / 360f * 65536f));
+
+        /// <summary>A number in two bytes, in hundredths, between -327 and 327.</summary>
+        public void WriteCentis(float value) => WriteShort((short)Mathf.Clamp(Mathf.RoundToInt(value * 100f), short.MinValue, short.MaxValue));
     }
 
     /// <summary>
@@ -172,6 +211,38 @@ namespace Pulsebreak.Shared.Net
         }
 
         public Vector2 ReadVector2() => new Vector2(ReadFloat(), ReadFloat());
+
+        public uint ReadVarUInt()
+        {
+            uint result = 0;
+            for (int shift = 0; shift < 35; shift += 7)
+            {
+                byte b = ReadByte();
+                if (Failed) return 0;
+                result |= (uint)(b & 0x7F) << shift;
+                if ((b & 0x80) == 0) return result;
+            }
+            Failed = true;
+            return 0;
+        }
+
+        public int ReadVarInt()
+        {
+            uint raw = ReadVarUInt();
+            return (int)(raw >> 1) ^ -(int)(raw & 1);
+        }
+
+        /// <summary>Reads what <see cref="NetWriter.WriteSparseFloats"/> wrote; the ones left out are zero.</summary>
+        public void ReadSparseFloats(float[] into, int count)
+        {
+            uint mask = ReadVarUInt();
+            if (count > 32 || (count < 32 && mask >> count != 0)) Failed = true;
+            for (int i = 0; i < count; i++) into[i] = (mask & (1u << i)) != 0 ? ReadFloat() : 0f;
+        }
+
+        public float ReadAngle() => ReadUShort() / 65536f * 360f;
+
+        public float ReadCentis() => ReadShort() / 100f;
 
         public Vector3 ReadVector3() => new Vector3(ReadFloat(), ReadFloat(), ReadFloat());
 

@@ -57,6 +57,10 @@ namespace Pulsebreak.Server.Modes
             SetInvulnerable(true);
             _state.RoundWinner = winner;
             _state.AddScore(winner, 1);
+            foreach (ServerPlayer player in Players)
+            {
+                if (player != null && player.Ready && player.Team == winner) player.RoundsWon++;
+            }
 
             if (winner != MatchState.Nobody && _state.Score(winner) >= Settings.roundsToWin)
             {

@@ -12,9 +12,9 @@ namespace Pulsebreak.Api.Matchmaking;
 public sealed record Caller(string Key, string Name, bool Guest, bool Verified = false);
 
 /// <summary>
-/// Passes for playing without an account. Accounts are switched off in the game for now, so
-/// matchmaking hands each player a guest pass instead: a signed token naming a random guest
-/// id and the name they chose. It is good for matchmaking only. The API's own sign-in refuses
+/// Passes for playing without an account. A player who is not signed in gets a guest pass
+/// for casual matchmaking: a signed token naming a random guest id and the name they chose.
+/// It is good for matchmaking only, never ranked. The API's own sign-in refuses
 /// it, because it is made out to a different audience.
 /// </summary>
 public sealed class GuestPasses(IOptions<AuthOptions> auth, IOptions<MatchmakingOptions> options, TimeProvider clock)

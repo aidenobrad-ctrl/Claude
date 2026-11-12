@@ -59,6 +59,14 @@ namespace Pulsebreak.Server
         /// <summary>0 or 1, or <see cref="Teams.None"/> in a mode without teams.</summary>
         public int Team = Teams.None;
         public int Kills, Deaths, Score;
+        /// <summary>Kills that were headshots.</summary>
+        public int Headshots;
+        /// <summary>Points from zones: taking them and holding them.</summary>
+        public int Objective;
+        /// <summary>Rounds their side won while they were in the match.</summary>
+        public int RoundsWon;
+        /// <summary>Kills (and how many were headshots) with each weapon, for weapon XP.</summary>
+        public readonly Dictionary<string, (int Kills, int Headshots)> WeaponKills = new Dictionary<string, (int, int)>();
         /// <summary>Gun Game: how far up the ladder they are.</summary>
         public int GunLevel;
         /// <summary>Respawning modes: the tick they come back at, or -1 if they are not waiting to.</summary>
@@ -85,7 +93,8 @@ namespace Pulsebreak.Server
         /// <summary>A fresh match: everything the scoreboard shows goes back to zero.</summary>
         public void ResetStats()
         {
-            Kills = Deaths = Score = 0;
+            Kills = Deaths = Score = Headshots = Objective = RoundsWon = 0;
+            WeaponKills.Clear();
             GunLevel = 0;
             RespawnTick = -1;
         }

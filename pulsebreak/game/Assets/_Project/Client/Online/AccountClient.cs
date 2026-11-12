@@ -152,9 +152,23 @@ namespace Pulsebreak.Client.Online
             return ticket;
         }
 
+        // ------------------------------------------------------------------ progression
+
+        /// <summary>Level, weapon levels, challenges, ranks and how the last match went.</summary>
+        public Task<AccountResult<ProgressionData>> GetProgressionAsync() => SendAsync<ProgressionData>("GET", "/v1/progression", null, true);
+
+        /// <summary>The most recent matchmade matches, newest first.</summary>
+        public Task<AccountResult<HistoryList>> GetHistoryAsync(int count = 10) =>
+            SendAsync<HistoryList>("GET", "/v1/matches?limit=" + count, null, true, list: true);
+
+        /// <summary>The best players in a ranked playlist. Needs no sign-in.</summary>
+        public Task<AccountResult<LeaderboardList>> GetLeaderboardAsync(string playlist, int count = 20) =>
+            BackendRequest.SendAsync<LeaderboardList>(_http, "GET", BaseUrl + "/v1/ranked/" + Uri.EscapeDataString(playlist) + "/leaderboard?limit=" + count,
+                null, null, "account server", list: true);
+
         // ------------------------------------------------------------------ the plumbing
 
-        async Task<AccountResult<T>> SendAsync<T>(string method, string path, object body, bool authorized) where T : class
+        async Task<AccountResult<T>> SendAsync<T>(string method, string path, object body, bool authorized, bool list = false) where T : class
         {
             if (authorized)
             {
@@ -162,20 +176,20 @@ namespace Pulsebreak.Client.Online
                 if (_clock() > _accessExpires - RefreshMargin && !await EnsureFreshAsync()) return SignedOutResult<T>();
             }
 
-            AccountResult<T> result = await SendOnceAsync<T>(method, path, body, authorized ? _accessToken : null);
+            AccountResult<T> result = await SendOnceAsync<T>(method, path, body, authorized ? _accessToken : null, list);
 
             // Turned away with a token that looked fine: it may have been cut off early. One fresh try.
             if (authorized && result.Status == 401 && SignedIn)
             {
                 _accessExpires = 0;
                 if (!await EnsureFreshAsync()) return SignedOutResult<T>();
-                result = await SendOnceAsync<T>(method, path, body, _accessToken);
+                result = await SendOnceAsync<T>(method, path, body, _accessToken, list);
             }
             return result;
         }
 
-        Task<AccountResult<T>> SendOnceAsync<T>(string method, string path, object body, string bearer) where T : class =>
-            BackendRequest.SendAsync<T>(_http, method, BaseUrl + path, body, bearer, "account server");
+        Task<AccountResult<T>> SendOnceAsync<T>(string method, string path, object body, string bearer, bool list = false) where T : class =>
+            BackendRequest.SendAsync<T>(_http, method, BaseUrl + path, body, bearer, "account server", list);
 
         /// <summary>Gets a new access token. Calls that arrive while one is already being fetched wait for that one.</summary>
         Task<bool> EnsureFreshAsync()

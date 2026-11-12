@@ -4,6 +4,7 @@ using System.Text;
 using UnityEngine;
 using UnityEngine.UIElements;
 using Pulsebreak.Client.Loadouts;
+using Pulsebreak.Client.Online;
 using Pulsebreak.Shared.Loadouts;
 using Pulsebreak.Shared.Weapons;
 
@@ -107,10 +108,15 @@ namespace Pulsebreak.Client.UI
             }
 
             _library.Changed += Refresh;
+            ProgressionCache.Changed += Refresh;
         }
 
         /// <summary>Stops listening to the library. Call when the screen this belongs to goes away.</summary>
-        public void Dispose() => _library.Changed -= Refresh;
+        public void Dispose()
+        {
+            _library.Changed -= Refresh;
+            ProgressionCache.Changed -= Refresh;
+        }
 
         /// <summary>Redraws everything from the library.</summary>
         public void Refresh()
@@ -128,7 +134,9 @@ namespace Pulsebreak.Client.UI
 
             _nameField.SetValueWithoutNotify(equipped.name);
             _nameField.SetEnabled(!preset);
-            _note.text = "Changes are saved as you make them. New makes a copy of this one to change.";
+            _unlocks = ProgressionCache.Unlocks();
+            string locked = LockedNote(equipped);
+            _note.text = locked.Length > 0 ? locked : "Changes are saved as you make them. New makes a copy of this one to change.";
 
             _newButton.SetEnabled(_library.CanCreate);
             // There is always at least one loadout to carry.
@@ -311,7 +319,8 @@ namespace Pulsebreak.Client.UI
                         AddGroupHeader(_itemList, ClassTitle(group));
                     }
                     WeaponDefinition choice = weapon;
-                    AddItemButton(weapon.displayName, weapon == equipped, () => ChooseWeapon(choice));
+                    AddItemButton(weapon.displayName, weapon == equipped, () => ChooseWeapon(choice),
+                        UnlockRules.IsUnlocked(weapon, _unlocks) ? 0 : weapon.unlockLevel);
                 }
             }
             else if (_tab < PerkTab)
@@ -321,7 +330,8 @@ namespace Pulsebreak.Client.UI
                 {
                     if (utility == null) continue;
                     UtilityDefinition choice = utility;
-                    AddItemButton(utility.displayName, utility == equipped, () => ChooseUtility(choice));
+                    AddItemButton(utility.displayName, utility == equipped, () => ChooseUtility(choice),
+                        UnlockRules.IsUnlocked(utility, _unlocks) ? 0 : utility.unlockLevel);
                 }
             }
             else
@@ -330,17 +340,34 @@ namespace Pulsebreak.Client.UI
                 {
                     if (perkSet == null) continue;
                     PerkSetDefinition choice = perkSet;
-                    AddItemButton(perkSet.displayName, perkSet == loadout.PerkSet, () => ChoosePerkSet(choice));
+                    AddItemButton(perkSet.displayName, perkSet == loadout.PerkSet, () => ChoosePerkSet(choice),
+                        UnlockRules.IsUnlocked(perkSet, _unlocks) ? 0 : perkSet.unlockLevel);
                 }
             }
         }
 
-        void AddItemButton(string title, bool active, Action onClick)
+        /// <param name="lockedUntil">The level it unlocks at for matchmaking, or 0 if it is open.</param>
+        void AddItemButton(string title, bool active, Action onClick, int lockedUntil = 0)
         {
-            var button = new Button(onClick) { text = title };
+            var button = new Button(onClick) { text = lockedUntil > 0 ? title + "     LV " + lockedUntil : title };
             button.AddToClassList("armory-weapon");
             button.EnableInClassList("armory-weapon--active", active);
+            // Locked items can still be picked: they work on the range and in private matches.
+            if (lockedUntil > 0) button.style.opacity = active ? 0.85f : 0.55f;
             _itemList.Add(button);
+        }
+
+        /// <summary>What the player has unlocked for matchmaking, as of the last word from the backend.</summary>
+        PlayerUnlocks _unlocks = PlayerUnlocks.Starter;
+
+        /// <summary>A line about anything in the loadout that matchmaking would swap out, or empty.</summary>
+        string LockedNote(LoadoutData equipped)
+        {
+            var notes = new List<string>();
+            UnlockRules.Apply(equipped, _catalog, _unlocks, notes);
+            if (notes.Count == 0) return "";
+            return "Locked for matchmaking: " + notes[0] + (notes.Count > 1 ? " (and " + (notes.Count - 1) + " more)" : "") +
+                   " Locked items work on the range and in private matches.";
         }
 
         // ------------------------------------------------------------------ detail
@@ -464,8 +491,10 @@ namespace Pulsebreak.Client.UI
             previous.AddToClassList("attachment-step");
             row.Add(previous);
 
-            var name = new Label(fitted != null ? fitted.displayName : "None");
+            bool open = fitted == null || UnlockRules.IsUnlocked(fitted, build.Weapon.weaponId, _unlocks);
+            var name = new Label(fitted == null ? "None" : open ? fitted.displayName : fitted.displayName + "  (weapon LV " + fitted.unlockLevel + ")");
             name.AddToClassList("attachment-name");
+            if (!open) name.style.opacity = 0.6f;
             row.Add(name);
 
             var next = new Button(() => CycleAttachment(slot, 1)) { text = ">" };

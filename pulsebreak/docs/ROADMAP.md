@@ -8,13 +8,13 @@ The game is built in phases. Each one ends with something you can run and judge,
 | 2 | Weapon system, 30 weapons, attachments | Built, awaiting your playtest |
 | 3 | Loadouts, saved locally | Built, awaiting your playtest |
 | 4 | Netcode and online 1v1 duels | Built, awaiting your playtest |
-| 5 | Accounts, backend and synced loadouts | Built; switched off in the game for now |
+| 5 | Accounts, backend and synced loadouts | Built; switched back on in Phase 8 |
 | 6 | Every game mode, bots and matchmaking | Built, awaiting your playtest |
 | 7 | Character customization and cosmetics | Built, awaiting your playtest |
-| 7b | Progression and unlocks | Planned |
-| 8 | Abilities, streaks and more utility | Planned |
+| 8 | Progression, challenges and ranked | Built, awaiting your playtest |
+| 8b | Abilities, streaks and more utility | Planned |
 | 9 | More maps, lobby extras, parties | Planned |
-| 10 | Ranked and social | Planned |
+| 10 | Social: friends, parties, reporting | Planned |
 | 11 | Store, battle pass, more cosmetics | Planned |
 | 12 | Settings, polish, anti-cheat hardening, launch readiness | Planned |
 
@@ -43,7 +43,7 @@ The game is built in phases. Each one ends with something you can run and judge,
 
 **You can test:** every weapon and attachment on the range, and whether each one feels distinct and fairly tuned.
 
-**Deferred from the brief:** the grapple gun (Phase 8, with other movement and ability items), weapon levels gating attachments (Phase 7; the unlock levels are already in the data), camos and charms (Phase 11).
+**Deferred from the brief:** the grapple gun (Phase 8b, with other movement and ability items), weapon levels gating attachments (built in Phase 8), camos (built in Phase 7) and charms (Phase 11).
 
 ## Phase 3: Loadouts, saved locally
 
@@ -83,7 +83,7 @@ The game is built in phases. Each one ends with something you can run and judge,
 
 **Deliberately left for later:**
 
-- Killcam (Phase 8).
+- Killcam (Phase 8b).
 - Predicting your own projectiles. They appear when the server launches them, one round trip after the trigger.
 - Encryption, and tying a connection to a logged-in account (Phase 5, with accounts).
 - Hosting across the internet without port forwarding. Dedicated servers on public addresses arrive with matchmaking (Phase 6).
@@ -158,16 +158,21 @@ You asked for this next, ahead of progression, with everything free to pick for 
 
 **You can test:** open Customize, dress up, check your weapon skin in first person on the range, then join a match (two copies, or bots) and see each other's looks.
 
-## Phase 7b: Progression and unlocks
+## Phase 8: Progression, challenges and ranked
 
-- Player level and XP; weapon levels.
-- Unlock rules enforced: weapons, attachments, utility items and perk sets become available at the levels already set in their assets.
-- Post-match XP breakdown.
-- The loadout screen shows what is locked and why.
+You chose: accounts back on, unlocks enforced except in private matches and on the range, and ranked for Duel and Elimination 3v3.
 
-**You can test:** play matches, level up, and watch new options open up on the loadout screen.
+- **Accounts on again.** Sign-in is back in the menu; guests can still play casual and everything offline.
+- **Trusted results.** A matchmade server plays one match, reports it to the backend (kills, deaths, headshots, objective points, rounds won, kills per weapon, who won, who left), and sends everyone back to the menu. Each match counts once, only from the server it was given to, only for the players it was sent.
+- **XP and 50 levels**, weapon XP and 20 weapon levels, with the formulas in one file shared by the game and the backend.
+- **Unlocks** from the levels already in the content: a starter set for new players and guests in matchmaking, everything on the range and in private matches. The loadout screen marks what is locked.
+- **Challenges:** three daily and three weekly per player, paying XP when done.
+- **Ranked Duel and Ranked Elimination (3v3):** verified accounts only, full matches of people, matched by rating with a widening window, teams balanced by rating, five placement matches, seven tiers with divisions, leaderboards. Leaving or not showing up is a loss.
+- **Progress screen and post-match summary** in the game; match history on the account.
 
-## Phase 8: Abilities, streaks and more utility
+**You can test:** with the backend and a dedicated server running, sign in, find a few matches, and watch XP, levels, challenges, weapon levels and unlocks move; verify your email and play ranked with a second account.
+
+## Phase 8b: Abilities, streaks and more utility
 
 - The grapple gun and any other movement tools.
 - More utility items, including non-damaging ones (smoke, flash, scan).
@@ -185,14 +190,12 @@ You asked for this next, ahead of progression, with everything free to pick for 
 
 **You can test:** every mode on every map it supports, alone against bots or in a private lobby with friends.
 
-## Phase 10: Ranked and social
+## Phase 10: Social
 
-- Skill rating, rank tiers and a ranked playlist, open only to verified accounts.
-- Skill-based matchmaking for ranked, looser for casual.
-- Friends list, party invites, block and report.
-- Leaderboards.
+- Friends list, party invites (queue together), block and report.
+- Seasons for ranked: soft resets and season rewards.
 
-**You can test:** play ranked matches and watch rating and tier move; add a friend and invite them.
+**You can test:** add a friend, invite them, and queue together.
 
 ## Phase 11: Store, battle pass, more cosmetics
 

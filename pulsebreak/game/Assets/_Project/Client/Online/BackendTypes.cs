@@ -178,3 +178,109 @@ namespace Pulsebreak.Client.Online
         public void Save(LoadoutCollection collection) => Target.Save(collection);
     }
 }
+
+namespace Pulsebreak.Client.Online
+{
+    // ------------------------------------------------------------------ progression, as the backend sends it
+
+    [Serializable]
+    public sealed class LevelData
+    {
+        public int level = 1;
+        public int xp;
+        public long xpIntoLevel;
+        public long xpForNextLevel = 200;
+        public int maxLevel = 50;
+    }
+
+    [Serializable]
+    public sealed class WeaponProgressData
+    {
+        public string weaponId = "";
+        public int level = 1;
+        public int xp;
+        public long xpIntoLevel;
+        public long xpForNextLevel;
+        public int kills;
+    }
+
+    [Serializable]
+    public sealed class ChallengeData
+    {
+        public string id = "";
+        public string text = "";
+        public int progress;
+        public int goal = 1;
+        public int rewardXp;
+        public bool completed;
+        public bool weekly;
+        /// <summary>Seconds since 1970 (UTC) when it is replaced.</summary>
+        public long endsAt;
+    }
+
+    [Serializable]
+    public sealed class RankData
+    {
+        public string playlist = "";
+        public string title = "";
+        public int rating = 1000;
+        public int matches, wins, losses, draws;
+        /// <summary>"Surge II", or "Placement 2/5".</summary>
+        public string name = "";
+        public string tier = "";
+        public int division;
+        public int placementLeft;
+    }
+
+    [Serializable]
+    public sealed class LastMatchData
+    {
+        /// <summary>Empty if the player has not finished a matchmade match yet.</summary>
+        public string matchId = "";
+        public string playlist = "";
+        public bool ranked;
+        /// <summary>0 lost, 1 draw, 2 won.</summary>
+        public int outcome;
+        public int xpGained;
+        public int levelBefore, levelAfter;
+        public int ratingBefore, ratingAfter;
+        public string[] challengesCompleted = new string[0];
+        public long endedAt;
+    }
+
+    [Serializable]
+    public sealed class ProgressionData
+    {
+        public LevelData level = new LevelData();
+        public WeaponProgressData[] weapons = new WeaponProgressData[0];
+        public ChallengeData[] challenges = new ChallengeData[0];
+        public RankData[] ranks = new RankData[0];
+        public LastMatchData lastMatch = new LastMatchData();
+    }
+
+    [Serializable]
+    public sealed class HistoryEntryData
+    {
+        public string matchId = "";
+        public string playlist = "";
+        public bool ranked;
+        public long endedAt;
+        public int outcome;
+        public bool completed;
+        public int kills, deaths, score, xpGained, ratingChange;
+    }
+
+    [Serializable]
+    public sealed class LeaderboardEntryData
+    {
+        public int place;
+        public string name = "";
+        public int rating;
+        public string rankName = "";
+        public int matches, wins;
+    }
+
+    // The backend answers some requests with a plain list; Unity's JSON reader wants an object around it.
+    [Serializable] public sealed class HistoryList { public HistoryEntryData[] items = new HistoryEntryData[0]; }
+    [Serializable] public sealed class LeaderboardList { public LeaderboardEntryData[] items = new LeaderboardEntryData[0]; }
+}

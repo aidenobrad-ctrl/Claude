@@ -2,7 +2,7 @@
 
 A fast, competitive multiplayer FPS for PC, built in Unity 6. "Pulsebreak" is a working title.
 
-Seven phases are built so far: **movement and a firing range**, **the weapon system with 40 weapons and 21 attachments**, **loadouts**, **online play** on a server that owns the match, **accounts** on a backend of their own, **every game mode, bots and matchmaking**, and **character customization with weapon skins**. Accounts are switched off in the game for now, at your request; see [Accounts](#accounts). The plan for everything after is in [docs/ROADMAP.md](docs/ROADMAP.md), and how the code is organised is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Eight phases are built so far: **movement and a firing range**, **the weapon system with 40 weapons and 21 attachments**, **loadouts**, **online play** on a server that owns the match, **accounts** on a backend of their own, **every game mode, bots and matchmaking**, **character customization with weapon skins**, and **progression, challenges and ranked**. Accounts are switched back on; see [Accounts](#accounts). The plan for everything after is in [docs/ROADMAP.md](docs/ROADMAP.md), and how the code is organised is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 > **Not yet run in Unity.** This was written without access to a Unity Editor. The C# was compiled against Unity's reference assemblies. The simulation, the weapon data and the netcode were tested outside the engine, including whole matches between a real server and real clients on a simulated bad connection, every game mode, bots playing full matches, and the game's account and matchmaking code against the real backend. But nothing has been opened or played in Unity itself, so the menus, the HUD and everything else you look at are unverified. Expect to report a few first-run issues; [Troubleshooting](#troubleshooting) covers the likely ones.
 
@@ -19,20 +19,17 @@ On first open Unity creates several settings files and one asset (`Resources/UI/
 
 ## Accounts
 
-**Switched off for now.** The menu has no sign-in, nothing in the game talks to the backend, and loadouts and settings are saved on your computer. Nobody needs an account to play, host or join.
+**On again.** Sign in (or create an account) from the top of the main menu. An account keeps your loadouts, settings, level, weapon levels, challenges and ranks, and they follow you to any computer. Ranked needs a verified email; the menu tells you how to verify.
 
-Everything is still in the project, ready for when accounts become required:
+Without an account you can still do everything offline, host and join private matches, and play casual matchmaking as a guest, but nothing you play is saved to your progress and you carry only the starter weapons in matchmaking.
 
-- the backend (sign-up, email verification, sign-in, password reset, loadouts and settings saved to the account) is in `backend/`, with its own [README](backend/README.md) and tests;
-- in the game, one line turns it all back on: `AccountsEnabled` in `Client/Online/Unity/GameServices.cs`.
-
-If you signed in while accounts were on, the loadouts you made then are brought back to this computer the next time the game starts.
+The backend has to be running for any of this: see [backend/README.md](backend/README.md). Turning accounts off again is one line: `AccountsEnabled` in `Client/Online/Unity/GameServices.cs`.
 
 ## Play online
 
 Online play is in the duel scene (**Pulsebreak ▸ Open Duel (Main Menu)**), which is also the main menu. Pick a **mode** at the top of the menu, then:
 
-- **Find match** puts you in that mode's queue on the backend, and drops you into a match on a dedicated server when one is found. See [Matchmaking](#matchmaking).
+- **Find match** puts you in that mode's queue on the backend, and drops you into a match on a dedicated server when one is found. Tick **Ranked** (Duel and Elimination) to play for rating. See [Matchmaking](#matchmaking) and [Progress and ranked](#progress-and-ranked).
 - **Host a private match** runs the match on your own computer with the rules you pick: map, team size, what wins it, and whether bots take the empty places (and how good they are). With bots on, you can play any mode on your own straight away.
 - **Join by address** connects to someone else's private match or to a dedicated server.
 
@@ -93,7 +90,7 @@ set PULSEBREAK_TICKET_KEY=development-only-ticket-key-do-not-use-anywhere-real
 Pulsebreak.exe -batchmode -nographics -server -fleet http://localhost:5080 -public-address 127.0.0.1
 ```
 
-(Those are the development keys from the backend's settings; use your own anywhere real.) The server registers and checks in every few seconds. Players queue as guests while accounts are off. A full queue starts a match at once; otherwise, after 20 seconds, a match starts with whoever is waiting and bots take the other places (a Duel always waits for two people). The server switches to the match's mode and map, and lets in only the players matchmaking sent it. Run several servers on different `-port`s to host several matches.
+(Those are the development keys from the backend's settings; use your own anywhere real.) The server registers and checks in every few seconds. Signed-in players queue as themselves, everyone else as a guest. A full queue starts a match at once; otherwise, after 20 seconds, a casual match starts with whoever is waiting and bots take the other places (a Duel always waits for two people; ranked always waits for a full match). The server switches to the match's mode and map, lets in only the players matchmaking sent it, plays **one** match, reports it to the backend and sends everyone back to the menu, where a line says what the match earned. Run several servers on different `-port`s to host several matches.
 
 ### In a match
 
@@ -132,6 +129,16 @@ To feel the game at a given ping, make your own connection worse on purpose. Eac
 - **Hits.** Whether shots that looked on target count, especially on a moving opponent with simulated lag on.
 - **The other player.** Smooth, or jittery? Do their shots come from their weapon?
 - **Anything on screen** that overlaps, is missing or reads wrong.
+
+## Progress and ranked
+
+Only matches found through **Find match** count, because only a matchmade server's report is trusted. Private matches, the range and LAN games are for practice and fun.
+
+- **XP and levels.** A match pays for finishing it (100), winning (150, or 75 for a draw), each kill (25) and headshot kill (10), each round won (30) and objective points (a quarter of them). Leaving early forfeits the finishing and winning parts. Ranked pays a quarter more. Levels go to 50; everything in the game is unlocked by level 30, about 50 good matches.
+- **Unlocks.** New players carry a starter set in matchmaking: the Assault Rifle, SMG, Pistol, Combat Knife and Fists, plus the first utility item and perk set. Other weapons, utility items and perk sets open with your level; attachments with the level of the weapon they fit (kills with a weapon level it up). The loadout screen marks locked items with the level they open at. You can still pick them: **on the range and in private matches everything is unlocked**, and in matchmaking a locked item is swapped for a starter.
+- **Challenges.** Three a day and three a week, different for each player: kills with a kind of weapon, headshots, wins, objective points, rounds and so on. Finishing one pays extra XP straight away. Days reset at midnight UTC, weeks on Monday.
+- **Ranked.** **Ranked Duel** and **Ranked Elimination (3v3)**, for accounts with a verified email. Matches are full, people only, with players near your rating (the range widens the longer you wait) and teams balanced by rating. Your rank shows after five placement matches: **Spark, Pulse, Surge, Arc, Flux, Nova, Zenith**, each but the top in three divisions. Leaving a ranked match, or not turning up, is a loss.
+- **The Progress screen** (from the menu, signed in) shows your level and XP, today's and this week's challenges, what unlocks next, every weapon's level, your ranks with each ranked playlist's leaderboard, and your last ten matches.
 
 ## Customize
 
@@ -183,7 +190,7 @@ A loadout is four things to carry and a perk set:
 | Utility | One grenade (or similar), thrown with **G** |
 | Perk set | A passive bonus, such as faster reloads or a little more speed |
 
-Press **Esc** in play to open the loadout screen.
+Press **Esc** in play to open the loadout screen. Items locked for matchmaking show the level they open at; see [Progress and ranked](#progress-and-ranked).
 
 - **Pick one.** The list on the left is your loadouts. Each entry shows what it carries. Clicking one selects it. The first time you play there is one, ready to change.
 - **Deploy** puts you back in the game carrying the selected loadout. On the range you have it at once, with full ammunition; in a match, from your next spawn.
@@ -291,6 +298,12 @@ The backend has its own tests; see [backend/README.md](backend/README.md#tests).
 **A build starts on the firing range, with no menu.** The duel scene is not first in the build. Run **Pulsebreak ▸ Run Project Doctor**, or drag **Duel** to the top under **File ▸ Build Profiles**.
 
 **"Could not open port 7777" when hosting.** Another copy of the game on this computer is already hosting. Join that one at `127.0.0.1`, or close it.
+
+**No sign-in on the menu, or "Could not reach the account server".** The backend is not running, or the game is looking for it somewhere else. Start it (see [backend/README.md](backend/README.md)), or start the game with `-backend URL`. Everything offline works without it.
+
+**The Ranked box is greyed out.** Ranked is for Duel and Elimination, signed in, with a verified email; the line beside the box says which is missing.
+
+**A match did not count.** Only matchmade matches count, and only once the server has reported them; the menu says "still being counted" if that takes a moment. Private matches never count.
 
 **"Could not reach matchmaking."** The backend is not running, or the game is looking for it somewhere else. Start it (see [backend/README.md](backend/README.md)), or start the game with `-backend URL`. Hosting and joining by address work without it.
 

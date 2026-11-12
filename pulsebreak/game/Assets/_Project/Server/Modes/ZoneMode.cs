@@ -125,7 +125,10 @@ namespace Pulsebreak.Server.Modes
                 foreach (ServerPlayer player in Players)
                 {
                     if (player != null && player.Alive && player.Team == team && _areas[z].Contains(player.State.Motor.Position))
+                    {
                         player.Score += CapturePoints;
+                        player.Objective += CapturePoints;
+                    }
                 }
                 Server.Log("Team " + (team + 1) + " took " + _areas[z].Name + ".");
             }
@@ -180,7 +183,10 @@ namespace Pulsebreak.Server.Modes
                     foreach (ServerPlayer player in Players)
                     {
                         if (player != null && player.Alive && player.Team == holder && _areas[active].Contains(player.State.Motor.Position))
+                        {
                             player.Score += HoldPoints;
+                            player.Objective += HoldPoints;
+                        }
                     }
                 }
             }

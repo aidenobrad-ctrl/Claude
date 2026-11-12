@@ -2,7 +2,7 @@
 
 Pulsebreak (working title) is a fast, competitive multiplayer FPS for PC: tight gunplay and loadouts from modern military shooters, short rounds and snappy movement from arena shooters. This document covers the technology choices, how the repository is laid out, and how the systems connect. The phased plan is in [ROADMAP.md](ROADMAP.md).
 
-Phases 1 to 5 exist as code today: movement, the weapon system, loadouts, a firing range to try them in, online 1v1 duels on a server that owns the match, and accounts on a backend that the loadouts and settings follow. Accounts are switched off in the game for now (one flag, `GameServices.AccountsEnabled`); the backend and all the game code for it remain. Sections that describe later phases say so.
+Phases 1 to 8 exist as code today: movement, the weapon system, loadouts, a firing range to try them in, online matches on a server that owns the match, accounts on a backend that the loadouts and settings follow, every game mode with bots and matchmaking, character cosmetics, and progression with challenges and ranked play. Accounts can be switched off with one flag, `GameServices.AccountsEnabled` (they were, during Phase 5 to 7); they are on. Sections that describe later phases say so.
 
 ## Technology choices
 
@@ -268,7 +268,8 @@ Phase 3 made loadouts local first, with sync in mind. Phase 5 added the sync, an
 | Duel (best of five), Team Deathmatch, Elimination, Domination, Hardpoint, Free-for-All, Gun Game | `Server/Modes` | |
 | Bots for practice and to fill matches | `BotBrain`, `NavGrid`, `GameServer.BalanceBots` | Three skill levels |
 | Private lobbies with custom settings | `DuelUi` host options, `MatchSettings` | Map, mode, size, win limit, bots |
-| Casual matchmaking | backend `MatchmakingService`, `MatchmakingClient`, `FleetAgent` | Ranked waits for accounts |
+| Casual matchmaking | backend `MatchmakingService`, `MatchmakingClient`, `FleetAgent` | Guests welcome |
+| Ranked, levels, unlocks, challenges | `Shared/Progression`, backend `ProgressionService`, `UnlockRules` | Ranked: Duel and Elimination 3v3, verified accounts |
 | Kill feed, health, scores, clock, zones, scoreboard | `DuelUi`, `ZoneMarkers` | |
 | Character customization, cosmetics only | `CosmeticCatalog`, `CustomizeScreen`, `CharacterLookView` | All free for now; never affects play |
 
@@ -433,6 +434,38 @@ A player's look is a `CharacterLook`: the id of the item chosen for each slot (s
 Catalog lists are append-only, because the wire format sends positions: add new items at the end and retire old ones by hiding them. The server passes a player's new look on at most twice a second, always ending on the latest.
 
 Nothing cosmetic has a collider. The hitboxes are the same six parts for everyone, so what a player wears cannot make them harder to hit; team-coloured shoulder pads are drawn over every outfit so sides stay readable.
+
+## Progression and ranked
+
+Only matchmade matches count, because only a matchmade server's word is trusted: it was given the match by the backend, it checked every player's ticket, and it ran the match itself.
+
+```mermaid
+sequenceDiagram
+    participant B as Backend
+    participant S as Game server
+    participant G as Game
+    B-->>S: assignment: match id, playlist, ranked, players (side, level, weapon levels)
+    G->>S: join with a ticket for that match
+    Note over S: holds loadouts to the players' unlocks,<br/>puts them on the given sides, plays one match
+    S->>B: report: per player kills, deaths, headshots, objective,<br/>rounds won, kills per weapon, outcome, stayed or left
+    Note over B: XP, weapon XP, challenges, rating, history (once per match)
+    S-->>G: match over: back to the menu
+    G->>B: progression (shows what the match earned)
+```
+
+| Piece | Where | Job |
+| --- | --- | --- |
+| The numbers | `Shared/Progression/Progression.cs` | Level and weapon level curves, match XP, rank tiers and the Elo change; the report and assignment formats. Compiled into the backend too |
+| Unlocks | `UnlockRules`, `PlayerUnlocks` (Shared/Loadouts) | What a player may carry; swaps anything locked for the starter. Used by the server in matchmade matches and by the loadout screen for its badges |
+| Match stats | `ServerPlayer`, `GameMode.OnKill`, `ZoneMode`, `RoundMode` | Kills, headshots, kills per weapon, objective points, rounds won |
+| The report | `GameServer.MatchFinished`, `FleetAgent` | Built when the match is decided, with anyone who left as a loss; posted to the backend with retries |
+| One match per session | `GameMode` (match end), `GameServer.EndSession` | Sends everyone home with a "match over" reason; the server is then free for matchmaking |
+| Awarding | backend `ProgressionService` | XP, weapon XP, challenges, ratings and history in one transaction; a second report of the same match changes nothing |
+| Challenges | backend `Challenges` | Pools of daily and weekly challenges; each player's three per period are picked from a hash of their id and the date |
+| Ranked matching | backend `MatchmakingService.MatchRankedAsync` | Oldest first, the closest-rated others within a window that widens with waiting; full matches only; snake-draft teams |
+| In the game | `ProgressionCache`, `ProgressScreen`, `DuelUi` profile and Ranked box, `LoadoutPanel` badges | Shows what the backend says |
+
+Ratings are Elo against the other side's average, with a larger step during the five placement matches and a smaller one after thirty. A ranked no-show (sent by the matchmaker but never reported) loses.
 
 ## Accounts and the backend
 

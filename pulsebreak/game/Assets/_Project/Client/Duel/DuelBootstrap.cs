@@ -162,6 +162,8 @@ namespace Pulsebreak.Client.Duel
 
             _ui = DuelUi.Create(_services);
             _ui.FindRequested += Find;
+            _ui.ProgressRequested += () => ProgressScreen.Open(_services, catalog);
+            _ = _services.RefreshProgressionAsync();
             _ui.HostRequested += Host;
             _ui.JoinRequested += Join;
             _ui.CancelRequested += () => Leave("");
@@ -268,7 +270,10 @@ namespace Pulsebreak.Client.Duel
         }
 
         /// <summary>Queues for a match through the backend, then joins the server it finds.</summary>
-        async void Find(GameModeKind mode)
+        // The matchmade match being played, to find its results afterwards.
+        string _matchmadeId = "";
+
+        async void Find(GameModeKind mode, bool ranked)
         {
             if (_session != null) return;
             int attempt = ++_attempt;
@@ -276,7 +281,7 @@ namespace Pulsebreak.Client.Duel
             string name = PlayerName();
             _ui.ShowConnecting("Joining the " + MatchSettings.Title(mode) + " queue...");
 
-            AccountResult<MatchTicketData> queued = await matchmaking.JoinQueueAsync(mode, name);
+            AccountResult<MatchTicketData> queued = await matchmaking.JoinQueueAsync(mode, name, ranked);
             if (this == null) return;
             if (attempt != _attempt)
             {
@@ -321,6 +326,7 @@ namespace Pulsebreak.Client.Duel
                 return;
             }
             _joinHint = "";
+            _matchmadeId = ticket.matchId;
             ConnectWithTicket(target, ticket.joinTicket);
         }
 
@@ -415,6 +421,48 @@ namespace Pulsebreak.Client.Duel
             _zoneMarkers = _session.Settings.UsesZones ? ZoneMarkers.Create(arena, _session.Settings.mode == GameModeKind.Hardpoint) : null;
         }
 
+        /// <summary>
+        /// A matchmade match is over and the server has sent everyone home. Back to the menu,
+        /// and as soon as the backend has counted the match, a line saying what it earned.
+        /// </summary>
+        async void AfterMatch()
+        {
+            string matchId = _matchmadeId;
+            Leave("");
+            _ui.ShowMenuResult("Match over." + (_services.Account.SignedIn ? " Counting your XP..." : " Sign in to earn XP from matches."));
+            if (!_services.Account.SignedIn || string.IsNullOrEmpty(matchId)) return;
+
+            int attempt = _attempt;
+            for (int tries = 0; tries < 10; tries++)
+            {
+                ProgressionData progression = await _services.RefreshProgressionAsync();
+                if (this == null || attempt != _attempt) return;
+                if (progression != null && progression.lastMatch.matchId == matchId)
+                {
+                    _ui.ShowMenuResult(Summary(progression));
+                    return;
+                }
+                await System.Threading.Tasks.Task.Delay(1000);
+                if (this == null || attempt != _attempt) return;
+            }
+            _ui.ShowMenuResult("Match over. Its results are still being counted; see Progress shortly.");
+        }
+
+        static string Summary(ProgressionData progression)
+        {
+            LastMatchData last = progression.lastMatch;
+            string outcome = last.outcome == 2 ? "Victory" : last.outcome == 1 ? "Draw" : "Defeat";
+            string text = outcome + ".  +" + last.xpGained + " XP";
+            if (last.levelAfter > last.levelBefore) text += ", level up to " + last.levelAfter + "!";
+            if (last.ranked)
+            {
+                int change = last.ratingAfter - last.ratingBefore;
+                text += "   ·   Rating " + last.ratingAfter + " (" + (change >= 0 ? "+" : "") + change + ")";
+            }
+            if (last.challengesCompleted.Length > 0) text += "\nChallenge done: " + string.Join(", ", last.challengesCompleted);
+            return text;
+        }
+
         /// <summary>Back to the menu, whether we chose to go or were dropped.</summary>
         void Leave(string reason)
         {
@@ -483,7 +531,8 @@ namespace Pulsebreak.Client.Duel
 
             if (_session.Status == ClientStatus.Failed || _session.Status == ClientStatus.Disconnected)
             {
-                Leave(_session.StatusText);
+                if (_session.EndedByMatchOver) AfterMatch();
+                else Leave(_session.StatusText);
                 return;
             }
             if (_session.Welcomed && !_welcomed)

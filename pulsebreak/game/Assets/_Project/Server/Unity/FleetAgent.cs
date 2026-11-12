@@ -4,6 +4,7 @@ using System.Text;
 using System.Threading.Tasks;
 using UnityEngine;
 using Pulsebreak.Shared.Match;
+using Pulsebreak.Shared.Progression;
 
 namespace Pulsebreak.Server
 {
@@ -46,11 +47,9 @@ namespace Pulsebreak.Server
         }
 
         [Serializable]
-        sealed class HeartbeatReply
+        sealed class ResultReply
         {
-            /// <summary>Empty when there is nothing new to play.</summary>
-            public string matchId = "";
-            public string playlist = "";
+            public string outcome = "";
         }
 
         static readonly HttpClient Http = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
@@ -71,6 +70,7 @@ namespace Pulsebreak.Server
             _port = port;
             if (_key.Length == 0) Debug.LogWarning("[Fleet] No fleet key (PULSEBREAK_FLEET_KEY): the backend will not accept this server.");
             if (!_host.Server.RequiresTicket) Debug.LogWarning("[Fleet] No ticket key (PULSEBREAK_TICKET_KEY): matchmade players cannot be checked, so anyone could join.");
+            _host.Server.MatchReported += report => _ = ReportAsync(report);
             Debug.Log("[Fleet] Offering " + _address + ":" + _port + " to matchmaking at " + _baseUrl + ".");
         }
 
@@ -88,7 +88,7 @@ namespace Pulsebreak.Server
             _busy = true;
             try
             {
-                RegisterReply reply = await PostAsync<RegisterReply>("/v1/fleet/servers",
+                (RegisterReply reply, _) = await PostAsync<RegisterReply>("/v1/fleet/servers",
                     new RegisterBody { address = _address, port = _port, version = Shared.Net.NetProtocol.Version });
                 if (reply == null || string.IsNullOrEmpty(reply.id))
                 {
@@ -119,15 +119,15 @@ namespace Pulsebreak.Server
                 bool waitingForPlayers = assigned && humans == 0 && Time.unscaledTime - _assignedAt < NoShowSeconds;
                 string state = humans > 0 || waitingForPlayers ? "busy" : "idle";
 
-                HeartbeatReply reply = await PostAsync<HeartbeatReply>("/v1/fleet/servers/" + Uri.EscapeDataString(_serverId) + "/heartbeat",
+                (MatchAssignment reply, int status) = await PostAsync<MatchAssignment>("/v1/fleet/servers/" + Uri.EscapeDataString(_serverId) + "/heartbeat",
                     new HeartbeatBody { state = state, matchId = server.MatchId, players = humans });
-                if (reply == null) return;
-                if (reply.matchId == "" && _lastStatus == 404)
+                if (status == 404)
                 {
                     // The backend has forgotten us (it restarted): register again.
                     _serverId = null;
                     return;
                 }
+                if (reply == null) return;
                 if (string.IsNullOrEmpty(reply.matchId) || reply.matchId == server.MatchId) return;
 
                 Playlist playlist = Playlists.Find(reply.playlist);
@@ -139,12 +139,12 @@ namespace Pulsebreak.Server
                 MatchSettings settings = MatchSettings.For(playlist.Mode);
                 if (playlist.TeamSize > 0) settings.teamSize = playlist.TeamSize;
                 else settings.maxPlayers = playlist.Players;
-                // Whoever does not turn up, or leaves, is replaced by a bot.
-                settings.fillWithBots = true;
-                if (server.Configure(settings, reply.matchId))
+                // Casual: whoever does not turn up, or leaves, is replaced by a bot. Ranked is people only.
+                settings.fillWithBots = !playlist.Ranked;
+                if (server.Configure(settings, reply.matchId, reply))
                 {
                     _assignedAt = Time.unscaledTime;
-                    Debug.Log("[Fleet] Now hosting match " + reply.matchId + " (" + playlist.Title + ").");
+                    Debug.Log("[Fleet] Now hosting match " + reply.matchId + " (" + playlist.Title + ", " + reply.players.Length + " player(s) coming).");
                 }
             }
             finally
@@ -153,9 +153,33 @@ namespace Pulsebreak.Server
             }
         }
 
-        int _lastStatus;
+        /// <summary>Hands a finished match to the backend, trying a few times if it cannot be reached.</summary>
+        async Task ReportAsync(MatchReport report)
+        {
+            for (int attempt = 0; attempt < 5; attempt++)
+            {
+                if (_serverId != null)
+                {
+                    (ResultReply reply, int status) = await PostAsync<ResultReply>("/v1/fleet/servers/" + Uri.EscapeDataString(_serverId) + "/results", report);
+                    if (reply != null)
+                    {
+                        Debug.Log("[Fleet] Match " + report.matchId + ": " + reply.outcome + ".");
+                        return;
+                    }
+                    if (status >= 400 && status < 500)
+                    {
+                        // Refused (not a match this server was given): trying again will not help.
+                        Debug.LogWarning("[Fleet] The backend would not take the report of match " + report.matchId + " (" + status + ").");
+                        return;
+                    }
+                }
+                await Task.Delay(TimeSpan.FromSeconds(2 << attempt));
+            }
+            Debug.LogWarning("[Fleet] Could not report match " + report.matchId + "; its results are lost.");
+        }
 
-        async Task<T> PostAsync<T>(string path, object body) where T : class
+        /// <summary>A POST with the fleet key. The reply's body (null if none could be read) and its status (0 if unreachable).</summary>
+        async Task<(T Body, int Status)> PostAsync<T>(string path, object body) where T : class
         {
             try
             {
@@ -165,23 +189,21 @@ namespace Pulsebreak.Server
                     request.Content = new StringContent(JsonUtility.ToJson(body), Encoding.UTF8, "application/json");
                     using (HttpResponseMessage response = await Http.SendAsync(request))
                     {
-                        _lastStatus = (int)response.StatusCode;
-                        if (_lastStatus == 404) return Activator.CreateInstance<T>();
+                        int status = (int)response.StatusCode;
                         if (!response.IsSuccessStatusCode)
                         {
-                            Debug.LogWarning("[Fleet] " + path + " answered " + _lastStatus + ".");
-                            return null;
+                            if (status != 404) Debug.LogWarning("[Fleet] " + path + " answered " + status + ".");
+                            return (null, status);
                         }
                         string text = await response.Content.ReadAsStringAsync();
-                        return string.IsNullOrEmpty(text) ? Activator.CreateInstance<T>() : JsonUtility.FromJson<T>(text);
+                        return (string.IsNullOrEmpty(text) ? Activator.CreateInstance<T>() : JsonUtility.FromJson<T>(text), status);
                     }
                 }
             }
             catch (Exception failure)
             {
-                _lastStatus = 0;
                 Debug.LogWarning("[Fleet] Could not reach the backend: " + failure.Message);
-                return null;
+                return (null, 0);
             }
         }
 

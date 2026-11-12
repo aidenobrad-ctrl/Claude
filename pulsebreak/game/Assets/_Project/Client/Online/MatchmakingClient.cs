@@ -44,8 +44,9 @@ namespace Pulsebreak.Client.Online
     /// is going, and once a server has been found for the match, get its address and a ticket
     /// to show it.
     ///
-    /// Accounts are switched off for now, so a player queues as a guest: the backend hands out
-    /// a short-lived guest pass that stands in for an account. Signed in, the account is used.
+    /// Signed in, the account is used, and only then can the player queue for ranked. Signed
+    /// out, a player queues as a guest: the backend hands out a short-lived guest pass that
+    /// stands in for an account for casual playlists.
     /// </summary>
     public sealed class MatchmakingClient
     {
@@ -71,11 +72,13 @@ namespace Pulsebreak.Client.Online
 
         /// <summary>Joins the queue for a mode.</summary>
         /// <param name="name">What to be called, when queuing as a guest.</param>
-        public async Task<AccountResult<MatchTicketData>> JoinQueueAsync(GameModeKind mode, string name)
+        /// <param name="ranked">Join the mode's ranked queue. Needs a signed-in account with a verified email.</param>
+        public async Task<AccountResult<MatchTicketData>> JoinQueueAsync(GameModeKind mode, string name, bool ranked = false)
         {
             AccountResult<string> pass = await PassAsync(name);
             if (!pass.Ok) return Copy<MatchTicketData>(pass);
-            return await SendAsync<MatchTicketData>("POST", "/v1/matchmaking/tickets", new QueueBody { playlist = Playlists.For(mode).Id, version = NetProtocol.Version }, pass.Value);
+            Playlist playlist = Playlists.For(mode, ranked) ?? Playlists.For(mode);
+            return await SendAsync<MatchTicketData>("POST", "/v1/matchmaking/tickets", new QueueBody { playlist = playlist.Id, version = NetProtocol.Version }, pass.Value);
         }
 
         /// <summary>How a place in the queue is doing.</summary>
@@ -131,12 +134,13 @@ namespace Pulsebreak.Client.Online
         /// <summary>A line for the player about a search under way.</summary>
         public static string Describe(MatchTicketData ticket, GameModeKind mode)
         {
-            Playlist playlist = Playlists.For(mode);
+            Playlist playlist = Playlists.Find(ticket.playlist) ?? Playlists.For(mode);
             int seconds = Math.Max(0, ticket.waitedSeconds);
             string waited = (seconds / 60) + ":" + (seconds % 60).ToString("00");
             string others = ticket.searching <= 1 ? "Nobody else is searching yet; bots will fill any empty places soon."
                 : ticket.searching + " players searching.";
             if (playlist.MinPlayers > 1 && ticket.searching <= 1) others = "Waiting for an opponent.";
+            if (playlist.Ranked) others = ticket.searching + " searching. Ranked waits for a full match of players near your rating.";
             return "Finding a " + playlist.Title + " match   " + waited + "\n" + others;
         }
     }

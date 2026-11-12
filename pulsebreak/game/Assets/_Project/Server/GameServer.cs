@@ -9,6 +9,7 @@ using Pulsebreak.Shared.Loadouts;
 using Pulsebreak.Shared.Match;
 using Pulsebreak.Shared.Movement;
 using Pulsebreak.Shared.Net;
+using Pulsebreak.Shared.Progression;
 using Pulsebreak.Shared.Simulation;
 using Pulsebreak.Shared.Weapons;
 
@@ -140,8 +141,22 @@ namespace Pulsebreak.Server
         public NetAddress Address => _socket.LocalAddress;
         /// <summary>The matchmade match this server is running, or empty. When set, only tickets for it are admitted.</summary>
         public string MatchId { get; private set; } = "";
-        /// <summary>Once there are enough players, how long to wait for more before starting.</summary>
-        public float LobbySeconds => _config.lobbySeconds;
+        /// <summary>The matchmade match is ranked: only ranked tickets get in, and there are no bots.</summary>
+        public bool Ranked { get; private set; }
+
+        /// <summary>A matchmade match finished. Hand the report to the backend.</summary>
+        public event Action<MatchReport> MatchReported;
+
+        // Who matchmaking sent, by account: their side and what they have unlocked.
+        readonly Dictionary<string, AssignedPlayer> _assigned = new Dictionary<string, AssignedPlayer>();
+        // People who left a matchmade match before it ended, as they stood when they went.
+        readonly List<PlayerReport> _leavers = new List<PlayerReport>();
+        bool _reported;
+        /// <summary>
+        /// Once there are enough players, how long to wait for more before starting. A matchmade
+        /// match gives the players it was sent longer to load in; it starts at once when they all have.
+        /// </summary>
+        public float LobbySeconds => MatchId.Length > 0 ? Mathf.Max(_config.lobbySeconds, 20f) : _config.lobbySeconds;
 
         /// <summary>Things worth a line in the server log.</summary>
         public event Action<string> Logged;
@@ -238,10 +253,22 @@ namespace Pulsebreak.Server
         /// is given each match's rules this way. Returns false if someone is here.
         /// </summary>
         /// <param name="matchId">Matchmaking's id for the match, when it is one; only tickets for it get in. Empty for an open match.</param>
-        public bool Configure(MatchSettings settings, string matchId = "")
+        /// <param name="assignment">Who matchmaking is sending, on which side, with what unlocked, and whether it is ranked.</param>
+        public bool Configure(MatchSettings settings, string matchId = "", MatchAssignment assignment = null)
         {
             if (_mode != null && HumanCount > 0) return false;
             MatchId = matchId ?? "";
+            Ranked = assignment != null && assignment.ranked;
+            _assigned.Clear();
+            _leavers.Clear();
+            _reported = false;
+            if (assignment?.players != null)
+            {
+                foreach (AssignedPlayer player in assignment.players)
+                {
+                    if (player != null && !string.IsNullOrEmpty(player.accountId)) _assigned[player.accountId] = player;
+                }
+            }
 
             for (int i = 0; i < MaxPlayers; i++)
             {
@@ -466,6 +493,10 @@ namespace Pulsebreak.Server
                 SendDisconnect(player, why);
             }
 
+            // Leaving a matchmade match part way still counts, as a loss.
+            if (!player.IsBot && player.Ready && MatchId.Length > 0 && _mode != null && _mode.Underway)
+                _leavers.Add(ReportFor(player, completed: false, MatchOutcome.Lost));
+
             player.Spawned = false;
             player.Vitals.Clear();
             player.Body?.Destroy();
@@ -476,6 +507,120 @@ namespace Pulsebreak.Server
             NetMessages.Write(_out, new PlayerInfoMessage { PlayerId = player.Id, Present = false, Name = player.Name, Team = player.Team, Bot = player.IsBot });
             Broadcast(_out, reliable: true);
             _mode.PlayerLeft(player);
+        }
+
+        // ------------------------------------------------------------------ matchmade matches
+
+        /// <summary>
+        /// What a player may carry. In a matchmade match, only what they have unlocked (guests:
+        /// the starter set); in a private match, anything in the game.
+        /// </summary>
+        LoadoutData CheckLoadout(ServerPlayer player, LoadoutData loadout)
+        {
+            if (MatchId.Length == 0) return LoadoutRules.Sanitize(loadout, _catalog);
+            _assigned.TryGetValue(player.AccountId ?? "", out AssignedPlayer assigned);
+            return UnlockRules.Apply(loadout, _catalog, assigned != null ? PlayerUnlocks.From(assigned) : PlayerUnlocks.Starter);
+        }
+
+        /// <summary>The side matchmaking put a player on, or -1 to let the mode choose.</summary>
+        public int PresetTeam(ServerPlayer player) =>
+            !player.IsBot && _assigned.TryGetValue(player.AccountId ?? "", out AssignedPlayer assigned) ? assigned.team : -1;
+
+        /// <summary>Everyone matchmaking sent has arrived, so a matchmade match need not wait any longer.</summary>
+        public bool EveryoneAssignedIsHere
+        {
+            get
+            {
+                if (_assigned.Count == 0) return false;
+                int here = 0;
+                foreach (ServerPlayer player in _players)
+                {
+                    if (player != null && player.Ready && !player.IsBot && _assigned.ContainsKey(player.AccountId ?? "")) here++;
+                }
+                return here >= _assigned.Count;
+            }
+        }
+
+        /// <summary>Called by the mode when the match is decided. In a matchmade match, reports it, once.</summary>
+        public void MatchFinished()
+        {
+            if (MatchId.Length == 0 || _reported) return;
+            _reported = true;
+
+            var players = new List<PlayerReport>();
+            var present = new HashSet<string>();
+            foreach (ServerPlayer player in _players)
+            {
+                if (player == null || player.IsBot || !player.Ready) continue;
+                players.Add(ReportFor(player, completed: true, _mode.OutcomeFor(player.Team, player.Id)));
+                present.Add(player.AccountId);
+            }
+            foreach (PlayerReport leaver in _leavers)
+            {
+                // Someone who left and came back is reported as they finished.
+                if (present.Add(leaver.accountId)) players.Add(leaver);
+            }
+            _leavers.Clear();
+
+            var report = new MatchReport
+            {
+                matchId = MatchId,
+                durationSeconds = Mathf.Max(0, (Tick - _mode.StartedTick) / SimConstants.TickRate),
+                players = players.ToArray(),
+            };
+            Log("Reporting match " + MatchId + " for " + players.Count + " player(s).");
+            MatchReported?.Invoke(report);
+        }
+
+        PlayerReport ReportFor(ServerPlayer player, bool completed, MatchOutcome outcome)
+        {
+            var weapons = new List<WeaponReport>();
+            foreach (KeyValuePair<string, (int Kills, int Headshots)> tally in player.WeaponKills)
+            {
+                WeaponDefinition weapon = _catalog.weapons.FindWeapon(tally.Key);
+                weapons.Add(new WeaponReport
+                {
+                    weaponId = tally.Key,
+                    weaponClass = weapon != null ? weapon.weaponClass.ToString() : "",
+                    kills = tally.Value.Kills,
+                    headshots = tally.Value.Headshots,
+                });
+            }
+            return new PlayerReport
+            {
+                accountId = player.AccountId ?? "",
+                name = player.Name,
+                team = player.Team,
+                outcome = outcome,
+                completed = completed,
+                kills = player.Kills,
+                deaths = player.Deaths,
+                headshots = player.Headshots,
+                objective = player.Objective,
+                roundsWon = player.RoundsWon,
+                score = player.Score,
+                weapons = weapons.ToArray(),
+            };
+        }
+
+        /// <summary>
+        /// The end of a matchmade match: everyone is sent back to their menus and the server
+        /// waits, empty, for matchmaking to hand it the next one.
+        /// </summary>
+        public void EndSession()
+        {
+            for (int i = 0; i < MaxPlayers; i++)
+            {
+                ServerPlayer player = _players[i];
+                if (player != null && !player.IsBot) Remove(player, "went back to the menu", DisconnectReason.MatchOver);
+            }
+            for (int i = 0; i < MaxPlayers; i++)
+            {
+                if (_players[i] != null) DropBot(_players[i]);
+            }
+            _projectiles.Clear();
+            _mode = GameMode.Create(this, _secret ^ (uint)Tick);
+            Log("Match " + MatchId + " is over; waiting for the next.");
         }
 
         // ------------------------------------------------------------------ bots
@@ -612,7 +757,7 @@ namespace Pulsebreak.Server
                 case NetMessage.Loadout:
                 {
                     LoadoutData loadout = NetMessages.ReadLoadout(reader);
-                    if (!reader.Failed && player.Ready) player.PendingLoadout = LoadoutRules.Sanitize(loadout, _catalog);
+                    if (!reader.Failed && player.Ready) player.PendingLoadout = CheckLoadout(player, loadout);
                     break;
                 }
                 case NetMessage.Input:
@@ -672,7 +817,7 @@ namespace Pulsebreak.Server
                     Remove(player, "was refused", DisconnectReason.WrongMatch);
                     return;
                 }
-                if (_config.rankedOnly && claims.Mode != GameTicket.Ranked)
+                if ((_config.rankedOnly || Ranked) && claims.Mode != GameTicket.Ranked)
                 {
                     Log("Refused " + claims.Name + ": this server is ranked and their ticket is not.");
                     Remove(player, "was refused", DisconnectReason.RankedOnly);
@@ -694,7 +839,7 @@ namespace Pulsebreak.Server
             // Anything it cannot have is replaced, exactly as it would be on loading a save.
             name = LoadoutRules.CleanName(name);
             player.Name = name == LoadoutRules.DefaultName ? "Player " + (player.Id + 1) : name;
-            player.PendingLoadout = LoadoutRules.Sanitize(loadout, _catalog);
+            player.PendingLoadout = CheckLoadout(player, loadout);
             player.Look = look;
             player.LookSentTick = Tick;
             player.Ready = true;

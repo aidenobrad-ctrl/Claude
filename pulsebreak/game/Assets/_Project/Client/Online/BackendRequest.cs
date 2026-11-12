@@ -60,6 +60,30 @@ namespace Pulsebreak.Client.Online
             return failed;
         }
 
+        /// <param name="list">The reply is a JSON list: wrap it as { "items": [...] } before reading it into <typeparamref name="T"/>.</param>
+        public static async Task<AccountResult<T>> SendAsync<T>(IHttpTransport http, string method, string url, object body, string bearer,
+            string what, bool list) where T : class
+        {
+            if (!list) return await SendAsync<T>(http, method, url, body, bearer, what);
+            var wrapping = new WrappingTransport(http);
+            return await SendAsync<T>(wrapping, method, url, body, bearer, what);
+        }
+
+        /// <summary>Puts a successful list reply inside an object, for Unity's JSON reader.</summary>
+        sealed class WrappingTransport : IHttpTransport
+        {
+            readonly IHttpTransport _inner;
+            public WrappingTransport(IHttpTransport inner) => _inner = inner;
+
+            public async Task<HttpResult> SendAsync(string method, string url, string jsonBody, string bearerToken)
+            {
+                HttpResult result = await _inner.SendAsync(method, url, jsonBody, bearerToken);
+                if (result.Status >= 200 && result.Status < 300 && !string.IsNullOrEmpty(result.Body) && result.Body.TrimStart().StartsWith("["))
+                    result.Body = "{\"items\":" + result.Body + "}";
+                return result;
+            }
+        }
+
         public static AccountResult<T> Fail<T>(int status, string code, string message) =>
             new AccountResult<T> { Ok = false, Status = status, Code = code, Message = message };
     }

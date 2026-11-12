@@ -5,6 +5,7 @@ using UnityEngine.UIElements;
 using Pulsebreak.Client.Online;
 using Pulsebreak.Client.UI;
 using Pulsebreak.Shared.Match;
+using Pulsebreak.Shared.Progression;
 using Cursor = UnityEngine.Cursor;
 
 namespace Pulsebreak.Client.Duel
@@ -62,7 +63,10 @@ namespace Pulsebreak.Client.Duel
         VisualElement _menu, _match;
         TextField _nameField, _addressField;
         DropdownField _modeField, _mapField, _sizeField, _botsField, _limitField;
-        Label _modeHint, _menuStatus;
+        Label _modeHint, _menuStatus, _rankedHint, _levelText, _xpText;
+        Toggle _rankedToggle;
+        VisualElement _profile, _xpFill;
+        Button _progressButton;
         Button _findButton, _hostToggle, _startButton, _joinButton, _rangeButton, _customizeButton, _quitButton, _cancelButton;
         VisualElement _hostOptions;
 
@@ -82,7 +86,9 @@ namespace Pulsebreak.Client.Duel
         }
 
         /// <summary>Argument: the mode chosen in the menu.</summary>
-        public event Action<GameModeKind> FindRequested;
+        /// <summary>Arguments: the mode, and whether to play it ranked.</summary>
+        public event Action<GameModeKind, bool> FindRequested;
+        public event Action ProgressRequested;
         /// <summary>Argument: the private match's rules, as set in the menu.</summary>
         public event Action<MatchSettings> HostRequested;
         /// <summary>Argument: the address typed in.</summary>
@@ -192,6 +198,8 @@ namespace Pulsebreak.Client.Duel
                 };
             }
 
+            BuildProfile(card);
+
             _nameField = new TextField("Name") { value = PlayerPrefs.GetString(NameKey, "Player"), maxLength = 24 };
             _nameField.AddToClassList("loadout-name");
             _nameField.style.fontSize = 16;
@@ -207,10 +215,26 @@ namespace Pulsebreak.Client.Duel
             card.Add(_modeHint);
             _modeField.RegisterValueChangedCallback(_ => OnModeChanged());
 
+            // Ranked, for the modes that have it.
+            var rankedRow = new VisualElement();
+            rankedRow.style.flexDirection = FlexDirection.Row;
+            rankedRow.style.alignItems = Align.Center;
+            rankedRow.style.marginBottom = 8;
+            _rankedToggle = new Toggle("Ranked") { value = false };
+            _rankedToggle.style.fontSize = 15;
+            _rankedToggle.RegisterValueChangedCallback(_ => RefreshRanked());
+            rankedRow.Add(_rankedToggle);
+            _rankedHint = Text_("", 12, Dim);
+            _rankedHint.style.marginLeft = 12;
+            _rankedHint.style.whiteSpace = WhiteSpace.Normal;
+            _rankedHint.style.flexShrink = 1;
+            rankedRow.Add(_rankedHint);
+            card.Add(rankedRow);
+
             _findButton = MenuButton("Find match", true, () =>
             {
                 Remember();
-                FindRequested?.Invoke(SelectedMode);
+                FindRequested?.Invoke(SelectedMode, RankedChosen);
             });
             card.Add(_findButton);
 
@@ -312,6 +336,7 @@ namespace Pulsebreak.Client.Duel
         {
             GameModeKind mode = SelectedMode;
             _modeHint.text = Describe(mode);
+            RefreshRanked();
             if (mode == _optionsFor) return;
             _optionsFor = mode;
             MatchSettings defaults = MatchSettings.For(mode);
@@ -599,6 +624,129 @@ namespace Pulsebreak.Client.Duel
             card.Add(_scoreboardBody);
         }
 
+        // ------------------------------------------------------------------ profile and ranked
+
+        /// <summary>Ranked is chosen, and allowed: the mode has it, and the player is signed in with a verified email.</summary>
+        bool RankedChosen => _rankedToggle != null && _rankedToggle.value && RankedAllowed(out _);
+
+        bool RankedAllowed(out string why)
+        {
+            why = "";
+            if (!Playlists.HasRanked(SelectedMode))
+            {
+                why = "Ranked is Duel and Elimination.";
+                return false;
+            }
+            if (_services == null || !_services.Account.SignedIn)
+            {
+                why = "Sign in to play ranked.";
+                return false;
+            }
+            if (!_services.Account.Account.emailVerified)
+            {
+                why = "Verify your email address to play ranked.";
+                return false;
+            }
+            return true;
+        }
+
+        void RefreshRanked()
+        {
+            if (_rankedToggle == null) return;
+            bool allowed = RankedAllowed(out string why);
+            _rankedToggle.SetEnabled(allowed);
+            if (!allowed)
+            {
+                _rankedToggle.SetValueWithoutNotify(false);
+                _rankedHint.text = why;
+                return;
+            }
+            Playlist playlist = Playlists.For(SelectedMode, true);
+            RankData rank = ProgressionCache.Rank(playlist.Id);
+            _rankedHint.text = _rankedToggle.value
+                ? playlist.Title + ": " + rank.name + (rank.placementLeft > 0 ? "" : "  (" + rank.rating + ")") + ". Full matches of people, matched by rating."
+                : "Your " + playlist.Title + " rank: " + rank.name;
+        }
+
+        /// <summary>Level and XP across the top of the menu, for a signed-in player; an invitation to sign in otherwise.</summary>
+        void BuildProfile(VisualElement card)
+        {
+            _profile = new VisualElement();
+            _profile.style.flexDirection = FlexDirection.Row;
+            _profile.style.alignItems = Align.Center;
+            _profile.style.marginBottom = 12;
+            _profile.style.paddingLeft = _profile.style.paddingRight = 12;
+            _profile.style.paddingTop = _profile.style.paddingBottom = 8;
+            _profile.style.backgroundColor = new Color(0.1f, 0.13f, 0.18f, 1f);
+            Round(_profile, 6);
+            card.Add(_profile);
+
+            _levelText = Text_("", 18, Accent, bold: true, spacing: 1);
+            _levelText.style.minWidth = 92;
+            _profile.Add(_levelText);
+
+            var bars = new VisualElement();
+            bars.style.flexGrow = 1;
+            bars.style.marginRight = 12;
+            _profile.Add(bars);
+            var track = new VisualElement();
+            track.style.height = 8;
+            track.style.backgroundColor = new Color(0.04f, 0.06f, 0.08f, 1f);
+            Round(track, 4);
+            _xpFill = new VisualElement();
+            _xpFill.style.height = Length.Percent(100);
+            _xpFill.style.backgroundColor = Accent;
+            Round(_xpFill, 4);
+            track.Add(_xpFill);
+            bars.Add(track);
+            _xpText = Text_("", 12, Dim);
+            _xpText.style.marginTop = 3;
+            _xpText.style.whiteSpace = WhiteSpace.Normal;
+            bars.Add(_xpText);
+
+            _progressButton = MenuButton("Progress", false, () => ProgressRequested?.Invoke());
+            _progressButton.style.marginLeft = 0;
+            _progressButton.style.minWidth = 110;
+            _profile.Add(_progressButton);
+
+            ProgressionCache.Changed += RefreshProfile;
+            if (_services != null) _services.Account.Changed += RefreshProfile;
+            RefreshProfile();
+        }
+
+        void RefreshProfile()
+        {
+            if (_profile == null) return;
+            ProgressionData progression = ProgressionCache.Current;
+            bool signedIn = _services != null && _services.Account.SignedIn;
+            _xpFill.parent.style.display = signedIn ? DisplayStyle.Flex : DisplayStyle.None;
+            _progressButton.style.display = signedIn ? DisplayStyle.Flex : DisplayStyle.None;
+            if (!signedIn)
+            {
+                _levelText.text = "GUEST";
+                _xpText.text = "Sign in to earn XP, unlock weapons, take on challenges and play ranked.";
+            }
+            else if (progression == null)
+            {
+                _levelText.text = "LEVEL -";
+                _xpText.text = "Fetching your progress...";
+                _xpFill.style.width = Length.Percent(0);
+            }
+            else
+            {
+                LevelData level = progression.level;
+                bool max = level.level >= level.maxLevel;
+                _levelText.text = "LEVEL " + level.level;
+                float fraction = max || level.xpForNextLevel <= 0 ? 1f : Mathf.Clamp01(level.xpIntoLevel / (float)level.xpForNextLevel);
+                _xpFill.style.width = Length.Percent(fraction * 100f);
+                int open = 0;
+                foreach (ChallengeData challenge in progression.challenges) if (!challenge.completed) open++;
+                _xpText.text = (max ? "Top level" : level.xpIntoLevel + " / " + level.xpForNextLevel + " XP to level " + (level.level + 1)) +
+                               "   ·   " + open + " challenge(s) to do";
+            }
+            RefreshRanked();
+        }
+
         // ------------------------------------------------------------------ menu
 
         /// <summary>Shows the menu, ready for input. <paramref name="status"/> is a line of bad news, or empty.</summary>
@@ -611,6 +759,14 @@ namespace Pulsebreak.Client.Duel
             SetBusy(false);
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
+        }
+
+        /// <summary>Shows the menu with a line of good news, such as how the last match went.</summary>
+        public void ShowMenuResult(string text)
+        {
+            ShowMenu("");
+            _menuStatus.text = text ?? "";
+            _menuStatus.style.color = Good;
         }
 
         /// <summary>Shows the menu with its buttons off while a match is being found or joined.</summary>
@@ -643,6 +799,8 @@ namespace Pulsebreak.Client.Duel
             _nameField.SetEnabled(!busy);
             _addressField.SetEnabled(!busy);
             _modeField.SetEnabled(!busy);
+            _rankedToggle.SetEnabled(!busy && RankedAllowed(out _));
+            _progressButton.SetEnabled(!busy);
             _cancelButton.style.display = busy ? DisplayStyle.Flex : DisplayStyle.None;
         }
 
@@ -884,7 +1042,12 @@ namespace Pulsebreak.Client.Duel
             line.Add(label);
         }
 
-        void OnDestroy() => _account?.Dispose();
+        void OnDestroy()
+        {
+            _account?.Dispose();
+            ProgressionCache.Changed -= RefreshProfile;
+            if (_services != null) _services.Account.Changed -= RefreshProfile;
+        }
 
         void Update()
         {

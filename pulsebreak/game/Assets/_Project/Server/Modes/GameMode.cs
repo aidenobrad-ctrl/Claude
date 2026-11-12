@@ -88,6 +88,14 @@ namespace Pulsebreak.Server.Modes
                 return;
             }
 
+            // Matchmaking may have picked the sides already (ranked balances them by rating).
+            int preset = Server.PresetTeam(player);
+            if (preset == 0 || preset == 1)
+            {
+                player.Team = preset;
+                return;
+            }
+
             int size0 = 0, size1 = 0, humans0 = 0, humans1 = 0;
             foreach (ServerPlayer other in Players)
             {
@@ -176,7 +184,16 @@ namespace Pulsebreak.Server.Modes
 
             victim.Deaths++;
             bool credited = killer != null && killer != victim;
-            if (credited) killer.Kills++;
+            if (credited)
+            {
+                killer.Kills++;
+                if (headshot) killer.Headshots++;
+                if (!string.IsNullOrEmpty(weaponId))
+                {
+                    killer.WeaponKills.TryGetValue(weaponId, out (int Kills, int Headshots) tally);
+                    killer.WeaponKills[weaponId] = (tally.Kills + 1, tally.Headshots + (headshot ? 1 : 0));
+                }
+            }
             Scored(victim, credited ? killer : null, weaponId, headshot);
         }
 
@@ -217,7 +234,9 @@ namespace Pulsebreak.Server.Modes
 
                 case MatchPhase.MatchEnd:
                     if (tick < _state.PhaseEndTick) break;
-                    if (Enough()) StartMatch();
+                    // A matchmade match is one match: then everyone goes back to their menus.
+                    if (Server.MatchId.Length > 0) Server.EndSession();
+                    else if (Enough()) StartMatch();
                     else EnterWaiting();
                     break;
             }
@@ -242,7 +261,7 @@ namespace Pulsebreak.Server.Modes
                 return;
             }
 
-            if (ReadyCount() >= Settings.Capacity || Server.LobbySeconds <= 0f)
+            if (ReadyCount() >= Settings.Capacity || Server.LobbySeconds <= 0f || Server.EveryoneAssignedIsHere)
             {
                 StartMatch();
                 return;
@@ -261,8 +280,24 @@ namespace Pulsebreak.Server.Modes
 
         // ------------------------------------------------------------------ transitions
 
+        /// <summary>The tick the current match started, for its length in the report.</summary>
+        public int StartedTick { get; private set; }
+
+        /// <summary>
+        /// How a match ended for a player: won, drawn or lost. With teams it is their team's
+        /// result; without, only the winner wins.
+        /// </summary>
+        public Pulsebreak.Shared.Progression.MatchOutcome OutcomeFor(int team, int playerId)
+        {
+            int winner = _state.MatchWinner;
+            if (winner == MatchState.Nobody) return Pulsebreak.Shared.Progression.MatchOutcome.Draw;
+            bool won = Settings.TeamBased ? winner == team : winner == playerId;
+            return won ? Pulsebreak.Shared.Progression.MatchOutcome.Won : Pulsebreak.Shared.Progression.MatchOutcome.Lost;
+        }
+
         protected void StartMatch()
         {
+            StartedTick = Tick;
             _state = MatchState.Empty;
             _state.Round = 1;
             foreach (ServerPlayer player in Players)
@@ -298,6 +333,7 @@ namespace Pulsebreak.Server.Modes
             _state.PhaseEndTick = Tick + Ticks(Settings.matchEndSeconds);
             Server.Log("Match over: " + Describe(winner) + ".");
             Server.BroadcastMatchState();
+            Server.MatchFinished();
         }
 
         protected void EnterWaiting()

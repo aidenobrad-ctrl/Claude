@@ -65,12 +65,16 @@ All requests and replies are JSON. Errors always look like
 | `POST /v1/game/tickets` | yes | A join ticket for a game server. `mode` is `casual` or `ranked`; ranked needs a verified email |
 | `POST /v1/matchmaking/guest` | | A guest pass for matchmaking without an account: `name` |
 | `GET /v1/matchmaking/playlists` | | The modes on offer and how many are searching for each |
-| `POST /v1/matchmaking/tickets` | yes, or guest | Join a queue: `playlist` (`duel`, `tdm`, `ffa`, `elimination`, `domination`, `hardpoint`, `gungame`) and the game's network `version` |
+| `POST /v1/matchmaking/tickets` | yes, or guest | Join a queue: `playlist` (`duel`, `tdm`, `ffa`, `elimination`, `domination`, `hardpoint`, `gungame`, or ranked `duel_ranked`, `elimination_ranked`) and the game's network `version`. Ranked needs an account with a verified email |
 | `GET /v1/matchmaking/tickets/{id}` | yes, or guest | How the search is going. Once `matched`: the server's `address` and a `joinTicket` for that match. Ask at least every 20 seconds or the place is given up |
 | `DELETE /v1/matchmaking/tickets/{id}` | yes, or guest | Give up the place |
 | `POST /v1/fleet/servers` | fleet key | A dedicated game server offers itself: `address`, `port`, `version` |
-| `POST /v1/fleet/servers/{id}/heartbeat` | fleet key | Check in every few seconds: `state` (`idle` or `busy`), `matchId`, `players`. The reply names a match to start, if there is one |
+| `POST /v1/fleet/servers/{id}/heartbeat` | fleet key | Check in every few seconds: `state` (`idle` or `busy`), `matchId`, `players`. The reply is the match to start, if there is one: `matchId`, `playlist`, `ranked`, and the `players` with their side, level and weapon levels |
 | `DELETE /v1/fleet/servers/{id}` | fleet key | Leave the fleet |
+| `POST /v1/fleet/servers/{id}/results` | fleet key | A finished matchmade match: every player's stats and outcome. Counted once; XP, weapon XP, challenges, ratings and history follow |
+| `GET /v1/progression` | yes | Level and XP, weapon levels, today's and this week's challenges, ranks, and what the last match earned |
+| `GET /v1/matches` | yes | The account's recent matches (`limit`, default 10) |
+| `GET /v1/ranked/{playlist}/leaderboard` | | The best players in `duel_ranked` or `elimination_ranked` who have finished placement (`limit`, default 50) |
 | `GET /health`, `GET /health/ready` | | Alive; and able to reach the database and Redis |
 
 "Signed in" means an `Authorization: Bearer <access token>` header; "guest" means a guest pass
@@ -135,8 +139,8 @@ API, so the API being slow or down does not affect matches already being joined.
 
 ## Matchmaking
 
-Each mode has a queue. Players join one with a guest pass (accounts are off in the game for now)
-or their account, and ask about it every second. Dedicated game servers join the fleet with the
+Each mode has a queue. Players join one with their account, or a guest pass if they are not
+signed in (casual playlists only), and ask about it every second. Dedicated game servers join the fleet with the
 fleet key and check in every three seconds. Once a second the matchmaker takes the oldest
 players in each queue and, when the queue is full or the oldest has waited
 `Matchmaking__FillAfterSeconds`, sends them to a free server built from the same game version.
@@ -155,6 +159,19 @@ PULSEBREAK_FLEET_KEY=<Matchmaking__FleetKey> PULSEBREAK_TICKET_KEY=<Game__Ticket
 `-public-address` is where players reach it. Run one per port to host several matches on one
 machine. The development keys are in `appsettings.Development.json`.
 
+## Progression and ranked
+
+Only matches the matchmaker set up count. When one is over, its game server posts a report; the
+backend checks the match went to that server and has not been counted, then in one transaction
+adds match XP and weapon XP, moves the player's three daily and three weekly challenges along
+(paying out the finished ones), changes ranked ratings (Elo against the other side's average, five
+placement matches), and records the match. Players the matchmaker sent to a ranked match who are
+missing from the report lose. The tables are `weapon_progress`, `ratings`, `challenges`,
+`matches` and `match_players`, added by the `Progression` migration.
+
+The XP, level and rank formulas are the game's own `Shared/Progression/Progression.cs`, compiled
+in here, so the game always shows what the backend awards.
+
 ## Changing the database
 
 The schema is in `src/Pulsebreak.Api/Data/`. After changing it, add a migration:
@@ -166,8 +183,9 @@ dotnet ef migrations add <Name> --project src/Pulsebreak.Api --output-dir Data/M
 
 ## Shared with the game
 
-Four files are the game's own source, compiled into the API as well, so the two cannot drift
+Five files are the game's own source, compiled into the API as well, so the two cannot drift
 apart: the stored loadout format (`LoadoutData.cs`), the rule for merging two copies of a
-player's loadouts (`LoadoutSync.cs`), the join ticket (`GameTicket.cs`), and the playlists
-matchmaking fills (`Playlists.cs`). They live under
+player's loadouts (`LoadoutSync.cs`), the join ticket (`GameTicket.cs`), the playlists
+matchmaking fills (`Playlists.cs`), and the progression rules and report formats
+(`Progression.cs`). They live under
 `game/Assets/_Project/Shared/`.

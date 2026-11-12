@@ -514,11 +514,18 @@ namespace Pulsebreak.Client.Net
                         : why == DisconnectReason.AlreadyHere ? "Your account is already in that match."
                         : why == DisconnectReason.RankedOnly ? "That match is ranked. Verify your email address to play ranked."
                         : why == DisconnectReason.WrongMatch ? "That server is running a different match now. Find a match again."
+                        : why == DisconnectReason.MatchOver ? MatchOverText
                         : "The server closed the connection.");
                     break;
                 }
             }
         }
+
+        /// <summary>What <see cref="StatusText"/> says when a matchmade match has finished and the server sent everyone home.</summary>
+        public const string MatchOverText = "The match is over.";
+
+        /// <summary>The server ended the session because its one match was over, rather than because something went wrong.</summary>
+        public bool EndedByMatchOver => Status == ClientStatus.Disconnected && StatusText == MatchOverText;
 
         void Stop(ClientStatus status, string text)
         {

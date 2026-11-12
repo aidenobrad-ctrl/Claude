@@ -26,11 +26,12 @@ namespace Pulsebreak.Client.Online
         public const string DefaultBackendUrl = "http://localhost:5080";
 
         /// <summary>
-        /// Accounts are switched off for now: nothing talks to the backend, the menu has no
-        /// sign-in, and loadouts and settings stay on this computer. Everything is still here;
-        /// set this to true to bring accounts back (and the plan is to make them required then).
+        /// Accounts are on: the menu offers sign-in, and a signed-in player's loadouts,
+        /// settings, progression and ranks follow their account. Playing without an account
+        /// still works for casual matches (as a guest) and for everything offline. Set this to
+        /// false to keep everything on this computer, as during Phases 5 to 7.
         /// </summary>
-        public static readonly bool AccountsEnabled = false;
+        public static readonly bool AccountsEnabled = true;
 
         static GameServices _instance;
 
@@ -40,7 +41,7 @@ namespace Pulsebreak.Client.Online
         public LoadoutLibrary Library { get; private set; }
         /// <summary>How the player looks: suit, headgear, weapon skins.</summary>
         public CosmeticsLibrary Cosmetics { get; private set; }
-        /// <summary>Null while accounts are switched off.</summary>
+        /// <summary>Null when accounts are switched off (<see cref="AccountsEnabled"/>).</summary>
         public LoadoutAccountSync LoadoutSync { get; private set; }
         public string Profile { get; private set; }
 
@@ -106,10 +107,29 @@ namespace Pulsebreak.Client.Online
             GameSettings.Saved += () => _ = PushSettingsAsync();
             Account.Changed += () =>
             {
+                if (Account.SignedIn) _ = RefreshProgressionAsync();
+                else ProgressionCache.Set(null);
                 if (Account.SignedIn) _ = PullSettingsAsync();
             };
 
             if (Account.HasSavedSession) _ = ResumeAsync();
+        }
+
+        /// <summary>Fetches the player's level, challenges and ranks into <see cref="ProgressionCache"/>. Does nothing signed out.</summary>
+        public async Task<ProgressionData> RefreshProgressionAsync()
+        {
+            if (!Account.SignedIn) return null;
+            try
+            {
+                AccountResult<ProgressionData> result = await Account.GetProgressionAsync();
+                if (result.Ok && result.Value != null && Account.SignedIn) ProgressionCache.Set(result.Value);
+                return result.Ok ? result.Value : null;
+            }
+            catch (Exception error)
+            {
+                Debug.LogWarning("Pulsebreak: could not fetch progression: " + error.Message);
+                return null;
+            }
         }
 
         async Task ResumeAsync()
@@ -142,7 +162,7 @@ namespace Pulsebreak.Client.Online
 
         /// <summary>
         /// Signing in moved the loadouts made without an account onto that account. With
-        /// accounts switched off, the newest copy kept on this computer of any account's
+        /// accounts switched off (as they were in Phase 5), the newest copy kept on this computer of any account's
         /// loadouts is merged back into the ones used without an account.
         /// </summary>
         void RecoverAccountLoadouts(string root, LocalFileLoadoutStore guest)

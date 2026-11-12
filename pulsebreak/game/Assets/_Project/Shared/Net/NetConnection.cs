@@ -39,6 +39,8 @@ namespace Pulsebreak.Shared.Net
         RankedOnly = 3,
         /// <summary>A matchmade server, and the player's ticket is for a different match.</summary>
         WrongMatch = 4,
+        /// <summary>A matchmade match has finished: everyone goes back to their menus.</summary>
+        MatchOver = 5,
     }
 
     public static class NetProtocol

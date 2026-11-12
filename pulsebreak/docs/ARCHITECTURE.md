@@ -106,8 +106,10 @@ game/
     │   ├── Settings/         Player settings
     │   ├── Visuals/          Prototype geometry and materials
     │   └── FiringRange/      The range: layout, targets, stats
-    ├── Server/             The authority: game server, players, lag compensation, duel rules
-    │   └── Unity/            The component that runs a server inside Unity
+    ├── Server/             The authority: game server, players, lag compensation
+    │   ├── Modes/            The rules of each game mode
+    │   ├── Bots/             Bot behaviour and navigation
+    │   └── Unity/            The components that run a server inside Unity and offer it to matchmaking
     ├── Editor/             Editor tooling (Project Doctor)
     ├── Content/            Data assets: weapons, attachments, utility, perks, presets, movement
     ├── Resources/          UI layout, styles and base materials loaded by path
@@ -253,7 +255,7 @@ Phase 3 made loadouts local first, with sync in mind. Phase 5 added the sync, an
 | One utility item, one perk set | `UtilityBelt`, `UtilityDefinition`, `PerkSetDefinition` | |
 | Stat bars that compare weapons | `WeaponRatings`, `WeaponRatingScale` | Each bar runs from the weakest to the strongest weapon for the same slot |
 | Loadouts saved to the account and synced | `LoadoutAccountSync`, `LoadoutSync`, backend `LoadoutService` | Newest change wins, deletions included |
-| Quick-swap loadouts between rounds | `HudController` quick swap, `ClientSession.SetLoadout` | In a match the server applies it at the next round |
+| Quick-swap loadouts between rounds | `HudController` quick swap, `ClientSession.SetLoadout` | In a match the server applies it at the next spawn |
 | Hit markers, damage numbers, crosshair, optics | `HudController` | Damage numbers toggle in the pause menu |
 | New content without code | Definition assets and catalogs | `LoadoutValidator` checks all of it |
 | Server-authoritative play | `GameServer` | Clients send inputs and nothing else that counts |
@@ -261,8 +263,12 @@ Phase 3 made loadouts local first, with sync in mind. Phase 5 added the sync, an
 | Lag compensation (hit rewind) | `LagCompensator` | Capped at 0.3 s |
 | Interpolation of other players | `ClientSession.TryGetView`, `RemotePlayerView` | |
 | Server checks hits, speed, fire rate, ammo | `GameServer` | By running the simulation itself |
-| 1v1 duels, best of five | `DuelMatch` | Rounds to win, timers and health are in `DuelConfig` |
-| Kill feed, health, score, round clock | `DuelUi` | |
+| 1v1, 2v2, 3v3, 5v5 and free-for-all | `GameMode`, `MatchSettings` | Team size and player count are settings |
+| Duel (best of five), Team Deathmatch, Elimination, Domination, Hardpoint, Free-for-All, Gun Game | `Server/Modes` | |
+| Bots for practice and to fill matches | `BotBrain`, `NavGrid`, `GameServer.BalanceBots` | Three skill levels |
+| Private lobbies with custom settings | `DuelUi` host options, `MatchSettings` | Map, mode, size, win limit, bots |
+| Casual matchmaking | backend `MatchmakingService`, `MatchmakingClient`, `FleetAgent` | Ranked waits for accounts |
+| Kill feed, health, scores, clock, zones, scoreboard | `DuelUi`, `ZoneMarkers` | |
 
 ## Networking
 
@@ -288,7 +294,9 @@ sequenceDiagram
 | Socket | `INetSocket`: `UdpSocket`, `MemoryNetwork`, `ConditionedSocket` | Send and receive datagrams. The in-process and bad-connection versions exist so the rest can be tested |
 | Connection | `NetConnection` | Numbers packets and acknowledges them, measures the round trip, and carries two kinds of message: unreliable (sent once) and reliable (resent until acknowledged, delivered in order) |
 | Wire format | `NetMessages`, `NetWriter`, `NetReader` | Every message, written and read in one place. The reader never trusts its input |
-| Server | `GameServer`, `ServerPlayer`, `LagCompensator`, `DuelMatch` | The authority |
+| Server | `GameServer`, `ServerPlayer`, `LagCompensator` | The authority |
+| Rules | `GameMode` and its kinds in `Server/Modes`, `MatchSettings`, `MatchState`, `ArenaLayout` | What the match is: teams, spawns, scoring, when it ends |
+| Bots | `BotBrain`, `NavGrid` in `Server/Bots` | Players without a connection |
 | Client | `ClientSession` | Connection, prediction, interpolation, and events for the HUD |
 | World | `IGameWorld`, `ICharacterBody` | How the server reaches physics. `UnityGameWorld` in the game, a stand-in in tests |
 
@@ -333,13 +341,56 @@ There is no separate anti-cheat pass; the server simply does not ask the client 
 
 What this does not stop is a client that reads its own memory to see through walls or aim for the player. That needs a different kind of defence and is noted in the roadmap.
 
-### The duel
+### Game modes
 
-`DuelMatch` runs on the server: a warm-up while one player waits, then rounds of countdown, live play and a short pause, until someone has won three. Players swap ends each round. A round that runs out of time goes to whoever has more health. Leaving forfeits. The server sends the whole `MatchState` whenever it changes.
+The server knows how to run players; the rules of the match belong to a `GameMode`, created from the `MatchSettings` the server is given. Every mode follows the same outline (warm-up, a short wait for latecomers once there are enough players, countdown, play, round end, match end, a fresh match) and fills in what differs:
 
-The countdown is the one place prediction needs care. The server ignores movement and fire until the countdown ends, and a command sent now arrives a little later, so the client releases its own controls when a command sent *now* would arrive after the countdown, not when its own screen says zero. Both players start moving at the same server tick whatever their ping.
+| Class | Modes | What it decides |
+| --- | --- | --- |
+| `RoundMode` | Duel, Elimination | Rounds with no respawns. A round ends when a side is wiped out, or on time (more players left, then more health). Sides swap ends each round |
+| `RespawnMode` | Team Deathmatch, Free-for-All | Respawns after a delay; first to the score limit, or ahead when time runs out |
+| `ZoneMode` | Domination, Hardpoint | Capture zones from the map. Domination: three zones, taken faster with more players, pushed back before they change hands, a point a second each. Hardpoint: one zone at a time, moving on a timer, a point a second for a lone holder |
+| `GunGameMode` | Gun Game | A ladder of weapons. A kill rearms the killer on the spot; the knife sets the victim back |
 
-A loadout change sent mid-round is checked and held, and applied when the server next places that player.
+Teams are 0 and 1; a mode without teams gives everyone `Teams.None` and names a player as the winner instead of a team. Teammates cannot hurt each other (`PlayerVitals.CanBeHurtBy` asks the mode), and shots pass through them. A respawn picks the spot furthest from living enemies and avoids any an enemy can see. The whole `MatchState` is sent whenever it changes; zones and each player's kills, deaths and score ride in every snapshot.
+
+Gun Game changes a player's weapons without killing them. Both ends restrict a loadout the same way (`MatchLoadouts`: a mask of usable slots), and a rearm counts like a spawn, so the client drops predictions made with the old weapon and takes the server's next word on the new one.
+
+The countdown is the one place prediction needs care. The server ignores movement and fire until the countdown ends, and a command sent now arrives a little later, so the client releases its own controls when a command sent *now* would arrive after the countdown, not when its own screen says zero. Everyone starts moving at the same server tick whatever their ping.
+
+A loadout change sent mid-life is checked and held, and applied when the server next places that player.
+
+### Bots
+
+A bot is a `ServerPlayer` with no connection and a `BotBrain`. Each tick the brain produces an input command, and the server runs it through exactly the same simulation as a person's, so a bot cannot do anything a player cannot. The server adds bots when the rules ask for them and at least one person is playing, and drops one (from the bigger team) whenever a person needs the place.
+
+- **Navigation.** `NavGrid` cuts the map into half-metre cells from the same block list the collision is built from: the height a player would stand at, or blocked if a body would not fit. Neighbouring cells connect as a walk, a climb (jump and mantle, up to 1.45 m) or a drop. A* finds a path, and the path is straightened wherever a level straight walk works.
+- **Seeing.** Every few ticks: enemies inside its field of view (or very close, or who just hurt it), with a clear line of sight.
+- **Aiming.** It turns towards the target at a limited rate, leads moving targets a little, and adds an error that shrinks the longer it tracks. It fires when its crosshair is on the body (a weaker bot accepts near), in bursts, pulling against recoil.
+- **Moving.** It closes to its weapon's preferred range, then strafes. With nobody to fight it goes for the objective (a zone that is not its team's, the active hardpoint) or the nearest enemy. If it is stuck it jumps, picks a new path, and in the end a new goal.
+
+Skill (easy, normal, hard) sets reaction time, aim error, turn rate, field of view and recoil control. Measured in the test harness, a 3v3 of normal bots plays a match to the score limit with nobody stuck or falling out, and a hard bot finds and beats a player standing still.
+
+### Matchmaking
+
+```mermaid
+sequenceDiagram
+    participant G as Game (Find match)
+    participant B as Backend
+    participant S as Dedicated server
+    S->>B: register (fleet key), then check in every few seconds
+    G->>B: guest pass, then join the "tdm" queue
+    loop every second
+        G->>B: how is my search?
+    end
+    Note over B: matchmaker: enough players, or waited long enough,<br/>and a free server on the same version
+    B-->>G: matched: server address + join ticket for match M
+    B-->>S: on its next check-in: play match M, Team Deathmatch
+    Note over S: switches rules and map, admits only tickets for M
+    G->>S: connect with the ticket
+```
+
+The backend keeps queues, tickets and the fleet in Redis, and runs the matchmaker once a second under a lock, so several API processes can share the work. The playlists (one per mode, with its size and the fewest people it starts with) are a shared source file, `Shared/Match/Playlists.cs`, compiled into the backend. A matchmade server is given a match id, and checks it in each join ticket, so nobody can walk into a match they were not sent to. On the game side, `MatchmakingClient` does the queueing and `FleetAgent` is the dedicated server's side.
 
 ### One process, two worlds
 
@@ -349,14 +400,17 @@ When a player hosts from the menu, a server and a client run in the same process
 
 `Shared`, `Server` and `ClientSession` never touch a scene, so the tests run a real `GameServer` and real `ClientSession`s in one process, joined by `MemoryNetwork`, with `ConditionedSocket` adding delay, jitter, loss and duplicates. That covers connecting, prediction on good and bad connections, lag compensation with and without the rewind, a best-of-five played through, round timers, projectiles and utility, loadout checks, a speed hack, random and hostile packets, leaving, timeouts and a full server. One test does the same over real UDP sockets on the loopback address.
 
+The modes have their own: bots filling and giving up places, twelve players in one snapshot, friendly fire, Team Deathmatch and Free-for-All to their limits, Elimination rounds, Gun Game's rearming without prediction errors, capturing and contesting zones, Hardpoint's rotation, a matchmade server refusing tickets for other matches, paths between every spawn on every map, and bots playing whole matches. An end-to-end test runs the game's matchmaking client as two guests against the real backend and ends with both in the server it chose.
+
 The tests that need the stand-in physics world are not in the Unity project, because that world replaces `UnityEngine`. The ones in `Tests/EditMode` cover the layers below: packet buffers, the connection (including 40% loss and sequence wrap-around), every message, and the arena's symmetry and spawn points.
 
 ### Known limits
 
 - **No encryption.** Game traffic is not encrypted. A server given the backend's ticket key knows who each player is, but the packets after that are protected only by the connection token. Fine on a LAN and for testing; before public play the traffic should be encrypted, with a key handed out alongside the ticket.
-- **No NAT traversal or relay.** To host over the internet the host forwards a UDP port. Dedicated servers on public addresses, which matchmaking will use, do not have this problem.
+- **No NAT traversal or relay.** To host a private match over the internet the host forwards a UDP port. Matchmade games run on dedicated servers on public addresses and do not have this problem.
+- **A fixed fleet.** Dedicated servers are started by hand and offered to matchmaking; nothing starts more when they are all busy yet.
 - **IPv4 only.**
-- **Snapshots are sent whole**, about 0.5 KB sixty times a second per player. Fine for a duel; team modes will want delta compression and a lower rate.
+- **Snapshots are sent whole**, sixty times a second: about 0.6 KB with twelve players, inside one packet. Delta compression and a lower rate would cut that for larger matches.
 - **A player's own projectiles appear when the server launches them**, one round trip after the trigger. The shot sound and recoil are immediate.
 - **Players pass through each other.** It keeps prediction independent of where the opponent is.
 - **Sound has no position yet.** Other players' shots are only quieter with distance.

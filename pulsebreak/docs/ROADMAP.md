@@ -9,10 +9,10 @@ The game is built in phases. Each one ends with something you can run and judge,
 | 3 | Loadouts, saved locally | Built, awaiting your playtest |
 | 4 | Netcode and online 1v1 duels | Built, awaiting your playtest |
 | 5 | Accounts, backend and synced loadouts | Built; switched off in the game for now |
-| 6 | Matchmaking and team modes | Planned |
+| 6 | Every game mode, bots and matchmaking | Built, awaiting your playtest |
 | 7 | Progression and unlocks | Planned |
 | 8 | Abilities, streaks and more utility | Planned |
-| 9 | Maps, objective modes, bots, custom lobbies | Planned |
+| 9 | More maps, lobby extras, parties | Planned |
 | 10 | Ranked and social | Planned |
 | 11 | Customization, store, battle pass | Planned |
 | 12 | Settings, polish, anti-cheat hardening, launch readiness | Planned |
@@ -126,15 +126,23 @@ You opened the project, liked it, and asked for a round of changes before the ne
 - **Lean removed.** Q and E no longer tilt; the movement code, its settings and the camera tilt are gone, and servers ignore the old lean input.
 - **Accounts switched off** until they are made required. The backend stays in the repository, tested.
 
-## Phase 6: Matchmaking and team modes
+## Phase 6: Every game mode, bots and matchmaking
 
-- Redis-backed queues, a matchmaker service, and game server allocation. Dedicated servers packaged in containers, with tickets bound to the server they were issued for.
-- The server and the wire format grow from two players to teams: more than two connections, snapshots that only send what changed.
-- Casual playlist; parties queue together.
-- 2v2 and 3v3 Elimination (no respawns in a round), Team Deathmatch.
-- Results reported by the server; stats and match history saved; post-match scoreboard.
+You asked for all the game modes and matchmaking together, so this phase also took in the modes, bots and private lobbies that were planned for Phase 9.
 
-**You can test:** queue from the main menu and land in a match with other clients; see the result in your history.
+- **Matches of up to twelve players**, in teams or everyone for themselves. Friendly fire is off. Players come back away from enemies, never on top of anyone.
+- **Every mode in the brief:** Duel (best of five), Team Deathmatch, Free-for-All, Elimination (no respawns in a round), Domination, Hardpoint and Gun Game. Each is a small class on the server; the rest of the server does not know which is running.
+- **Bots** that take empty places and step aside for people: they find paths over the map (including steps and ledges), react, aim with skill-based error, control recoil, strafe, reload, switch weapons, throw grenades and play the objective. Three skill levels.
+- **Crossroads**, a 64 × 48 m map for teams of up to five, with three Domination zones and three hardpoints.
+- **Private matches** from the menu: mode, map, team size, win limit, bots on or off and their skill.
+- **Matchmaking:** a queue per mode on the backend (Redis), guest passes while accounts are off, dedicated servers that register and check in, and a matchmaker that hands a free server each match with join tickets good for that match only. A queue that does not fill starts after 20 seconds with bots in the empty places.
+- **In a match:** team scores, zones (on screen and in the world), respawn timers, Gun Game progress, a Tab scoreboard with kills, deaths and score, and teammates drawn blue.
+
+Since then, from your notes: the weapons sit along the bottom centre of the screen as three cards (key, slot, weapon), and the loadout screen lists only your own loadouts (the presets are starting points, out of sight).
+
+Still to come from the original Phase 6 plan: parties queuing together, results and match history saved to the account (with accounts on), and containerised servers started on demand rather than a fixed set.
+
+**You can test:** every mode against bots from **Host a private match**; two copies of the game in one match; and with the backend and a dedicated server running, **Find match**.
 
 ## Phase 7: Progression and unlocks
 
@@ -154,12 +162,12 @@ You opened the project, liked it, and asked for a round of changes before the ne
 
 **You can test:** a match where streaks, utility and movement tools all come into play.
 
-## Phase 9: Maps, objective modes, bots, custom lobbies
+## Phase 9: More maps, lobby extras, parties
 
-- At least five maps, from duel arenas to medium 5v5 layouts, with clear lanes, cover and height.
-- Domination or Hardpoint, Free-for-All, Gun Game, 5v5.
-- Bots for practice and for filling casual matches.
-- Private lobbies with settings: map, mode, time, health, weapon restrictions.
+- At least three more maps, from duel arenas to medium 5v5 layouts, with clear lanes, cover and height.
+- More private lobby settings: time limit, health, weapon restrictions.
+- Parties: invite friends and queue together.
+- Bots that use cover and call out to their team.
 
 **You can test:** every mode on every map it supports, alone against bots or in a private lobby with friends.
 

@@ -1,11 +1,12 @@
 # Pulsebreak backend
 
-The accounts API: sign-up and sign-in, email verification, password reset, and the player data
-that follows an account between computers (profile, loadouts, settings). It also hands out the
-join tickets that tell a game server who is connecting.
+The accounts and matchmaking API: sign-up and sign-in, email verification, password reset, the
+player data that follows an account between computers (profile, loadouts, settings), and finding
+matches: queues for each mode, the fleet of dedicated game servers, and the join tickets that tell
+a game server who is connecting.
 
-ASP.NET Core on .NET 10, PostgreSQL for everything that lasts, Redis for sessions, codes and
-counters.
+ASP.NET Core on .NET 10, PostgreSQL for everything that lasts, Redis for sessions, codes,
+counters and matchmaking.
 
 ## Run it on your machine
 
@@ -62,9 +63,19 @@ All requests and replies are JSON. Errors always look like
 | `POST /v1/loadouts/sync` | yes | Send every loadout you have; get back the merged set |
 | `GET /v1/settings`, `PUT /v1/settings` | yes | The player's settings; the newest save wins |
 | `POST /v1/game/tickets` | yes | A join ticket for a game server. `mode` is `casual` or `ranked`; ranked needs a verified email |
+| `POST /v1/matchmaking/guest` | | A guest pass for matchmaking without an account: `name` |
+| `GET /v1/matchmaking/playlists` | | The modes on offer and how many are searching for each |
+| `POST /v1/matchmaking/tickets` | yes, or guest | Join a queue: `playlist` (`duel`, `tdm`, `ffa`, `elimination`, `domination`, `hardpoint`, `gungame`) and the game's network `version` |
+| `GET /v1/matchmaking/tickets/{id}` | yes, or guest | How the search is going. Once `matched`: the server's `address` and a `joinTicket` for that match. Ask at least every 20 seconds or the place is given up |
+| `DELETE /v1/matchmaking/tickets/{id}` | yes, or guest | Give up the place |
+| `POST /v1/fleet/servers` | fleet key | A dedicated game server offers itself: `address`, `port`, `version` |
+| `POST /v1/fleet/servers/{id}/heartbeat` | fleet key | Check in every few seconds: `state` (`idle` or `busy`), `matchId`, `players`. The reply names a match to start, if there is one |
+| `DELETE /v1/fleet/servers/{id}` | fleet key | Leave the fleet |
 | `GET /health`, `GET /health/ready` | | Alive; and able to reach the database and Redis |
 
-"Signed in" means an `Authorization: Bearer <access token>` header.
+"Signed in" means an `Authorization: Bearer <access token>` header; "guest" means a guest pass
+in the same header. "Fleet key" means an `X-Fleet-Key` header with the value of
+`Matchmaking__FleetKey`.
 
 ## How it keeps accounts safe
 
@@ -102,6 +113,8 @@ development, set at least these. The API refuses to start without the first.
 | `Email__PublicBaseUrl` | Where players' browsers reach this API, for the link in the verification email |
 | `RateLimits__TrustForwardedHeaders` | `true` only behind a reverse proxy that sets `X-Forwarded-For`, and only if the API cannot be reached any other way |
 | `Database__MigrateOnStartup` | `true` to bring the schema up to date on start. Otherwise run the migrations yourself |
+| `Matchmaking__FleetKey` | Secret dedicated game servers show to join the fleet. 32 characters or more. Empty means no servers, so nobody gets matched |
+| `Matchmaking__FillAfterSeconds` | How long a queue waits to fill before starting with whoever is there, bots taking the other places. Default 20 |
 
 Make a secret with `openssl rand -base64 48`.
 
@@ -120,6 +133,28 @@ Add `-ranked` and it admits only tickets good for ranked play, which the API giv
 accounts with a verified email. The game server checks a ticket by itself, with no call to this
 API, so the API being slow or down does not affect matches already being joined.
 
+## Matchmaking
+
+Each mode has a queue. Players join one with a guest pass (accounts are off in the game for now)
+or their account, and ask about it every second. Dedicated game servers join the fleet with the
+fleet key and check in every three seconds. Once a second the matchmaker takes the oldest
+players in each queue and, when the queue is full or the oldest has waited
+`Matchmaking__FillAfterSeconds`, sends them to a free server built from the same game version.
+The server hears about the match on its next check-in and switches to its mode and map; each
+player gets the server's address and a join ticket good for that match only. A Duel always waits
+for two people; the other modes start with one, and bots take the empty places.
+
+Queues, tickets and the fleet live in Redis, and the matchmaker runs under a lock, so several API
+processes can serve the same players. A dedicated server joins the fleet like this:
+
+```
+PULSEBREAK_FLEET_KEY=<Matchmaking__FleetKey> PULSEBREAK_TICKET_KEY=<Game__TicketSigningKey> \
+  Pulsebreak.exe -batchmode -nographics -server -fleet https://api.example.com -public-address 203.0.113.5 -port 7777
+```
+
+`-public-address` is where players reach it. Run one per port to host several matches on one
+machine. The development keys are in `appsettings.Development.json`.
+
 ## Changing the database
 
 The schema is in `src/Pulsebreak.Api/Data/`. After changing it, add a migration:
@@ -131,7 +166,8 @@ dotnet ef migrations add <Name> --project src/Pulsebreak.Api --output-dir Data/M
 
 ## Shared with the game
 
-Three files are the game's own source, compiled into the API as well, so the two cannot drift
+Four files are the game's own source, compiled into the API as well, so the two cannot drift
 apart: the stored loadout format (`LoadoutData.cs`), the rule for merging two copies of a
-player's loadouts (`LoadoutSync.cs`), and the join ticket (`GameTicket.cs`). They live under
+player's loadouts (`LoadoutSync.cs`), the join ticket (`GameTicket.cs`), and the playlists
+matchmaking fills (`Playlists.cs`). They live under
 `game/Assets/_Project/Shared/`.

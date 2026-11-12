@@ -2,9 +2,9 @@
 
 A fast, competitive multiplayer FPS for PC, built in Unity 6. "Pulsebreak" is a working title.
 
-Five phases are built so far: **movement and a firing range**, **the weapon system with 40 weapons and 21 attachments**, **loadouts**, **online 1v1 duels** on a server that owns the match, and **accounts** on a backend of their own. Accounts are switched off in the game for now, at your request; see [Accounts](#accounts). The plan for everything after is in [docs/ROADMAP.md](docs/ROADMAP.md), and how the code is organised is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Six phases are built so far: **movement and a firing range**, **the weapon system with 40 weapons and 21 attachments**, **loadouts**, **online play** on a server that owns the match, **accounts** on a backend of their own, and **every game mode, bots and matchmaking**. Accounts are switched off in the game for now, at your request; see [Accounts](#accounts). The plan for everything after is in [docs/ROADMAP.md](docs/ROADMAP.md), and how the code is organised is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-> **Not yet run in Unity.** This was written without access to a Unity Editor. The C# was compiled against Unity's reference assemblies. The simulation, the weapon data and the netcode were tested outside the engine, including whole matches between a real server and two real clients on a simulated bad connection, and the game's account code was tested against the real backend. But nothing has been opened or played in Unity itself, so the menus, the HUD and everything else you look at are unverified. Expect to report a few first-run issues; [Troubleshooting](#troubleshooting) covers the likely ones.
+> **Not yet run in Unity.** This was written without access to a Unity Editor. The C# was compiled against Unity's reference assemblies. The simulation, the weapon data and the netcode were tested outside the engine, including whole matches between a real server and real clients on a simulated bad connection, every game mode, bots playing full matches, and the game's account and matchmaking code against the real backend. But nothing has been opened or played in Unity itself, so the menus, the HUD and everything else you look at are unverified. Expect to report a few first-run issues; [Troubleshooting](#troubleshooting) covers the likely ones.
 
 ## Open and play
 
@@ -30,47 +30,80 @@ If you signed in while accounts were on, the loadouts you made then are brought 
 
 ## Play online
 
-A duel is two players, first to win three rounds. One copy of the game runs the server; it can be one of the two players (hosting) or a third copy running nothing else (a dedicated server).
+Online play is in the duel scene (**Pulsebreak ▸ Open Duel (Main Menu)**), which is also the main menu. Pick a **mode** at the top of the menu, then:
 
-### The quickest test: one computer
+- **Find match** puts you in that mode's queue on the backend, and drops you into a match on a dedicated server when one is found. See [Matchmaking](#matchmaking).
+- **Host a private match** runs the match on your own computer with the rules you pick: map, team size, what wins it, and whether bots take the empty places (and how good they are). With bots on, you can play any mode on your own straight away.
+- **Join by address** connects to someone else's private match or to a dedicated server.
+
+### The modes
+
+| Mode | Teams | Respawns | Wins |
+| --- | --- | --- | --- |
+| Duel | 1 v 1 | No, rounds | First to 3 rounds (best of five) |
+| Team Deathmatch | up to 5 v 5 | Yes | First team to the kill limit |
+| Free-for-All | Everyone for themselves, up to 12 | Yes | First to the kill limit |
+| Elimination | up to 5 v 5 | No, rounds | Wipe the other team out; first to 4 rounds |
+| Domination | up to 5 v 5 | Yes | Hold zones A, B and C; each zone held scores a point a second |
+| Hardpoint | up to 5 v 5 | Yes | One zone at a time, moving every minute; hold it alone to score |
+| Gun Game | Everyone for themselves | Yes | Every kill hands you the next weapon; a kill with the last one (the knife) wins. Being knifed sets you back one |
+
+Two maps: **Relay Yard**, the small duel arena, and **Crossroads**, 64 × 48 m with three lanes, a central square, raised decks at each end, three Domination zones and three hardpoints. The menu offers only the maps that suit the chosen mode.
+
+Teammates are drawn blue with a marker over their heads; everyone else is red. Teammates cannot hurt each other.
+
+### Bots
+
+Bots fill any place nobody has taken, and step aside the moment a person joins. They find their way round the map (including up steps and onto ledges), react after a short delay, aim with a little error that settles while they track you, control recoil, strafe at their weapon's best range, reload and switch weapons, throw grenades, and go for the zones in Domination and Hardpoint. Easy, Normal and Hard differ in reaction time, aim and how fast they turn.
+
+### The quickest test: on your own
+
+1. Open the duel scene and press **Play**.
+2. Pick a mode, open **Host a private match**, leave **Empty places** on **Normal bots**, and press **Start private match**.
+
+You are in a match against bots a few seconds later.
+
+### Two people
 
 You need two copies of the game running. The Editor is one; a build is the other.
 
 1. Make a build: **File ▸ Build Profiles** (Build Settings in older versions), check that **Duel** is the first scene in the list and **FiringRange** the second, and press **Build**. If the list is wrong, run **Pulsebreak ▸ Run Project Doctor** first.
-2. In the Editor, open the duel scene (**Pulsebreak ▸ Open Duel (Main Menu)**), press **Play**, type a name and choose **Host a match**. You are placed in the arena for a warm-up: move and shoot freely.
-3. Start the build, leave the address as `127.0.0.1` and choose **Join**.
-4. The match starts as soon as the second player is in: a three second countdown, then the round.
+2. One copy hosts a private match. The banner shows the address others should use, something like `192.168.1.20` (on one computer, `127.0.0.1`).
+3. The other types that address and chooses **Join by address**.
 
-Both copies keep running when their window is not in front, so you can click between them.
-
-### Two computers on the same network
-
-1. Both run a build. One chooses **Host a match**; the banner shows the address others should use, something like `192.168.1.20`.
-2. The other types that address and chooses **Join**.
-
-If the second computer gets "No answer from the server", the host's firewall is the usual cause: allow the game through it, or allow UDP port 7777.
-
-Over the internet the host also has to forward UDP port 7777 on their router to their computer and give the other player their public address. That goes away when matches run on dedicated servers found through matchmaking.
+Both copies keep running when their window is not in front, so you can click between them. If the second computer gets "No answer from the server", the host's firewall is the usual cause: allow the game through it, or allow UDP port 7777. Over the internet the host also has to forward UDP port 7777 on their router; matchmaking does away with that.
 
 ### A dedicated server
 
 Start a build with no window and no player:
 
 ```
-Pulsebreak.exe -batchmode -nographics -server
+Pulsebreak.exe -batchmode -nographics -server -mode tdm -map crossroads -bots
 ```
 
-It logs "Listening on UDP port 7777". Both players then **Join** its address. Add `-logFile server.log` to choose where the log goes.
+`-mode` is one of `duel`, `tdm`, `ffa`, `elimination`, `domination`, `hardpoint`, `gungame`; `-bots` fills empty places. Players **Join by address**. Add `-logFile server.log` to choose where the log goes.
+
+### Matchmaking
+
+**Find match** needs the backend running (see [backend/README.md](backend/README.md)) and at least one dedicated server offered to it:
+
+```
+set PULSEBREAK_FLEET_KEY=development-only-fleet-key-do-not-use-anywhere-real
+set PULSEBREAK_TICKET_KEY=development-only-ticket-key-do-not-use-anywhere-real
+Pulsebreak.exe -batchmode -nographics -server -fleet http://localhost:5080 -public-address 127.0.0.1
+```
+
+(Those are the development keys from the backend's settings; use your own anywhere real.) The server registers and checks in every few seconds. Players queue as guests while accounts are off. A full queue starts a match at once; otherwise, after 20 seconds, a match starts with whoever is waiting and bots take the other places (a Duel always waits for two people). The server switches to the match's mode and map, and lets in only the players matchmaking sent it. Run several servers on different `-port`s to host several matches.
 
 ### In a match
 
-- **Warm-up** while you wait for an opponent. Ammunition and utility never run out.
+- **Warm-up** until there is someone on each side. Ammunition and utility never run out. Once there are enough players, a short "Starting in" wait lets anyone on their way arrive.
 - **Countdown.** You can look around and swap weapons; movement and fire unlock when it ends.
-- **Round.** Eliminate the other player. If 90 seconds run out, whoever has more health takes it. Equal health is a draw.
-- **Between rounds** you swap ends. Press **B** (or Esc for the full loadout screen) to pick another loadout; it is used from the next round.
-- **First to three rounds wins.** A new match starts by itself a few seconds later. Leaving a match forfeits it.
+- **Play.** Round modes end a round when one side is wiped out (or on time: more players left, then more health). Respawning modes bring you back a few seconds after you go down, away from enemies, and end at the score limit or when time runs out.
+- **Changing loadout:** **B** or **Esc**. It is used from your next spawn (next round in round modes). Gun Game hands out its own weapons.
+- A new match starts by itself a few seconds after the result. If everyone on one side leaves, the other side wins.
 
-On screen: score and round clock at the top, your health at the bottom, eliminations at the top right, and at the top left your ping, packet loss and a count of corrections (**F3** hides it). **Esc ▸ Leave match** returns to the menu.
+On screen: scores, clock and zones at the top; your **weapons along the bottom centre** (the one in hand lit up), with the loadout's name above them; health at the bottom left; ammunition and your grenade at the bottom right; eliminations at the top right; and at the top left your ping, packet loss and a count of corrections (**F3** hides it). Hold **Tab** for the scoreboard. **Esc ▸ Leave match** returns to the menu.
 
 ### Trying it with a bad connection
 
@@ -85,13 +118,16 @@ To feel the game at a given ping, make your own connection worse on purpose. Eac
 | --- | --- |
 | `-server` | Run only the server. `-batchmode` implies it |
 | `-port N` | Port to host on. Default 7777 |
-| `-host` | Go straight to hosting a match |
+| `-mode ID`, `-map ID`, `-bots` | The rules a server started from the command line plays by |
+| `-fleet URL`, `-public-address HOST` | Offer this dedicated server to matchmaking at that backend, telling players to connect to that address |
+| `-host` | Go straight to hosting a match (with `-mode`, `-map`, `-bots` if given) |
 | `-connect ADDRESS` | Go straight to joining, for example `-connect 192.168.1.20` |
 | `-name NAME` | Player name, instead of the one in the menu |
 | `-lag MS`, `-jitter MS`, `-loss PERCENT` | Make this copy's connection worse on purpose |
 
 ### What I would most like to hear about
 
+- **The bots.** Too easy, too hard, stuck anywhere, doing anything silly?
 - **The corrections counter.** It should jump a little when a round starts and then sit still while you run around. If it climbs steadily, Unity's physics is giving the client and the server different answers, and I need to know how fast it climbs and whether you can feel it.
 - **Hits.** Whether shots that looked on target count, especially on a moving opponent with simulated lag on.
 - **The other player.** Smooth, or jittery? Do their shots come from their weapon?
@@ -114,6 +150,7 @@ To feel the game at a given ping, make your own connection worse on purpose. Eac
 | 1 / 2 / 3 or mouse wheel | Switch to primary / secondary / melee |
 | G | Throw your grenade (or other utility item) |
 | B | Quick swap: pick another loadout by number |
+| Tab (hold) | Scoreboard (in a match) |
 | Esc | Pause: loadouts and settings; in a match, also where you leave it |
 | F5 | Reset session stats (firing range) |
 | F1 | Hide or show the controls panel (firing range) |
@@ -133,17 +170,17 @@ A loadout is four things to carry and a perk set:
 
 Press **Esc** in play to open the loadout screen.
 
-- **Pick one.** The list on the left has eight default loadouts and, below them, your own. Each entry shows what it carries. Clicking one selects it.
-- **Deploy** puts you back in the game carrying the selected loadout. On the range you have it at once, with full ammunition; in a match, from the next round.
-- **Make your own.** Press **New** to copy the selected loadout, or just change something in a default: defaults cannot be altered, so the game makes your own copy and edits that. You can keep up to ten.
+- **Pick one.** The list on the left is your loadouts. Each entry shows what it carries. Clicking one selects it. The first time you play there is one, ready to change.
+- **Deploy** puts you back in the game carrying the selected loadout. On the range you have it at once, with full ammunition; in a match, from your next spawn.
+- **Make another.** Press **New** to copy the selected loadout, then change the copy. You can keep up to ten.
 - **Edit it.** The tabs across the top are Primary, Secondary, Melee, Utility and Perks. Each lists what fits that slot, grouped by class. For a weapon you can cycle its attachments.
 - **Compare.** The stat bars put each weapon against the others for the same slot: the weakest primary at something sits at the left of that bar, the strongest at the right. Green and red show what attachments and the perk set add or cost.
-- **Rename it** by typing in the name box and pressing Enter. **Delete** removes it.
+- **Rename it** by typing in the name box and pressing Enter. **Delete** removes it (you always keep at least one).
 - **Nothing to save.** Every change is written straight away and is there the next time you start the game.
 
-Press **B** in play for the quick swap list: every loadout, numbered, with its primary and secondary. Press the number and you carry it, straight away on the range and from the next round in a match.
+Press **B** in play for the quick swap list: your loadouts, numbered, with each one's primary and secondary. Press the number and you carry it, straight away on the range and from your next spawn in a match.
 
-Loadouts are kept in a file called `loadouts.json` in the game's save folder; **Pulsebreak ▸ Open Saved Loadouts Folder** in the Editor takes you to it. Delete the file to start over. If it ever becomes unreadable, the game keeps it under another name and starts from the defaults.
+Loadouts are kept in a file called `loadouts.json` in the game's save folder; **Pulsebreak ▸ Open Saved Loadouts Folder** in the Editor takes you to it. Delete the file to start over. If it ever becomes unreadable, the game keeps it under another name and starts over with one loadout.
 
 Loadouts are saved on your computer. In a match the server checks the loadout you bring against its own content and replaces anything you could not have.
 
@@ -224,9 +261,9 @@ Removing or renaming content is safe for saved loadouts: anything a save refers 
 
 ## Tests
 
-Open **Window ▸ General ▸ Test Runner**, select **EditMode** and run all. The tests cover fire rate and timing, every fire mode, both reload styles, weapon switching, attachment maths, damage, the movement maths, loadout rules, the utility belt, creating, editing and saving loadouts, the real content assets, and the netcode's lower layers: packet reading and writing, the connection on a line that drops, reorders and repeats packets, every message, and the arena's layout.
+Open **Window ▸ General ▸ Test Runner**, select **EditMode** and run all. The tests cover fire rate and timing, every fire mode, both reload styles, weapon switching, attachment maths, damage, the movement maths, loadout rules, the utility belt, creating, editing and saving loadouts, the real content assets (including every Gun Game weapon), the netcode's lower layers (packet reading and writing, the connection on a line that drops, reorders and repeats packets, every message), the maps and the modes' shared rules.
 
-The tests that play whole matches between a server and two clients need a stand-in for Unity's physics, so they live outside the project and were run before each commit. [ARCHITECTURE.md](docs/ARCHITECTURE.md#how-it-is-tested) says what they cover.
+The tests that play whole matches (every mode, bots, matchmaking end to end) need a stand-in for Unity's physics, so they live outside the project and were run before each commit. [ARCHITECTURE.md](docs/ARCHITECTURE.md#how-it-is-tested) says what they cover.
 
 The backend has its own tests; see [backend/README.md](backend/README.md#tests).
 
@@ -239,6 +276,10 @@ The backend has its own tests; see [backend/README.md](backend/README.md#tests).
 **A build starts on the firing range, with no menu.** The duel scene is not first in the build. Run **Pulsebreak ▸ Run Project Doctor**, or drag **Duel** to the top under **File ▸ Build Profiles**.
 
 **"Could not open port 7777" when hosting.** Another copy of the game on this computer is already hosting. Join that one at `127.0.0.1`, or close it.
+
+**"Could not reach matchmaking."** The backend is not running, or the game is looking for it somewhere else. Start it (see [backend/README.md](backend/README.md)), or start the game with `-backend URL`. Hosting and joining by address work without it.
+
+**Find match searches for ever.** No dedicated server is offered to matchmaking, or they are all busy, or they were built from different code than your copy. Start one as in [Matchmaking](#matchmaking) and check its log for "Registered".
 
 **"No answer from the server" when joining.** Nothing is hosting at that address, or a firewall is in the way. Check the address against the one on the host's screen, and allow the game (or UDP port 7777) through the host's firewall.
 
@@ -265,14 +306,16 @@ The backend has its own tests; see [backend/README.md](backend/README.md#tests).
 ```
 pulsebreak/
 ├── docs/        Architecture and roadmap
-├── backend/     The accounts API (ASP.NET Core, PostgreSQL, Redis)
+├── backend/     Accounts and matchmaking (ASP.NET Core, PostgreSQL, Redis)
 └── game/        The Unity project
     └── Assets/_Project/
-        ├── Shared/    Gameplay rules: movement, weapons, projectiles, damage, loadouts, duel rules, and the
-        │              network layer. Runs on client and server.
-        ├── Server/    The authority for a match: runs every player's inputs, judges every shot, runs the duel.
+        ├── Shared/    Gameplay rules: movement, weapons, projectiles, damage, loadouts, maps, match rules,
+        │              playlists, and the network layer. Runs on client and server.
+        ├── Server/    The authority for a match: runs every player's inputs, judges every shot, runs the
+        │              mode (Modes/) and the bots (Bots/), and offers itself to matchmaking.
         ├── Client/    Input, camera, weapon models, effects, audio, HUD, loadout screen and saves, the firing
-        │              range, the online duel (menu, prediction, the other player), and the account client.
+        │              range, online play (menu, prediction, other players, zones, scoreboard), and the
+        │              account and matchmaking clients.
         ├── Editor/    Project Doctor.
         ├── Content/   Weapons, attachments, utility items, perk sets, default loadouts, movement.
         └── Tests/     Unit tests.

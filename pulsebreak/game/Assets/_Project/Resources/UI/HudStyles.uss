@@ -238,25 +238,78 @@
 
 .slots {
     position: absolute;
-    right: 28px;
-    bottom: 168px;
+    left: 0;
+    right: 0;
+    bottom: 24px;
+    flex-direction: row;
+    justify-content: center;
     align-items: flex-end;
 }
 
+/* One weapon slot along the bottom centre: key, kind of slot, weapon. */
 .slot {
-    font-size: 14px;
-    letter-spacing: 2px;
-    padding: 3px 10px;
-    margin-top: 3px;
-    color: rgba(240, 244, 250, 0.55);
-    background-color: rgba(10, 14, 20, 0.45);
-    border-radius: 4px;
+    width: 200px;
+    margin-left: 5px;
+    margin-right: 5px;
+    padding: 7px 12px 9px 12px;
+    background-color: rgba(10, 14, 20, 0.66);
+    border-radius: 6px;
+    border-top-width: 3px;
+    border-top-color: rgba(240, 244, 250, 0.2);
 }
 
 .slot--active {
+    background-color: rgba(38, 216, 255, 0.94);
+    border-top-color: rgb(255, 255, 255);
+    translate: 0 -6px;
+}
+
+.slot--empty {
+    opacity: 0.35;
+}
+
+.slot-head {
+    flex-direction: row;
+    align-items: center;
+}
+
+.slot-key {
+    font-size: 13px;
+    -unity-font-style: bold;
     color: rgb(6, 20, 26);
     background-color: rgb(38, 216, 255);
+    border-radius: 3px;
+    padding: 0 6px;
+    margin-right: 8px;
+}
+
+.slot--active .slot-key {
+    color: rgb(38, 216, 255);
+    background-color: rgb(6, 20, 26);
+}
+
+.slot-role {
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: rgba(240, 244, 250, 0.6);
+}
+
+.slot--active .slot-role {
+    color: rgba(6, 20, 26, 0.75);
+}
+
+.slot-name {
+    font-size: 17px;
     -unity-font-style: bold;
+    margin-top: 4px;
+    color: rgb(240, 244, 250);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.slot--active .slot-name {
+    color: rgb(6, 20, 26);
 }
 
 .weapon-name {
@@ -627,8 +680,10 @@
 /* On the HUD: the loadout in use, above the weapon slots. */
 .loadout-title {
     position: absolute;
-    right: 28px;
-    bottom: 262px;
+    left: 0;
+    right: 0;
+    bottom: 94px;
+    -unity-text-align: middle-center;
     font-size: 12px;
     letter-spacing: 3px;
     color: rgb(38, 216, 255);

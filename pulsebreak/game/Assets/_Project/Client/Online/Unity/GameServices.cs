@@ -74,6 +74,8 @@ namespace Pulsebreak.Client.Online
             var guest = new LocalFileLoadoutStore();
             var store = new SwitchableLoadoutStore(guest);
             Library = new LoadoutLibrary(catalog, store);
+            // The game lists only the player's own loadouts; a first run starts with one.
+            Library.EnsureOwnLoadout();
 
             var http = new UnityHttpTransport();
             Account = new AccountClient(http, backendUrl,

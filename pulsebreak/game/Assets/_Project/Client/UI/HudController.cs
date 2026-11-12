@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UIElements;
@@ -75,7 +76,8 @@ namespace Pulsebreak.Client.UI
         Label _rangefinder, _ammoMag, _ammoReserve, _weaponStatus, _weaponName, _moveState, _moveSpeed;
         Label _statAccuracy, _statHeadshots, _statShots, _statKills, _statTtk;
         Label _loadoutTitle;
-        Label[] _slotLabels = new Label[0];
+        VisualElement[] _slotCards = new VisualElement[0];
+        static readonly string[] SlotRoles = { "PRIMARY", "SECONDARY", "MELEE" };
         VisualElement[] _utilityRows = new VisualElement[0];
         Label[] _utilityCounts = new Label[0];
         int[] _shownUtilityCharges = new int[0];
@@ -357,7 +359,7 @@ namespace Pulsebreak.Client.UI
         void RebuildQuickSwapList()
         {
             _quickList.Clear();
-            var all = _library.All();
+            IReadOnlyList<LoadoutData> all = _library.Custom;
             for (int i = 0; i < all.Count; i++)
             {
                 string id = all[i].id;
@@ -407,6 +409,8 @@ namespace Pulsebreak.Client.UI
             if (!_ready) return;
             _hints.style.display = DisplayStyle.None;
             _root.Q<VisualElement>("range-stats").style.display = DisplayStyle.None;
+            // The match puts your health where the speed readout sits in the range.
+            _root.Q<VisualElement>("movement").style.display = DisplayStyle.None;
             _root.Q<Button>("btn-reset").style.display = DisplayStyle.None;
             SetQuitLabel(quitLabel);
         }
@@ -443,19 +447,35 @@ namespace Pulsebreak.Client.UI
         {
             if (!_ready) return;
 
+            // One card per weapon slot along the bottom of the screen: the key that draws it,
+            // what kind of slot it is, and the weapon's name. The one in hand is lit up.
             _slots.Clear();
-            _slotLabels = new Label[_player.SlotCount];
-            for (int i = 0; i < _slotLabels.Length; i++)
+            _slotCards = new VisualElement[_player.SlotCount];
+            for (int i = 0; i < _slotCards.Length; i++)
             {
                 WeaponBuild build = _player.GetBuild(i);
-                var label = new Label((i + 1) + "  " + (build != null ? build.Weapon.displayName.ToUpperInvariant() : "-"))
-                {
-                    pickingMode = PickingMode.Ignore,
-                };
-                label.AddToClassList("slot");
-                _slots.Add(label);
-                _slotLabels[i] = label;
+                var card = new VisualElement { pickingMode = PickingMode.Ignore };
+                card.AddToClassList("slot");
+                card.EnableInClassList("slot--empty", build == null);
+
+                var head = new VisualElement { pickingMode = PickingMode.Ignore };
+                head.AddToClassList("slot-head");
+                var key = new Label((i + 1).ToString()) { pickingMode = PickingMode.Ignore };
+                key.AddToClassList("slot-key");
+                var role = new Label(i < SlotRoles.Length ? SlotRoles[i] : "") { pickingMode = PickingMode.Ignore };
+                role.AddToClassList("slot-role");
+                head.Add(key);
+                head.Add(role);
+
+                var name = new Label(build != null ? build.Weapon.displayName.ToUpperInvariant() : "—") { pickingMode = PickingMode.Ignore };
+                name.AddToClassList("slot-name");
+
+                card.Add(head);
+                card.Add(name);
+                _slots.Add(card);
+                _slotCards[i] = card;
             }
+            HighlightSlot(_player.Inventory.ActiveIndex);
 
             _utilities.Clear();
             UtilityBelt belt = _player.Utilities;
@@ -492,8 +512,12 @@ namespace Pulsebreak.Client.UI
             _weaponName.text = build.Weapon.displayName.ToUpperInvariant();
             _shownAmmo = int.MinValue;
 
-            int active = _player.Inventory.ActiveIndex;
-            for (int i = 0; i < _slotLabels.Length; i++) _slotLabels[i].EnableInClassList("slot--active", i == active);
+            HighlightSlot(_player.Inventory.ActiveIndex);
+        }
+
+        void HighlightSlot(int active)
+        {
+            for (int i = 0; i < _slotCards.Length; i++) _slotCards[i].EnableInClassList("slot--active", i == active);
         }
 
         // ------------------------------------------------------------------ per frame
@@ -551,7 +575,7 @@ namespace Pulsebreak.Client.UI
 
         void HandleQuickSwapKeys(Keyboard keyboard)
         {
-            var all = _library.All();
+            IReadOnlyList<LoadoutData> all = _library.Custom;
             for (int i = 0; i < all.Count && i < 9; i++)
             {
                 if (!keyboard[Key.Digit1 + i].wasPressedThisFrame) continue;

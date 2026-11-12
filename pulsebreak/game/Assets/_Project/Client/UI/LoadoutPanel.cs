@@ -69,7 +69,7 @@ namespace Pulsebreak.Client.UI
 
             _nameField.RegisterValueChangedCallback(e => _library.Rename(_library.EquippedId, e.newValue));
             _newButton.clicked += CreateCopy;
-            _deleteButton.clicked += () => _library.Delete(_library.EquippedId);
+            _deleteButton.clicked += DeleteEquipped;
             _deployButton = root.Q<Button>("loadout-deploy");
             if (_deployButton != null) _deployButton.clicked += () => DeployRequested?.Invoke();
 
@@ -117,6 +117,9 @@ namespace Pulsebreak.Client.UI
         {
             if (_batching) return;
 
+            // Only the player's own loadouts are listed, so one of them is always the one equipped.
+            if (_library.EnsureOwnLoadout()) return;       // it said it changed, which redraws this
+
             LoadoutData equipped = _library.Equipped;
             if (equipped == null) return;
             bool preset = _library.IsPreset(equipped.id);
@@ -125,12 +128,11 @@ namespace Pulsebreak.Client.UI
 
             _nameField.SetValueWithoutNotify(equipped.name);
             _nameField.SetEnabled(!preset);
-            _note.text = !preset ? "Your loadout. Changes are saved as you make them."
-                : _library.CanCreate ? "A default loadout. Changing anything makes your own copy of it."
-                : "A default loadout. Delete one of yours to make room for a copy.";
+            _note.text = "Changes are saved as you make them. New makes a copy of this one to change.";
 
             _newButton.SetEnabled(_library.CanCreate);
-            _deleteButton.SetEnabled(!preset);
+            // There is always at least one loadout to carry.
+            _deleteButton.SetEnabled(!preset && _library.Custom.Count > 1);
             _limit.text = _library.Custom.Count + " of " + LoadoutLibrary.MaxCustomLoadouts + " custom loadouts";
 
             for (int i = 0; i < _tabs.Length; i++) _tabs[i].EnableInClassList("armory-tab--active", i == _tab);
@@ -146,6 +148,21 @@ namespace Pulsebreak.Client.UI
         {
             _tab = tab;
             Refresh();
+        }
+
+        /// <summary>Deletes the equipped loadout, equipping the one next to it first.</summary>
+        void DeleteEquipped()
+        {
+            IReadOnlyList<LoadoutData> mine = _library.Custom;
+            if (mine.Count <= 1) return;
+            string doomed = _library.EquippedId;
+            int index = 0;
+            for (int i = 0; i < mine.Count; i++)
+            {
+                if (mine[i].id == doomed) index = i;
+            }
+            _library.Equip(mine[index > 0 ? index - 1 : 1].id);
+            _library.Delete(doomed);
         }
 
         void CreateCopy()
@@ -231,17 +248,8 @@ namespace Pulsebreak.Client.UI
         void RebuildLoadoutList(LoadoutData equipped)
         {
             _loadoutList.Clear();
-            AddGroupHeader(_loadoutList, "DEFAULTS");
-            foreach (LoadoutData preset in _library.Presets) AddLoadoutButton(preset, equipped);
-
-            AddGroupHeader(_loadoutList, "YOURS");
+            AddGroupHeader(_loadoutList, "YOUR LOADOUTS");
             foreach (LoadoutData custom in _library.Custom) AddLoadoutButton(custom, equipped);
-            if (_library.Custom.Count == 0)
-            {
-                var empty = new Label("None yet. Press New, or change a default.");
-                empty.AddToClassList("loadout-note");
-                _loadoutList.Add(empty);
-            }
         }
 
         void AddLoadoutButton(LoadoutData loadout, LoadoutData equipped)

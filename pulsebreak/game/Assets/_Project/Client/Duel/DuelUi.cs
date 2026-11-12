@@ -506,20 +506,34 @@ namespace Pulsebreak.Client.Duel
             banner.Add(_notice);
             _match.Add(banner);
 
-            // Health, bottom centre, with a line above it for respawns and Gun Game.
+            // A line for respawns and Gun Game, above the weapons along the bottom centre.
+            _status = Text_("", 15, Accent, bold: true, spacing: 1);
+            _status.style.position = Position.Absolute;
+            _status.style.bottom = 118;
+            _status.style.left = 0;
+            _status.style.right = 0;
+            _status.style.unityTextAlign = TextAnchor.MiddleCenter;
+            _match.Add(_status);
+
+            // Health, bottom left: the weapons have the bottom centre.
             var health = new VisualElement();
             health.pickingMode = PickingMode.Ignore;
             health.style.position = Position.Absolute;
-            health.style.bottom = 34;
-            health.style.left = 0;
-            health.style.right = 0;
-            health.style.alignItems = Align.Center;
-            _status = Text_("", 15, Accent, bold: true, spacing: 1);
-            _status.style.marginBottom = 6;
-            _healthText = Text_("100", 26, Text, bold: true);
+            health.style.bottom = 28;
+            health.style.left = 28;
+            health.style.alignItems = Align.FlexStart;
+            health.style.paddingLeft = health.style.paddingRight = 16;
+            health.style.paddingTop = 10;
+            health.style.paddingBottom = 14;
+            health.style.backgroundColor = new Color(0.04f, 0.055f, 0.08f, 0.55f);
+            health.style.borderLeftWidth = 3;
+            health.style.borderLeftColor = Good;
+            Round(health, 6);
+            Label healthTitle = Text_("HEALTH", 12, Dim, bold: true, spacing: 3);
+            _healthText = Text_("100", 30, Text, bold: true);
             var bar = new VisualElement();
             bar.pickingMode = PickingMode.Ignore;
-            bar.style.width = 300;
+            bar.style.width = 240;
             bar.style.height = 8;
             bar.style.marginTop = 2;
             bar.style.backgroundColor = new Color(0.04f, 0.06f, 0.08f, 0.7f);
@@ -531,7 +545,7 @@ namespace Pulsebreak.Client.Duel
             _healthFill.style.backgroundColor = Good;
             Round(_healthFill, 4);
             bar.Add(_healthFill);
-            health.Add(_status);
+            health.Add(healthTitle);
             health.Add(_healthText);
             health.Add(bar);
             _match.Add(health);

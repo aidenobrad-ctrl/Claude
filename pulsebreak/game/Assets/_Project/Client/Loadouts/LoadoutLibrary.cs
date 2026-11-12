@@ -182,6 +182,43 @@ namespace Pulsebreak.Client.Loadouts
             Changed?.Invoke();
         }
 
+        /// <summary>
+        /// Makes sure one of the player's own loadouts is equipped. The game lists only the
+        /// player's own loadouts, with the presets kept out of sight as starting points: a first
+        /// run gets a copy of the first preset, and a preset left equipped by an older version
+        /// becomes a copy of itself. Returns true if anything changed.
+        /// </summary>
+        public bool EnsureOwnLoadout()
+        {
+            if (FindCustom(_equippedId) != null) return false;
+
+            LoadoutData source = Find(_equippedId) ?? (_presets.Count > 0 ? _presets[0] : null);
+            if (source != null && CanCreate)
+            {
+                // Made and equipped before anyone is told, so listeners only ever see it finished.
+                LoadoutData copy = source.Clone();
+                copy.id = Guid.NewGuid().ToString("N");
+                copy.name = UniqueName(source.name);
+                copy.updatedAt = _clock();
+                _custom.Add(copy);
+                _equippedId = copy.id;
+            }
+            else if (_custom.Count > 0)
+            {
+                _equippedId = _custom[0].id;
+            }
+            else
+            {
+                return false;
+            }
+
+            _equippedUpdatedAt = Stamp(_equippedUpdatedAt);
+            Persist();
+            EquippedChanged?.Invoke();
+            Changed?.Invoke();
+            return true;
+        }
+
         /// <summary>Makes a new custom loadout as a copy of an existing one. Returns null when the limit is reached.</summary>
         public LoadoutData CreateFrom(string sourceId)
         {

@@ -1,0 +1,103 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f6a251fe876909704af95a88ea478068, type: 3}
+  m_Name: WPN_melee_scythe
+  m_EditorClassIdentifier: 
+  weaponId: melee_scythe
+  displayName: Scythe
+  description: 'The longest reach of any blade. 80 a hit; a wide, sweeping arc.'
+  weaponClass: 9
+  slot: 2
+  unlockLevel: 24
+  stats:
+    fireMode: 1
+    roundsPerMinute: 70
+    burstCount: 3
+    burstCooldown: 0.2
+    chargeTime: 0.6
+    minChargeDamage: 0.35
+    ballistics: 2
+    pellets: 1
+    pierceTargets: 0
+    pierceDamageKept: 0.75
+    damage: 80
+    headMultiplier: 1
+    limbMultiplier: 1
+    falloffStart: 1000
+    falloffEnd: 1000
+    minDamageMultiplier: 1
+    maxRange: 300
+    projectileSpeed: 60
+    projectileGravity: 0
+    projectileLifetime: 5
+    projectileRadius: 0.05
+    bounces: 0
+    bounceSpeedKept: 0.6
+    bounceDamageMultiplier: 1
+    explosionRadius: 0
+    explosionEdgeDamage: 0.25
+    fuseTime: 0
+    detonateOnTarget: 1
+    meleeRange: 3.2
+    meleeRadius: 0.7
+    meleeHitDelay: 0.24
+    magazineSize: 0
+    reserveAmmo: 0
+    reloadStyle: 0
+    reloadTime: 1.9
+    emptyReloadTime: 2.3
+    reloadIntroTime: 0
+    adsTime: 0.2
+    adsZoom: 1
+    hipMoveMultiplier: 1
+    adsMoveMultiplier: 1
+    sprintToFireTime: 0
+    equipTime: 0.34
+    holsterTime: 0.18
+    hipSpread: 1.1
+    adsSpread: 0.06
+    moveSpreadPenalty: 1.2
+    airSpreadPenalty: 3
+    crouchSpreadMultiplier: 0.8
+    bloomPerShot: 0
+    maxBloom: 0
+    bloomRecovery: 5
+    adsBloomMultiplier: 0.2
+    recoilPattern:
+    - {x: 0, y: 0}
+    recoilLoopStart: 0
+    recoilRandomness: 0
+    recoilVerticalScale: 1
+    recoilHorizontalScale: 1
+    adsRecoilMultiplier: 0.75
+    crouchRecoilMultiplier: 0.85
+    recoilSnappiness: 28
+    recoilRecovery: 9
+    recoilRecoveryDelay: 0.12
+    recoilResetTime: 0.35
+  reticle: 0
+  attachments: []
+  view:
+    kind: 2
+    bodyLength: 0.85
+    bulk: 1.1
+    barrelLength: 0.3
+    stockLength: 0.2
+    magazineLength: 0.14
+    bodyColor: {r: 0.16, g: 0.17, b: 0.2, a: 1}
+    accentColor: {r: 0.7, g: 0.4, b: 1, a: 1}
+  audio:
+    kind: 3
+    pitch: 0.85
+    weight: 1
+    tail: 0.32
+    volume: 0.65

@@ -1,0 +1,142 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" editor-extension-mode="False">
+    <ui:VisualElement name="hud" class="hud" picking-mode="Ignore">
+
+        <ui:VisualElement name="scope" class="scope" picking-mode="Ignore">
+            <ui:VisualElement class="scope-bar" picking-mode="Ignore" />
+            <ui:VisualElement name="scope-lens" class="scope-lens" picking-mode="Ignore" />
+            <ui:VisualElement class="scope-bar" picking-mode="Ignore" />
+        </ui:VisualElement>
+
+        <ui:VisualElement name="damage-layer" class="layer" picking-mode="Ignore" />
+        <ui:VisualElement name="hurt-layer" class="layer" picking-mode="Ignore" />
+        <ui:Label name="fps" class="fps" text="" picking-mode="Ignore" />
+
+        <ui:VisualElement name="crosshair" class="crosshair" picking-mode="Ignore">
+            <ui:VisualElement name="ch-top" class="ch-line" picking-mode="Ignore" />
+            <ui:VisualElement name="ch-bottom" class="ch-line" picking-mode="Ignore" />
+            <ui:VisualElement name="ch-left" class="ch-line" picking-mode="Ignore" />
+            <ui:VisualElement name="ch-right" class="ch-line" picking-mode="Ignore" />
+            <ui:VisualElement name="ch-dot" class="ch-dot" picking-mode="Ignore" />
+            <ui:VisualElement name="reticle" class="reticle" picking-mode="Ignore">
+                <ui:VisualElement name="ret-dot" class="ret-dot" picking-mode="Ignore" />
+                <ui:VisualElement name="ret-cross" class="ret-shape" picking-mode="Ignore">
+                    <ui:VisualElement class="ret-line ret-cross-h" picking-mode="Ignore" />
+                    <ui:VisualElement class="ret-line ret-cross-v" picking-mode="Ignore" />
+                </ui:VisualElement>
+                <ui:VisualElement name="ret-chevron" class="ret-shape" picking-mode="Ignore">
+                    <ui:VisualElement class="ret-line ret-chevron-l" picking-mode="Ignore" />
+                    <ui:VisualElement class="ret-line ret-chevron-r" picking-mode="Ignore" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+            <ui:VisualElement name="hitmarker" class="hitmarker" picking-mode="Ignore">
+                <ui:VisualElement class="hm-tick hm-top" picking-mode="Ignore" />
+                <ui:VisualElement class="hm-tick hm-bottom" picking-mode="Ignore" />
+                <ui:VisualElement class="hm-tick hm-left" picking-mode="Ignore" />
+                <ui:VisualElement class="hm-tick hm-right" picking-mode="Ignore" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+
+        <ui:Label name="rangefinder" class="rangefinder" text="" picking-mode="Ignore" />
+
+        <ui:VisualElement name="reload-bar" class="center-bar reload-bar" picking-mode="Ignore">
+            <ui:VisualElement name="reload-fill" class="center-fill reload-fill" picking-mode="Ignore" />
+        </ui:VisualElement>
+
+        <ui:VisualElement name="charge-bar" class="center-bar charge-bar" picking-mode="Ignore">
+            <ui:VisualElement name="charge-fill" class="center-fill charge-fill" picking-mode="Ignore" />
+        </ui:VisualElement>
+
+        <ui:VisualElement name="hints" class="panel hints" picking-mode="Ignore">
+            <ui:Label class="panel-title" text="FIRING RANGE" picking-mode="Ignore" />
+            <ui:Label class="hint" text="WASD  move      Mouse  look" picking-mode="Ignore" />
+            <ui:Label class="hint" text="Shift  sprint (hold, or toggle in Esc)      Space  jump" picking-mode="Ignore" />
+            <ui:Label class="hint" text="Ctrl / C  crouch      sprint + crouch  slide" picking-mode="Ignore" />
+            <ui:Label class="hint" text="hold Space + W at a ledge  mantle" picking-mode="Ignore" />
+            <ui:Label class="hint" text="RMB  aim      LMB  fire" picking-mode="Ignore" />
+            <ui:Label class="hint" text="1 2 3 / wheel  switch weapon      R  reload" picking-mode="Ignore" />
+            <ui:Label class="hint" text="G  throw grenade      B  swap loadout" picking-mode="Ignore" />
+            <ui:Label class="hint" text="Esc  loadouts and settings" picking-mode="Ignore" />
+            <ui:Label class="hint" text="F5  reset stats      F1  hide this" picking-mode="Ignore" />
+        </ui:VisualElement>
+
+        <ui:VisualElement name="range-stats" class="panel range-stats" picking-mode="Ignore">
+            <ui:Label class="panel-title" text="SESSION" picking-mode="Ignore" />
+            <ui:Label name="stat-accuracy" class="stat" text="Accuracy  -" picking-mode="Ignore" />
+            <ui:Label name="stat-headshots" class="stat" text="Headshots  -" picking-mode="Ignore" />
+            <ui:Label name="stat-shots" class="stat" text="Shots  0" picking-mode="Ignore" />
+            <ui:Label name="stat-kills" class="stat" text="Kills  0" picking-mode="Ignore" />
+            <ui:Label name="stat-ttk" class="stat" text="Last time to kill  -" picking-mode="Ignore" />
+        </ui:VisualElement>
+
+        <ui:VisualElement name="movement" class="panel movement" picking-mode="Ignore">
+            <ui:Label name="move-state" class="move-state" text="RUN" picking-mode="Ignore" />
+            <ui:Label name="move-speed" class="move-speed" text="0.0 m/s" picking-mode="Ignore" />
+        </ui:VisualElement>
+
+        <ui:Label name="loadout-title" class="loadout-title" text="" picking-mode="Ignore" />
+        <ui:VisualElement name="slots" class="slots" picking-mode="Ignore" />
+        <ui:VisualElement name="utilities" class="utilities" picking-mode="Ignore" />
+
+        <ui:VisualElement name="ammo" class="panel ammo" picking-mode="Ignore">
+            <ui:Label name="weapon-name" class="weapon-name" text="" picking-mode="Ignore" />
+            <ui:VisualElement class="ammo-row" picking-mode="Ignore">
+                <ui:Label name="ammo-mag" class="ammo-mag" text="30" picking-mode="Ignore" />
+                <ui:Label name="ammo-reserve" class="ammo-reserve" text="/ 120" picking-mode="Ignore" />
+            </ui:VisualElement>
+            <ui:Label name="weapon-status" class="weapon-status" text="" picking-mode="Ignore" />
+        </ui:VisualElement>
+
+        <ui:VisualElement name="quick" class="quick">
+            <ui:VisualElement class="pause-card quick-card">
+                <ui:Label class="pause-title" text="SWAP LOADOUT" />
+                <ui:VisualElement name="quick-list" class="quick-list" />
+                <ui:Label class="loadout-note" text="Press its number or click. B closes." />
+            </ui:VisualElement>
+        </ui:VisualElement>
+
+        <ui:VisualElement name="pause" class="pause">
+            <ui:VisualElement name="loadouts" class="pause-card loadouts-card">
+                <ui:Label class="pause-title" text="LOADOUTS" />
+                <ui:VisualElement class="loadouts-body">
+                    <ui:VisualElement class="loadouts-column">
+                        <ui:ScrollView name="loadout-list" class="loadout-list" />
+                        <ui:Button name="loadout-deploy" class="pause-button primary deploy-button" text="Deploy" />
+                        <ui:VisualElement class="loadout-actions">
+                            <ui:Button name="loadout-new" class="pause-button" text="New" />
+                            <ui:Button name="loadout-delete" class="pause-button" text="Delete" />
+                        </ui:VisualElement>
+                        <ui:Label name="loadout-limit" class="loadout-note" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="loadout-editor">
+                        <ui:TextField name="loadout-name" class="loadout-name" max-length="24" is-delayed="true" />
+                        <ui:Label name="loadout-note" class="loadout-note" />
+                        <ui:VisualElement name="loadout-tabs" class="armory-tabs" />
+                        <ui:VisualElement class="armory-body">
+                            <ui:ScrollView name="loadout-items" class="armory-weapons" />
+                            <ui:VisualElement class="armory-detail">
+                                <ui:Label name="detail-name" class="armory-name" />
+                                <ui:Label name="detail-class" class="armory-class" />
+                                <ui:Label name="detail-description" class="armory-description" />
+                                <ui:VisualElement name="detail-attachments" class="armory-attachments" />
+                                <ui:VisualElement name="detail-bars" class="armory-bars" />
+                                <ui:Label name="detail-numbers" class="armory-numbers" />
+                            </ui:VisualElement>
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+                </ui:VisualElement>
+            </ui:VisualElement>
+
+            <ui:VisualElement class="pause-card settings-card">
+                <ui:Label class="pause-title" text="PAUSED" />
+                <ui:VisualElement class="pause-menu">
+                    <ui:Button name="btn-resume" class="pause-button menu-button primary" text="Resume" />
+                    <ui:Button name="btn-settings" class="pause-button menu-button" text="Settings" />
+                    <ui:Button name="btn-customize" class="pause-button menu-button" text="Customize" />
+                    <ui:Button name="btn-reset" class="pause-button menu-button" text="Reset stats" />
+                    <ui:Button name="btn-quit" class="pause-button menu-button" text="Quit" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+        </ui:VisualElement>
+
+    </ui:VisualElement>
+</ui:UXML>

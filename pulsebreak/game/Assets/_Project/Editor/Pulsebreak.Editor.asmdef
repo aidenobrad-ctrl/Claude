@@ -1,0 +1,19 @@
+{
+    "name": "Pulsebreak.Editor",
+    "rootNamespace": "Pulsebreak.EditorTools",
+    "references": [
+        "Pulsebreak.Shared",
+        "Pulsebreak.Client"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

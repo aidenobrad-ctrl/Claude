@@ -1,0 +1,24 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cf495866b88359d8f1b6e8c964588444, type: 3}
+  m_Name: LDT_archer
+  m_EditorClassIdentifier: 
+  presetId: archer
+  displayName: Archer
+  description: 'A bow, a sling and a blade. Quiet, and deadly at every range if you can aim.'
+  primary: {fileID: 11400000, guid: 1aacbf5666e2c026c7936d73e1763c92, type: 2}
+  primaryAttachments: []
+  secondary: {fileID: 11400000, guid: e87bc37e1a9398cbfaa489468e5011b5, type: 2}
+  secondaryAttachments: []
+  melee: {fileID: 11400000, guid: 0356491e142f2ff5600f5f89998ebf4c, type: 2}
+  utility: {fileID: 11400000, guid: 852a97347546ce5e7780be5e99c0bb37, type: 2}
+  perkSet: {fileID: 11400000, guid: 43fe55dc6d0167817de8c89de7131e07, type: 2}
